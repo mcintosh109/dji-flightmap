@@ -1,0 +1,26 @@
+# systemd "unit" file: tells Linux how to start the Flight Map server,
+# start it at boot, and restart it if it ever crashes.
+# Installed to /etc/systemd/system/dji-flightmap.service by install.sh
+[Unit]
+Description=DJI Flight Map web server
+After=network-online.target local-fs.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=flightmap
+Group=flightmap
+EnvironmentFile=/etc/default/dji-flightmap
+ExecStart=/usr/bin/python3 -u /opt/dji-flightmap/app/server.py
+Restart=on-failure
+RestartSec=5
+StateDirectory=dji-flightmap
+
+# Extra safety: the server can only write to its own cache folder.
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

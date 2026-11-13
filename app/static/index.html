@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Flight Map</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 48'%3E%3Cg fill='%2336c2ff'%3E%3Ccircle cx='10' cy='10' r='7'/%3E%3Ccircle cx='38' cy='10' r='7'/%3E%3Ccircle cx='10' cy='38' r='7'/%3E%3Ccircle cx='38' cy='38' r='7'/%3E%3Crect x='17' y='17' width='14' height='14' rx='4'/%3E%3C/g%3E%3C/svg%3E">
+  <!-- Leaflet 1.9.4 = the open-source map library that draws the map (copy kept in vendor/) -->
+  <link rel="stylesheet" href="vendor/leaflet/leaflet.css">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="map"></div>
+
+  <!-- Left panel: aircraft + flight history -->
+  <aside id="panel">
+    <header class="panel-head">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true"></span>
+        <div>
+          <h1>Flight Map</h1>
+          <p id="status">Loading…</p>
+        </div>
+      </div>
+      <button id="btn-refresh" class="icon-btn" title="Check for new flights" aria-label="Refresh">
+        <svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M12 4a8 8 0 0 1 7.75 6h-2.1A6 6 0 1 0 18 13h2a8 8 0 1 1-8-9Zm5-1 4 4-4 4V3Z"/></svg>
+      </button>
+    </header>
+    <nav class="tabs" role="tablist">
+      <button role="tab" data-tab="aircraft" class="active">Aircraft</button>
+      <button role="tab" data-tab="flights">Flights <span id="flight-count" class="count"></span></button>
+    </nav>
+    <section id="tab-aircraft" class="tab-body"></section>
+    <section id="tab-flights" class="tab-body hidden">
+      <input id="search" type="search" placeholder="Filter: date, aircraft or file name" autocomplete="off">
+      <div id="flight-list"></div>
+    </section>
+  </aside>
+
+  <!-- Buttons in the top-right corner of the map -->
+  <div id="map-tools">
+    <button id="btn-layer" class="chip">Satellite</button>
+    <button id="btn-units" class="chip">ft · mph</button>
+    <button id="btn-fit" class="chip">Show all</button>
+  </div>
+
+  <!-- Bottom panel: details of the selected flight -->
+  <section id="detail" class="hidden" aria-live="polite">
+    <div class="detail-head">
+      <div class="detail-title">
+        <h2 id="d-title"></h2>
+        <p id="d-sub"></p>
+      </div>
+      <div class="detail-actions">
+        <a id="d-nav" class="chip accent" target="_blank" rel="noopener">Navigate<span class="long"> to last position</span></a>
+        <button id="d-close" class="icon-btn" aria-label="Close flight">✕</button>
+      </div>
+    </div>
+    <div id="d-stats" class="stats"></div>
+    <p id="d-nogps" class="note hidden">This flight has no GPS positions (GPS never locked, or it was flown indoors), so there is nothing to draw on the map.</p>
+    <div id="d-track">
+      <div class="profile">
+        <span class="profile-label" id="d-profile-label">Height</span>
+        <svg id="d-profile" preserveAspectRatio="none"></svg>
+      </div>
+      <div class="player">
+        <button id="p-play" class="icon-btn play" aria-label="Play">▶</button>
+        <input id="p-scrub" type="range" min="0" max="0" value="0" aria-label="Position in flight">
+        <label class="speed">Speed
+          <select id="p-speed">
+            <option value="1">1×</option><option value="2">2×</option>
+            <option value="5" selected>5×</option><option value="10">10×</option><option value="25">25×</option>
+          </select>
+        </label>
+      </div>
+      <div id="d-live" class="live"></div>
+    </div>
+    <details id="d-events">
+      <summary>App messages <span class="count" id="d-event-count"></span></summary>
+      <ul></ul>
+    </details>
+  </section>
+
+  <script src="vendor/leaflet/leaflet.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

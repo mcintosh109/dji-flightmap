@@ -1,0 +1,8 @@
+# Python byte-code
+__pycache__/
+*.pyc
+
+# Local test files - never commit real flight logs (they contain locations)
+cache.json
+*.csv
+*.geojson
