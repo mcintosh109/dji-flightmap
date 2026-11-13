@@ -17,6 +17,16 @@
 # ---------------------------------------------------------------------------
 set -euo pipefail
 
+# Settings must be written in CAPITAL letters (STORAGE=..., not storage=...).
+# Linux treats them as different names, so catch the lower-case mistake.
+for name in ctid storage bridge ip gateway data_host_path template_storage; do
+  if [[ -n "${!name:-}" ]]; then
+    echo "You wrote '${name}=...' in lower case. Settings must be in CAPITALS, e.g.:" >&2
+    echo "  ${name^^}=${!name} bash deploy/create-ct.sh" >&2
+    exit 1
+  fi
+done
+
 CTID="${CTID:-$(pvesh get /cluster/nextid)}"   # next free container number
 HOSTNAME="${CT_HOSTNAME:-dji-flightmap}"
 STORAGE="${STORAGE:-local-lvm}"                 # where the container's disk lives
@@ -46,16 +56,33 @@ if [[ "$DATA_HOST_PATH" == *" "* || "$DATA_HOST_PATH" == *","* ]]; then
   exit 1
 fi
 
-echo "==> Finding the newest Debian container template"
+# The container's disk must go on a storage that is allowed to hold containers.
+if ! pvesm status --content rootdir 2>/dev/null | awk 'NR>1 {print $1}' | grep -qx "$STORAGE"; then
+  echo "Storage '$STORAGE' doesn't exist or isn't allowed to hold containers." >&2
+  echo "Storages that can hold containers right now:" >&2
+  pvesm status --content rootdir 2>/dev/null | awk 'NR>1 {print "  " $1}' >&2
+  echo "To allow another one: Datacenter > Storage > double-click it > Content > also select 'Container'." >&2
+  exit 1
+fi
+
+# Templates exist for different processor types (amd64 = normal Intel/AMD PCs,
+# arm64 = ARM boards). Pick the one that matches this server.
+ARCH=$(dpkg --print-architecture)
+echo "==> Finding the newest Debian container template for this server ($ARCH)"
 pveam update >/dev/null
-TEMPLATE=$(pveam available --section system | awk '{print $2}' | grep -E '^debian-[0-9]+-standard' | sort -V | tail -1)
+TEMPLATE=$(pveam available --section system | awk '{print $2}' \
+  | grep -E "^debian-[0-9]+-standard_.*_${ARCH}\.tar" | sort -V | tail -1)
 if [[ -z "$TEMPLATE" ]]; then
-  echo "Could not find a Debian template with 'pveam available'." >&2
+  echo "Could not find a Debian template for $ARCH with 'pveam available'." >&2
   exit 1
 fi
 if ! pveam list "$TEMPLATE_STORAGE" | grep -q "$TEMPLATE"; then
   echo "==> Downloading $TEMPLATE"
-  pveam download "$TEMPLATE_STORAGE" "$TEMPLATE"
+  pveam download "$TEMPLATE_STORAGE" "$TEMPLATE" || true
+fi
+if ! pveam list "$TEMPLATE_STORAGE" | grep -q "$TEMPLATE"; then
+  echo "The template download didn't finish. Please run the script again." >&2
+  exit 1
 fi
 
 NET="name=eth0,bridge=${BRIDGE},ip=${IP}"
