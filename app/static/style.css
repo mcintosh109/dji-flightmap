@@ -63,6 +63,8 @@ button, input, select { font: inherit; color: inherit; }
   background: var(--card); cursor: pointer;
 }
 .icon-btn:hover { background: var(--card-hover); }
+a.icon-btn { color: var(--text); }
+.head-actions { display: flex; gap: 8px; }
 .icon-btn.spin svg { animation: spin 0.8s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 

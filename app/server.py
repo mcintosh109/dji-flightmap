@@ -18,26 +18,44 @@ Settings are read from environment variables (see deploy/dji-flightmap.env):
   CACHE_FILE    where summaries are remembered between restarts
                 (default: /var/lib/dji-flightmap/summaries.json)
 
+Optional login (leave both empty to turn the login page off):
+  AUTH_USER           the username
+  AUTH_PASSWORD_HASH  the password, scrambled ("hashed") so it is never
+                      stored as plain text. Make one with:
+                        python3 server.py --hash-password
+                      (deploy/set-login.sh does all of this for you)
+
 Web addresses it answers:
   /                     the map page (static/index.html)
   /api/flights          JSON list of every flight (summaries only)
   /api/flights/<id>     JSON for one flight, including the full track
   /api/health           {"ok": true} - handy for checking the service is up
+  /login.html           the login page (only used when a login is set)
+  /logout               signs you out
+
+The same flight is often saved more than once (for example in several
+dated archive folders). Copies are recognised by aircraft serial number +
+start time, and only one is shown.
 """
 
 import csv
+import getpass
 import gzip
 import hashlib
+import hmac
 import json
 import math
 import os
+import re
+import secrets
 import sys
 import threading
 import time
 from collections import OrderedDict
 from datetime import datetime, timedelta, timezone
+from http.cookies import SimpleCookie
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import unquote, urlparse
+from urllib.parse import parse_qs, unquote, urlparse
 
 # --------------------------------------------------------------------------
 # Settings
@@ -47,12 +65,17 @@ PORT = int(os.environ.get("PORT", "8080"))
 HOST = os.environ.get("HOST", "0.0.0.0")
 SCAN_SECONDS = max(5, int(os.environ.get("SCAN_SECONDS", "30")))
 CACHE_FILE = os.environ.get("CACHE_FILE", "/var/lib/dji-flightmap/summaries.json")
+AUTH_USER = os.environ.get("AUTH_USER", "").strip()
+AUTH_PASSWORD_HASH = os.environ.get("AUTH_PASSWORD_HASH", "").strip()
+AUTH_ENABLED = bool(AUTH_USER and AUTH_PASSWORD_HASH)
+SESSION_DAYS = int(os.environ.get("SESSION_DAYS", "30"))   # stay signed in this long
+SECRET_FILE = os.path.join(os.path.dirname(CACHE_FILE), "session-secret")
 
 STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
 MAX_TRACK_POINTS = 3000   # most points sent to the browser for one flight
 PREVIEW_POINTS = 80       # points in the small "overview" line of each flight
 DETAIL_CACHE_SIZE = 16    # how many full flights to keep in memory
-CACHE_VERSION = 1         # bump this when the summary format changes
+CACHE_VERSION = 2         # bump this when the summary format changes
 
 # DJI CSV rows can be very wide; raise Python's default field size limit.
 csv.field_size_limit(10_000_000)
@@ -298,6 +321,7 @@ def build_flight(path, rel_path, mtime):
         "videoTime": parsed["videoTime"],
         "warnings": sum(1 for e in parsed["events"] if e["kind"] == "warn"),
         "hasGps": bool(pts),
+        "points": len(pts),
         "home": {"lat": pts[0]["lat"], "lon": pts[0]["lon"]} if pts else None,
         "last": ({"lat": pts[-1]["lat"], "lon": pts[-1]["lon"],
                   "h": pts[-1]["h"], "yaw": pts[-1]["yaw"]} if pts else None),
@@ -424,13 +448,42 @@ class FlightLibrary:
             self._save_cache()
 
     # ---- answering the web page -------------------------------------------
+    @staticmethod
+    def _same_flight_key(summary):
+        """Two files are the same flight if they share serial number + start time."""
+        if summary["start"]:
+            return f"{summary['serial']}|{summary['start'][:19]}"
+        # No clock in the log: fall back to the file name without its folder.
+        return "file|" + os.path.splitext(os.path.basename(summary["file"]))[0]
+
+    def _unique_flights(self):
+        """Pick one file per flight. Prefers CSV, then the most GPS points,
+        then the most recently saved copy."""
+        best = {}
+        copies = {}
+        for entry in self.entries.values():
+            summary = entry.get("summary")
+            if not summary:
+                continue
+            key = self._same_flight_key(summary)
+            copies[key] = copies.get(key, 0) + 1
+            rank = (summary["source"] == "csv", summary.get("points", 0), entry["sig"][0])
+            if key not in best or rank > best[key][0]:
+                best[key] = (rank, summary)
+        flights = []
+        for key, (_, summary) in best.items():
+            flights.append(dict(summary, copies=copies[key]))
+        return flights
+
     def listing(self):
         with self.lock:
-            flights = [e["summary"] for e in self.entries.values() if e.get("summary")]
+            flights = self._unique_flights()
             errors = [{"file": e["rel"], "error": e["error"]}
                       for e in self.entries.values() if e.get("error")]
             flights.sort(key=lambda s: s["sortKey"], reverse=True)
             return {
+                "auth": AUTH_ENABLED,
+                "files": len(self.entries),
                 "version": self.version,
                 "scanning": self.scanning,
                 "problem": self.problem,
@@ -464,7 +517,7 @@ class FlightLibrary:
         return detail
 
 
-LIBRARY = FlightLibrary(DATA_DIR)
+LIBRARY = None   # created in main()
 
 
 def scan_forever():
@@ -477,6 +530,106 @@ def scan_forever():
 
 
 # --------------------------------------------------------------------------
+# Login (only used when AUTH_USER and AUTH_PASSWORD_HASH are set)
+# --------------------------------------------------------------------------
+# Passwords are stored as a PBKDF2 hash: a one-way scramble that is slow to
+# guess. Format:  pbkdf2_sha256:<rounds>:<salt hex>:<hash hex>
+# (no "$" characters, so it is safe inside a systemd EnvironmentFile).
+COOKIE_NAME = "flightmap_session"
+PUBLIC_PATHS = {"/login", "/login.html", "/api/login", "/api/health", "/favicon.ico"}
+FAILED_LOGINS = {}            # ip address -> list of times of failed logins
+FAILED_LOCK = threading.Lock()
+MAX_FAILURES = 10             # this many wrong passwords ...
+FAILURE_WINDOW = 15 * 60      # ... within 15 minutes locks that address out
+
+
+def hash_password(password, rounds=600_000):
+    salt = secrets.token_bytes(16)
+    digest = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, rounds)
+    return f"pbkdf2_sha256:{rounds}:{salt.hex()}:{digest.hex()}"
+
+
+def verify_password(password, stored):
+    try:
+        algorithm, rounds, salt_hex, digest_hex = stored.split(":")
+        if algorithm != "pbkdf2_sha256":
+            return False
+        digest = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"),
+                                     bytes.fromhex(salt_hex), int(rounds))
+    except ValueError:
+        return False
+    return hmac.compare_digest(digest.hex(), digest_hex)
+
+
+def load_session_secret():
+    """A random key used to sign login cookies, kept so restarts don't log you out."""
+    try:
+        with open(SECRET_FILE, "rb") as fh:
+            secret = fh.read()
+        if len(secret) >= 32:
+            return secret
+    except OSError:
+        pass
+    secret = secrets.token_bytes(32)
+    try:
+        os.makedirs(os.path.dirname(SECRET_FILE), exist_ok=True)
+        fd = os.open(SECRET_FILE, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "wb") as fh:
+            fh.write(secret)
+    except OSError as exc:
+        log(f"Could not save {SECRET_FILE} ({exc}); logins will end when the server restarts")
+    return secret
+
+
+SESSION_SECRET = b""
+
+
+def _sign(text):
+    # The password hash is part of the signature, so changing the password
+    # signs everyone out.
+    key = SESSION_SECRET + AUTH_PASSWORD_HASH.encode("utf-8")
+    return hmac.new(key, text.encode("utf-8"), hashlib.sha256).hexdigest()
+
+
+def make_session_cookie():
+    expires = int(time.time()) + SESSION_DAYS * 86400
+    body = f"{AUTH_USER}:{expires}"
+    return f"{body}:{_sign(body)}"
+
+
+def session_is_valid(cookie_header):
+    if not cookie_header:
+        return False
+    try:
+        cookie = SimpleCookie(cookie_header)
+    except Exception:
+        return False
+    morsel = cookie.get(COOKIE_NAME)
+    if not morsel:
+        return False
+    parts = morsel.value.rsplit(":", 2)
+    if len(parts) != 3:
+        return False
+    user, expires, signature = parts
+    if not hmac.compare_digest(_sign(f"{user}:{expires}"), signature):
+        return False
+    return user == AUTH_USER and expires.isdigit() and int(expires) > time.time()
+
+
+def too_many_failures(ip):
+    now = time.time()
+    with FAILED_LOCK:
+        recent = [t for t in FAILED_LOGINS.get(ip, []) if now - t < FAILURE_WINDOW]
+        FAILED_LOGINS[ip] = recent
+        return len(recent) >= MAX_FAILURES
+
+
+def record_failure(ip):
+    with FAILED_LOCK:
+        FAILED_LOGINS.setdefault(ip, []).append(time.time())
+
+
+# --------------------------------------------------------------------------
 # The web server
 # --------------------------------------------------------------------------
 class Handler(SimpleHTTPRequestHandler):
@@ -486,6 +639,8 @@ class Handler(SimpleHTTPRequestHandler):
     def end_headers(self):
         # Tell browsers to re-check files, so updates show up straight away.
         self.send_header("Cache-Control", "no-cache")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("X-Frame-Options", "DENY")
         super().end_headers()
 
     def log_message(self, fmt, *args):
@@ -506,8 +661,43 @@ class Handler(SimpleHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def redirect(self, location, cookie=None):
+        self.send_response(303)
+        self.send_header("Location", location)
+        if cookie is not None:
+            self.send_header("Set-Cookie", cookie)
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+
+    # ---- the login gate ----------------------------------------------------
+    def allowed(self, path):
+        """True if this request may go ahead. Otherwise sends the right answer."""
+        if not AUTH_ENABLED or path in PUBLIC_PATHS:
+            return True
+        if session_is_valid(self.headers.get("Cookie")):
+            return True
+        if path.startswith("/api/"):
+            self.send_json({"error": "login required"}, 401)
+        else:
+            self.redirect("/login.html")
+        return False
+
+    def do_HEAD(self):
+        path = urlparse(self.path).path
+        if self.allowed(path):
+            super().do_HEAD()
+
     def do_GET(self):
         path = urlparse(self.path).path
+        if path == "/login":
+            return self.redirect("/login.html")
+        if path == "/logout":
+            return self.redirect("/login.html" if AUTH_ENABLED else "/",
+                                 cookie=f"{COOKIE_NAME}=; Max-Age=0; Path=/; HttpOnly; SameSite=Lax")
+        if path == "/login.html" and not AUTH_ENABLED:
+            return self.redirect("/")
+        if not self.allowed(path):
+            return
         if path == "/api/health":
             return self.send_json({"ok": True})
         if path == "/api/flights":
@@ -525,8 +715,52 @@ class Handler(SimpleHTTPRequestHandler):
             return self.send_json({"error": "unknown address"}, 404)
         return super().do_GET()
 
+    def do_POST(self):
+        path = urlparse(self.path).path
+        if path != "/api/login" or not AUTH_ENABLED:
+            return self.send_json({"error": "unknown address"}, 404)
+        ip = self.client_address[0]
+        if too_many_failures(ip):
+            log(f"{ip} login blocked: too many wrong passwords")
+            return self.redirect("/login.html?error=locked")
+        length = min(int(self.headers.get("Content-Length") or 0), 4096)
+        form = parse_qs(self.rfile.read(length).decode("utf-8", "replace"))
+        user = (form.get("username") or [""])[0]
+        password = (form.get("password") or [""])[0]
+        user_ok = hmac.compare_digest(user.encode("utf-8"), AUTH_USER.encode("utf-8"))
+        password_ok = verify_password(password, AUTH_PASSWORD_HASH)  # always run: same timing
+        if user_ok and password_ok:
+            log(f"{ip} signed in as {AUTH_USER}")
+            cookie = (f"{COOKIE_NAME}={make_session_cookie()}; Max-Age={SESSION_DAYS * 86400}; "
+                      "Path=/; HttpOnly; SameSite=Lax")
+            return self.redirect("/", cookie=cookie)
+        record_failure(ip)
+        log(f"{ip} wrong username or password")
+        time.sleep(1)   # slows down anyone trying to guess
+        return self.redirect("/login.html?error=1")
+
 
 def main():
+    global LIBRARY, SESSION_SECRET
+    if "--hash-password" in sys.argv:
+        # Used by deploy/set-login.sh: asks for a password, prints its hash.
+        first = getpass.getpass("New password: ")
+        if len(first) < 8:
+            sys.exit("Please use at least 8 characters.")
+        if getpass.getpass("Type it again: ") != first:
+            sys.exit("The two passwords did not match.")
+        print(hash_password(first))
+        return
+
+    if AUTH_USER and not re.fullmatch(r"[A-Za-z0-9._@-]{1,64}", AUTH_USER):
+        sys.exit("AUTH_USER may only contain letters, numbers and . _ @ -")
+    if AUTH_ENABLED:
+        SESSION_SECRET = load_session_secret()
+        log(f"Login page is ON (user: {AUTH_USER})")
+    else:
+        log("Login page is OFF (set it up with deploy/set-login.sh)")
+
+    LIBRARY = FlightLibrary(DATA_DIR)
     log(f"DJI Flight Map: reading logs from {DATA_DIR}")
     threading.Thread(target=scan_forever, daemon=True).start()
     server = ThreadingHTTPServer((HOST, PORT), Handler)

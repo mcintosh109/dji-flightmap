@@ -3,13 +3,14 @@
 # create-ct.sh - run on the PROXMOX HOST (as root) to create a new LXC
 # container ("CT") and install DJI Flight Map inside it.
 #
-# Usage (from the folder you unpacked/cloned the project into):
+# Usage (from the folder you cloned the project into):
 #
-#   DATA_HOST_PATH=/path/to/your/dji/logs bash deploy/create-ct.sh
+#   bash deploy/create-ct.sh
 #
-# DATA_HOST_PATH is the folder ON THE PROXMOX HOST where your sync service
-# saves the decrypted .csv files. It is shared into the container read-only,
-# so the map can never change or delete your logs.
+# Run deploy/setup-truenas-mount.sh first: it connects the TrueNAS
+# "archive" folder to /mnt/dji-archive on this host. This script then shares
+# that folder into the container read-only, so the map can never change or
+# delete your logs. (Logs somewhere else? Set DATA_HOST_PATH=/that/folder)
 #
 # Everything else has a default you can override the same way, e.g.
 #   CTID=150 BRIDGE=vmbr1 DATA_HOST_PATH=/tank/dji bash deploy/create-ct.sh
@@ -29,13 +30,19 @@ CORES="${CORES:-1}"
 DATA_CT_PATH=/srv/dji-logs
 SRC_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-if [[ -z "${DATA_HOST_PATH:-}" ]]; then
-  echo "Please set DATA_HOST_PATH to the folder on this Proxmox host that holds the logs." >&2
-  echo "Example:  DATA_HOST_PATH=/mnt/dji-logs bash deploy/create-ct.sh" >&2
-  exit 1
-fi
+DATA_HOST_PATH="${DATA_HOST_PATH:-/mnt/dji-archive}"
 if [[ ! -d "$DATA_HOST_PATH" ]]; then
   echo "Folder not found on this host: $DATA_HOST_PATH" >&2
+  echo "Run this first:  bash deploy/setup-truenas-mount.sh" >&2
+  exit 1
+fi
+if [[ "$DATA_HOST_PATH" == /mnt/dji-archive ]] && ! mountpoint -q "$DATA_HOST_PATH"; then
+  echo "$DATA_HOST_PATH exists but TrueNAS is not connected there." >&2
+  echo "Run this first:  bash deploy/setup-truenas-mount.sh   (or try: mount $DATA_HOST_PATH)" >&2
+  exit 1
+fi
+if [[ "$DATA_HOST_PATH" == *" "* || "$DATA_HOST_PATH" == *","* ]]; then
+  echo "Proxmox can't share a folder whose path has spaces or commas: $DATA_HOST_PATH" >&2
   exit 1
 fi
 
@@ -83,6 +90,11 @@ echo "==> Installing inside the container"
 pct exec "$CTID" -- bash /root/dji-flightmap/deploy/install.sh
 
 echo
+read -rp "Add a login page (username + password) now? [Y/n] " want_login
+if [[ "${want_login,,}" != n* ]]; then
+  pct exec "$CTID" -- bash /opt/dji-flightmap/deploy/set-login.sh || \
+    echo "Login setup didn't finish. Try again later with: pct exec $CTID -- bash /opt/dji-flightmap/deploy/set-login.sh"
+fi
+
+echo
 echo "Container $CTID is ready."
-echo "Tip: unprivileged containers can only read files that are 'world readable'."
-echo "If the map says it found no flights, run on this host:  chmod -R a+rX '$DATA_HOST_PATH'"

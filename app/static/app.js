@@ -302,6 +302,7 @@ async function refresh({ force = false } = {}) {
   btn.classList.add('spin');
   try {
     const res = await fetch('api/flights', { cache: 'no-store' });
+    if (res.status === 401) { location.href = 'login.html'; return; }   // signed out
     if (!res.ok) throw new Error(`server answered ${res.status}`);
     const data = await res.json();
     const changed = force || data.version !== state.version;
@@ -309,6 +310,7 @@ async function refresh({ force = false } = {}) {
     state.lastData = data;
     state.flights = data.flights;
     renderStatus(data);
+    $('#btn-logout').classList.toggle('hidden', !data.auth);
     if (changed) {
       renderAircraft(data);
       renderFlights(data);
@@ -335,6 +337,7 @@ async function selectFlight(id, { fit = true } = {}) {
   let data;
   try {
     const res = await fetch(`api/flights/${encodeURIComponent(id)}`);
+    if (res.status === 401) { location.href = 'login.html'; return; }
     if (!res.ok) throw new Error(`server answered ${res.status}`);
     data = await res.json();
   } catch (err) {
@@ -387,7 +390,11 @@ function renderDetail() {
   const { summary: s, track, events } = state.detail;
   $('#detail').classList.remove('hidden');
   $('#d-title').textContent = `${s.aircraftName} · ${fmt.date(s.start)}`;
-  $('#d-sub').textContent = `${s.file}${s.source === 'geojson' ? ' (GeoJSON – fewer details)' : ''}`;
+  const extra = [];
+  if (s.source === 'geojson') extra.push('GeoJSON – fewer details');
+  const copies = state.flights.find((f) => f.id === s.id)?.copies || 1;
+  if (copies > 1) extra.push(`saved ${copies} times, showing one`);
+  $('#d-sub').textContent = s.file + (extra.length ? ` (${extra.join('; ')})` : '');
 
   const nav = $('#d-nav');
   if (s.last) { nav.href = navUrl(s.last.lat, s.last.lon); nav.classList.remove('hidden'); }

@@ -28,8 +28,9 @@ fi
 
 echo "==> Copying app files to $APP_DIR"
 mkdir -p "$APP_DIR"
-rm -rf "$APP_DIR/app"
+rm -rf "$APP_DIR/app" "$APP_DIR/deploy"
 cp -r "$SRC_DIR/app" "$APP_DIR/app"
+cp -r "$SRC_DIR/deploy" "$APP_DIR/deploy"   # keeps set-login.sh handy
 chown -R root:root "$APP_DIR"
 chmod -R a+rX "$APP_DIR"
 
@@ -37,6 +38,7 @@ echo "==> Writing settings (only if they don't exist yet)"
 if [[ ! -f /etc/default/dji-flightmap ]]; then
   cp "$SRC_DIR/deploy/dji-flightmap.env" /etc/default/dji-flightmap
 fi
+chmod 600 /etc/default/dji-flightmap   # may hold the login hash: root only
 
 # The folder the logs appear in. Normally this is a bind mount from the
 # Proxmox host (see create-ct.sh); make sure it exists either way.
@@ -57,6 +59,9 @@ if systemctl is-active --quiet dji-flightmap; then
   echo "Done! Open this in a browser:  http://${IP}:${PORT:-8080}"
   echo "Logs are read from:            ${DATA_DIR:-/srv/dji-logs}"
   echo "See what the server is doing:  journalctl -u dji-flightmap -f"
+  if ! grep -q '^AUTH_USER=' /etc/default/dji-flightmap; then
+    echo "Add a login page:              bash $APP_DIR/deploy/set-login.sh"
+  fi
 else
   echo "The service did not start. Showing its log:" >&2
   journalctl -u dji-flightmap -n 30 --no-pager >&2
