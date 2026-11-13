@@ -30,8 +30,14 @@ Web addresses it answers:
   /api/flights          JSON list of every flight (summaries only)
   /api/flights/<id>     JSON for one flight, including the full track
   /api/health           {"ok": true} - handy for checking the service is up
+  /api/settings         GET: the settings page's values, PUT: save them
+  /api/rescan           POST: look for new log files right now
   /login.html           the login page (only used when a login is set)
   /logout               signs you out
+  /settings.html        the settings page
+
+Settings changed on the settings page are saved in settings.json, next to
+CACHE_FILE. SCAN_SECONDS and SESSION_DAYS above are only the starting values.
 
 The same flight is often saved more than once (for example in several
 dated archive folders). Copies are recognised by aircraft serial number +
@@ -70,6 +76,8 @@ AUTH_PASSWORD_HASH = os.environ.get("AUTH_PASSWORD_HASH", "").strip()
 AUTH_ENABLED = bool(AUTH_USER and AUTH_PASSWORD_HASH)
 SESSION_DAYS = int(os.environ.get("SESSION_DAYS", "30"))   # stay signed in this long
 SECRET_FILE = os.path.join(os.path.dirname(CACHE_FILE), "session-secret")
+SETTINGS_FILE = os.path.join(os.path.dirname(CACHE_FILE), "settings.json")
+APP_VERSION = "1.2.0"
 
 STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
 MAX_TRACK_POINTS = 3000   # most points sent to the browser for one flight
@@ -84,6 +92,142 @@ csv.field_size_limit(10_000_000)
 def log(message):
     """Print a line to the log (systemd/journalctl picks this up)."""
     print(message, file=sys.stderr, flush=True)
+
+
+# --------------------------------------------------------------------------
+# Settings page values (saved in settings.json)
+# --------------------------------------------------------------------------
+# Map styles the page knows how to draw (see static/maps.js).
+MAP_STYLES = {
+    "carto-dark", "carto-light", "osm", "esri-satellite",
+    "mapbox-satellite", "mapbox-dark", "mapbox-outdoors",
+    "maptiler-hybrid", "maptiler-satellite", "maptiler-streets", "maptiler-outdoor",
+    "custom",
+}
+DEFAULT_SETTINGS = {
+    # Map
+    "mapStyle": "carto-dark",
+    "satelliteLabels": True,
+    "mapboxToken": "",
+    "maptilerKey": "",
+    "customTileUrl": "",
+    "customTileName": "Custom map",
+    "customAttribution": "",
+    # Display
+    "units": "imperial",
+    "pathColor": "#36c2ff",
+    "playbackSpeed": 5,
+    "openAt": "last",
+    "navApp": "google",
+    "showAllPaths": True,
+    # Flights
+    "minFlightSeconds": 0,
+    "hideNoGps": False,
+    "aircraftNames": {},
+    # Server
+    "scanSeconds": SCAN_SECONDS,
+    "sessionDays": SESSION_DAYS,
+}
+SETTINGS = dict(DEFAULT_SETTINGS)
+SETTINGS_LOCK = threading.Lock()
+KEY_RE = re.compile(r"^[A-Za-z0-9._-]{0,300}$")
+SERIAL_RE = re.compile(r"^[A-Za-z0-9]{1,64}$")
+
+
+def clean_settings(incoming):
+    """Check values sent by the settings page.
+
+    Returns (new settings, list of problems). Unknown names are ignored;
+    anything missing keeps its current value.
+    """
+    problems = []
+    with SETTINGS_LOCK:
+        new = dict(SETTINGS)
+
+    def pick(name, check, message):
+        if name not in incoming:
+            return
+        value = incoming[name]
+        try:
+            ok = check(value)
+        except Exception:
+            ok = False
+        if ok:
+            new[name] = value
+        else:
+            problems.append(message)
+
+    def whole(lo, hi):
+        return lambda v: isinstance(v, int) and not isinstance(v, bool) and lo <= v <= hi
+
+    is_bool = lambda v: isinstance(v, bool)
+    plain = lambda n: (lambda v: isinstance(v, str) and len(v) <= n and not re.search(r"[<>\"\\\x00-\x1f]", v))
+
+    pick("mapStyle", lambda v: v in MAP_STYLES, "Unknown map style.")
+    pick("satelliteLabels", is_bool, "Satellite labels must be on or off.")
+    pick("mapboxToken", lambda v: isinstance(v, str) and KEY_RE.match(v.strip()),
+         "The Mapbox token can only contain letters, numbers, dots, dashes and underscores.")
+    pick("maptilerKey", lambda v: isinstance(v, str) and KEY_RE.match(v.strip()),
+         "The MapTiler key can only contain letters, numbers, dots, dashes and underscores.")
+    pick("customTileUrl", lambda v: isinstance(v, str) and (v == "" or (
+        len(v) <= 500 and re.match(r"^https?://[^\s<>\"']+$", v)
+        and all(part in v for part in ("{z}", "{x}", "{y}")))),
+         "The custom map address must start with https:// and contain {z}, {x} and {y}.")
+    pick("customTileName", plain(40), "The custom map name is too long or has odd characters.")
+    pick("customAttribution", plain(200), "The custom map credit line is too long or has odd characters.")
+    pick("units", lambda v: v in ("imperial", "metric"), "Units must be imperial or metric.")
+    pick("pathColor", lambda v: isinstance(v, str) and re.fullmatch(r"#[0-9a-fA-F]{6}", v),
+         "The path colour must look like #36c2ff.")
+    pick("playbackSpeed", lambda v: v in (1, 2, 5, 10, 25), "Unknown replay speed.")
+    pick("openAt", lambda v: v in ("last", "start"), "Unknown start position.")
+    pick("navApp", lambda v: v in ("google", "apple", "waze"), "Unknown navigation app.")
+    pick("showAllPaths", is_bool, "Show all paths must be on or off.")
+    pick("minFlightSeconds", whole(0, 3600), "Shortest flight must be 0 to 3600 seconds.")
+    pick("hideNoGps", is_bool, "Hide flights without GPS must be on or off.")
+    pick("aircraftNames", lambda v: isinstance(v, dict) and len(v) <= 50 and all(
+        isinstance(k, str) and SERIAL_RE.match(k) and plain(40)(n) for k, n in v.items()),
+         "Aircraft nicknames can be up to 40 characters.")
+    pick("scanSeconds", whole(5, 3600), "Check for new files every 5 to 3600 seconds.")
+    pick("sessionDays", whole(1, 365), "Stay signed in for 1 to 365 days.")
+
+    for key in ("mapboxToken", "maptilerKey", "customTileName", "customAttribution"):
+        new[key] = new[key].strip()
+    new["aircraftNames"] = {k: n.strip() for k, n in new["aircraftNames"].items() if n.strip()}
+    return new, problems
+
+
+def load_settings():
+    try:
+        with open(SETTINGS_FILE, encoding="utf-8") as fh:
+            saved = json.load(fh)
+    except FileNotFoundError:
+        return
+    except Exception as exc:
+        log(f"Ignoring broken settings file {SETTINGS_FILE}: {exc}")
+        return
+    new, problems = clean_settings(saved if isinstance(saved, dict) else {})
+    for problem in problems:
+        log(f"Settings file: {problem} (using the default instead)")
+    with SETTINGS_LOCK:
+        SETTINGS.update(new)
+
+
+def save_settings(new):
+    """Write settings.json (only root and the service can read it: it may hold API keys)."""
+    os.makedirs(os.path.dirname(SETTINGS_FILE), exist_ok=True)
+    tmp = SETTINGS_FILE + ".tmp"
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as fh:
+        json.dump(new, fh, indent=2)
+    os.replace(tmp, SETTINGS_FILE)
+    with SETTINGS_LOCK:
+        SETTINGS.clear()
+        SETTINGS.update(new)
+
+
+def current_settings():
+    with SETTINGS_LOCK:
+        return json.loads(json.dumps(SETTINGS))   # a copy
 
 
 # --------------------------------------------------------------------------
@@ -349,6 +493,7 @@ class FlightLibrary:
     def __init__(self, root):
         self.root = root
         self.lock = threading.Lock()
+        self.scan_lock = threading.Lock()   # only one scan at a time
         self.entries = {}          # full path -> {"sig", "rel", "summary", "error"}
         self.by_id = {}            # flight id -> full path
         self.details = OrderedDict()
@@ -409,6 +554,10 @@ class FlightLibrary:
         return {path: os.path.relpath(path, self.root) for path in chosen.values()}
 
     def scan(self):
+        with self.scan_lock:
+            self._scan()
+
+    def _scan(self):
         if not os.path.isdir(self.root):
             with self.lock:
                 self.problem = f"Data folder not found: {self.root}"
@@ -489,6 +638,7 @@ class FlightLibrary:
             flights.sort(key=lambda s: s["sortKey"], reverse=True)
             return {
                 "auth": AUTH_ENABLED,
+                "settings": current_settings(),
                 "files": len(self.entries),
                 "version": self.version,
                 "scanning": self.scanning,
@@ -532,7 +682,7 @@ def scan_forever():
             LIBRARY.scan()
         except Exception as exc:
             log(f"Scan failed: {exc}")
-        time.sleep(SCAN_SECONDS)
+        time.sleep(current_settings()["scanSeconds"])
 
 
 # --------------------------------------------------------------------------
@@ -597,8 +747,12 @@ def _sign(text):
     return hmac.new(key, text.encode("utf-8"), hashlib.sha256).hexdigest()
 
 
+def session_days():
+    return current_settings()["sessionDays"]
+
+
 def make_session_cookie():
-    expires = int(time.time()) + SESSION_DAYS * 86400
+    expires = int(time.time()) + session_days() * 86400
     body = f"{AUTH_USER}:{expires}"
     return f"{body}:{_sign(body)}"
 
@@ -708,6 +862,8 @@ class Handler(SimpleHTTPRequestHandler):
             return self.send_json({"ok": True})
         if path == "/api/flights":
             return self.send_json(LIBRARY.listing())
+        if path == "/api/settings":
+            return self.send_json(self.settings_payload())
         if path.startswith("/api/flights/"):
             flight_id = unquote(path[len("/api/flights/"):])
             try:
@@ -721,8 +877,67 @@ class Handler(SimpleHTTPRequestHandler):
             return self.send_json({"error": "unknown address"}, 404)
         return super().do_GET()
 
+    # ---- settings + rescan --------------------------------------------------
+    def from_our_page(self):
+        """Changes must come from our own page's JavaScript.
+
+        Browsers won't let another website add this header without our
+        permission, so a random web page can't change your settings.
+        """
+        if self.headers.get("X-Requested-With") == "flightmap":
+            return True
+        self.send_json({"error": "missing X-Requested-With header"}, 403)
+        return False
+
+    def settings_payload(self):
+        aircraft = {}
+        for f in LIBRARY.listing()["flights"]:
+            if f["serial"] and f["serial"] not in aircraft:
+                aircraft[f["serial"]] = f["aircraftName"]
+        return {
+            "settings": current_settings(),
+            "defaults": DEFAULT_SETTINGS,
+            "info": {
+                "version": APP_VERSION,
+                "auth": AUTH_ENABLED,
+                "user": AUTH_USER if AUTH_ENABLED else "",
+                "dataDir": DATA_DIR,
+                "aircraft": [{"serial": k, "model": v} for k, v in aircraft.items()],
+            },
+        }
+
+    def do_PUT(self):
+        path = urlparse(self.path).path
+        if path != "/api/settings":
+            return self.send_json({"error": "unknown address"}, 404)
+        if not self.allowed(path) or not self.from_our_page():
+            return
+        length = int(self.headers.get("Content-Length") or 0)
+        if length > 65536:
+            return self.send_json({"error": "too much data"}, 413)
+        try:
+            incoming = json.loads(self.rfile.read(length) or b"{}")
+            if not isinstance(incoming, dict):
+                raise ValueError
+        except ValueError:
+            return self.send_json({"error": "not valid JSON"}, 400)
+        new, problems = clean_settings(incoming)
+        if problems:
+            return self.send_json({"error": " ".join(problems), "problems": problems}, 400)
+        try:
+            save_settings(new)
+        except OSError as exc:
+            return self.send_json({"error": f"could not save: {exc}"}, 500)
+        log(f"{self.client_address[0]} saved settings")
+        return self.send_json(self.settings_payload())
+
     def do_POST(self):
         path = urlparse(self.path).path
+        if path == "/api/rescan":
+            if not self.allowed(path) or not self.from_our_page():
+                return
+            LIBRARY.scan()
+            return self.send_json(LIBRARY.listing())
         if path != "/api/login" or not AUTH_ENABLED:
             return self.send_json({"error": "unknown address"}, 404)
         ip = self.client_address[0]
@@ -737,7 +952,7 @@ class Handler(SimpleHTTPRequestHandler):
         password_ok = verify_password(password, AUTH_PASSWORD_HASH)  # always run: same timing
         if user_ok and password_ok:
             log(f"{ip} signed in as {AUTH_USER}")
-            cookie = (f"{COOKIE_NAME}={make_session_cookie()}; Max-Age={SESSION_DAYS * 86400}; "
+            cookie = (f"{COOKIE_NAME}={make_session_cookie()}; Max-Age={session_days() * 86400}; "
                       "Path=/; HttpOnly; SameSite=Lax")
             return self.redirect("/", cookie=cookie)
         record_failure(ip)
@@ -766,6 +981,7 @@ def main():
     else:
         log("Login page is OFF (set it up with deploy/set-login.sh)")
 
+    load_settings()
     LIBRARY = FlightLibrary(DATA_DIR)
     log(f"DJI Flight Map: reading logs from {DATA_DIR}")
     threading.Thread(target=scan_forever, daemon=True).start()

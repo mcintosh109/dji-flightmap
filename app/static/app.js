@@ -27,13 +27,34 @@ const state = {
   playing: false,
   playT: 0,
   lastFrame: 0,
-  units: loadSetting('units', 'imperial'),
-  layer: loadSetting('layer', 'dark'),
+  units: loadSetting('units', null),   // this browser's choice; null = use the settings page default
+  layer: loadSetting('layer', null),
+  // Settings page values (the server sends the real ones with every refresh).
+  settings: {
+    mapStyle: 'carto-dark', satelliteLabels: true, units: 'imperial', pathColor: '#36c2ff',
+    playbackSpeed: 5, openAt: 'last', navApp: 'google', showAllPaths: true,
+    minFlightSeconds: 0, hideNoGps: false, aircraftNames: {},
+  },
+  settingsKey: '',
+  layerKey: '',
   tab: 'aircraft',
   filter: '',
   firstLoad: true,
   lastData: { dataDir: '' },
 };
+
+// ---------- settings helpers ----------
+const units = () => state.units || state.settings.units;
+const pathColor = () => state.settings.pathColor || '#36c2ff';
+// A nickname from the settings page, or the model name from the log.
+const displayName = (serial, model) => (serial && state.settings.aircraftNames?.[serial]) || model;
+// Hide flights the settings page says to hide.
+function isVisible(f) {
+  const s = state.settings;
+  if (s.hideNoGps && !f.hasGps) return false;
+  if (s.minFlightSeconds && (f.duration || 0) < s.minFlightSeconds) return false;
+  return true;
+}
 
 // ---------- formatting numbers for people ----------
 const M_TO_FT = 3.28084;
@@ -42,11 +63,11 @@ const pad2 = (n) => String(n).padStart(2, '0');
 const fmt = {
   height(m) {
     if (m == null) return '–';
-    return state.units === 'imperial' ? `${Math.round(m * M_TO_FT)} ft` : `${m.toFixed(Math.abs(m) < 10 ? 1 : 0)} m`;
+    return units() === 'imperial' ? `${Math.round(m * M_TO_FT)} ft` : `${m.toFixed(Math.abs(m) < 10 ? 1 : 0)} m`;
   },
   dist(m) {
     if (m == null) return '–';
-    if (state.units === 'imperial') {
+    if (units() === 'imperial') {
       const ft = m * M_TO_FT;
       return ft < 5280 ? `${Math.round(ft)} ft` : `${(m / 1609.344).toFixed(2)} mi`;
     }
@@ -54,7 +75,7 @@ const fmt = {
   },
   speed(ms) {
     if (ms == null) return '–';
-    return state.units === 'imperial' ? `${(ms * MS_TO_MPH).toFixed(1)} mph` : `${(ms * 3.6).toFixed(1)} km/h`;
+    return units() === 'imperial' ? `${(ms * MS_TO_MPH).toFixed(1)} mph` : `${(ms * 3.6).toFixed(1)} km/h`;
   },
   dur(s) {
     if (s == null) return '–';
@@ -92,30 +113,41 @@ function haversine(a, b) {
   return 2 * R * Math.asin(Math.sqrt(h));
 }
 
-const navUrl = (lat, lon) => `https://www.google.com/maps/dir/?api=1&destination=${lat},${lon}`;
+// "Navigate" link, in the app chosen on the settings page.
+function navUrl(lat, lon) {
+  switch (state.settings.navApp) {
+    case 'apple': return `https://maps.apple.com/?daddr=${lat},${lon}`;
+    case 'waze': return `https://waze.com/ul?ll=${lat},${lon}&navigate=yes`;
+    default: return `https://www.google.com/maps/dir/?api=1&destination=${lat},${lon}`;
+  }
+}
 
 // ---------- the map ----------
 const map = L.map('map', { zoomControl: false, worldCopyJump: true }).setView([39, -98], 4);
 L.control.zoom({ position: 'topright' }).addTo(map);
 
-const baseLayers = {
-  dark: L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-    subdomains: 'abcd', maxZoom: 22, maxNativeZoom: 20,
-    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
-  }),
-  satellite: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-    maxZoom: 22, maxNativeZoom: 19,
-    attribution: 'Imagery &copy; Esri, Maxar, Earthstar Geographics',
-  }),
-};
+// The map pictures. Styles are defined in maps.js; the settings page picks
+// the default, and the drop-down in the top-right corner can switch.
+let baseLayer = null;
 
-function setLayer(name) {
-  state.layer = baseLayers[name] ? name : 'dark';
-  for (const [key, layer] of Object.entries(baseLayers)) {
-    if (key === state.layer) layer.addTo(map); else map.removeLayer(layer);
+function currentStyleId() {
+  const ids = MapStyles.available(state.settings).map((st) => st.id);
+  if (state.layer && ids.includes(state.layer)) return state.layer;
+  return ids.includes(state.settings.mapStyle) ? state.settings.mapStyle : 'carto-dark';
+}
+
+function applyMapStyle() {
+  const s = state.settings;
+  const id = currentStyleId();
+  const key = [id, s.mapboxToken, s.maptilerKey, s.customTileUrl, s.customAttribution, s.satelliteLabels].join('|');
+  if (key !== state.layerKey) {
+    if (baseLayer) map.removeLayer(baseLayer);
+    baseLayer = MapStyles.build(id, s) || MapStyles.build('carto-dark', s);
+    baseLayer.addTo(map);
+    state.layerKey = key;
   }
-  $('#btn-layer').textContent = state.layer === 'dark' ? 'Satellite' : 'Dark map';
-  saveSetting('layer', state.layer);
+  $('#sel-layer').innerHTML = MapStyles.available(s).map((st) =>
+    `<option value="${st.id}"${st.id === id ? ' selected' : ''}>${esc(MapStyles.label(st, s))}</option>`).join('');
 }
 
 const overviewLines = L.layerGroup().addTo(map);   // faint line for every flight
@@ -168,7 +200,7 @@ function aircraftList() {
   const groups = new Map();
   for (const f of state.flights) {   // server sends newest flight first
     const key = f.serial || f.aircraftName;
-    if (!groups.has(key)) groups.set(key, { key, name: f.aircraftName, serial: f.serial, flights: [], totalTime: 0 });
+    if (!groups.has(key)) groups.set(key, { key, name: displayName(f.serial, f.aircraftName), serial: f.serial, flights: [], totalTime: 0 });
     const g = groups.get(key);
     g.flights.push(f);
     g.totalTime += f.duration || 0;
@@ -187,6 +219,7 @@ function renderStatus(data) {
   if (data.problem) { el.textContent = data.problem; el.title = data.problem; return; }
   if (data.scanning) { el.textContent = 'Reading flight logs…'; return; }
   const parts = [`${state.flights.length} flight${state.flights.length === 1 ? '' : 's'}`];
+  if (state.hiddenCount) parts.push(`${state.hiddenCount} hidden`);
   if (data.errors?.length) parts.push(`${data.errors.length} unreadable`);
   parts.push(`checked ${fmt.clock(data.lastScan)}`);
   el.textContent = parts.join(' · ');
@@ -244,7 +277,7 @@ function renderFlights(data) {
   if (!state.flights.length) { box.innerHTML = emptyMessage(data); return; }
   const q = state.filter.trim().toLowerCase();
   const shown = state.flights.filter((f) => !q ||
-    `${fmt.day(f.start)} ${fmt.date(f.start)} ${f.aircraftName} ${f.file}`.toLowerCase().includes(q));
+    `${fmt.day(f.start)} ${fmt.date(f.start)} ${displayName(f.serial, f.aircraftName)} ${f.aircraftName} ${f.file}`.toLowerCase().includes(q));
   if (!shown.length) { box.innerHTML = '<div class="empty">No flights match that filter.</div>'; return; }
 
   let html = '', lastDay = null;
@@ -254,7 +287,7 @@ function renderFlights(data) {
     const active = state.detail?.summary.id === f.id ? ' active' : '';
     html += `
       <button class="flight${active}" data-id="${esc(f.id)}">
-        <div class="row1"><span class="time">${esc(fmt.clock(f.start))}</span><span class="name">${esc(f.aircraftName)}</span></div>
+        <div class="row1"><span class="time">${esc(fmt.clock(f.start))}</span><span class="name">${esc(displayName(f.serial, f.aircraftName))}</span></div>
         <div class="row2">
           <span>⏱ ${esc(fmt.dur(f.duration))}</span>
           <span>↔ ${esc(fmt.dist(f.distance))}</span>
@@ -272,11 +305,12 @@ function drawOverview() {
   overviewLines.clearLayers();
   overviewDrones.clearLayers();
   for (const f of state.flights) {
+    if (!state.settings.showAllPaths) break;   // settings page: don't draw every flight
     if (!f.hasGps || f.preview.length < 1) continue;
     const line = f.preview.length > 1
-      ? L.polyline(f.preview, { color: '#36c2ff', weight: 3, opacity: 0.35 })
-      : L.circleMarker(f.preview[0], { radius: 4, color: '#36c2ff', opacity: 0.5 });
-    line.bindTooltip(`${esc(f.aircraftName)} · ${esc(fmt.date(f.start))}`, { sticky: true });
+      ? L.polyline(f.preview, { color: pathColor(), weight: 3, opacity: 0.35 })
+      : L.circleMarker(f.preview[0], { radius: 4, color: pathColor(), opacity: 0.5 });
+    line.bindTooltip(`${esc(displayName(f.serial, f.aircraftName))} · ${esc(fmt.date(f.start))}`, { sticky: true });
     line.on('click', () => selectFlight(f.id));
     line.addTo(overviewLines);
   }
@@ -297,18 +331,37 @@ function fitAll() {
 }
 
 // ---------- loading data ----------
-async function refresh({ force = false } = {}) {
+// Apply new settings-page values to everything on screen.
+function applySettings() {
+  applyMapStyle();
+  updateUnitsButton();
+  $('#p-speed').value = String(state.settings.playbackSpeed);
+  if (state.detail) { drawSelected(); renderDetail(); setIndex(state.idx); }
+}
+
+async function refresh({ force = false, rescan = false } = {}) {
   const btn = $('#btn-refresh');
   btn.classList.add('spin');
   try {
-    const res = await fetch('api/flights', { cache: 'no-store' });
+    // The refresh button asks the server to look for new files right now.
+    const res = rescan
+      ? await fetch('api/rescan', { method: 'POST', headers: { 'X-Requested-With': 'flightmap' } })
+      : await fetch('api/flights', { cache: 'no-store' });
     if (res.status === 401) { location.href = 'login.html'; return; }   // signed out
     if (!res.ok) throw new Error(`server answered ${res.status}`);
     const data = await res.json();
-    const changed = force || data.version !== state.version;
+    const settingsKey = JSON.stringify(data.settings || {});
+    const settingsChanged = settingsKey !== state.settingsKey;
+    if (settingsChanged && data.settings) {
+      state.settings = data.settings;
+      state.settingsKey = settingsKey;
+    }
+    const changed = force || settingsChanged || data.version !== state.version;
     state.version = data.version;
     state.lastData = data;
-    state.flights = data.flights;
+    state.flights = data.flights.filter(isVisible);
+    state.hiddenCount = data.flights.length - state.flights.length;
+    if (settingsChanged) applySettings();
     renderStatus(data);
     $('#btn-logout').classList.toggle('hidden', !data.auth);
     if (changed) {
@@ -352,7 +405,7 @@ async function selectFlight(id, { fit = true } = {}) {
   renderDetail();
   renderFlights(state.lastData);
   // Start with the drone at its LAST position - that is where you'd go to find it.
-  setIndex(data.track.length - 1);
+  setIndex(state.settings.openAt === 'start' ? 0 : data.track.length - 1);
 
   if (fit && data.track.length) {
     map.fitBounds(L.latLngBounds(data.track.map((p) => [p.lat, p.lon])).pad(0.3), fitOptions());
@@ -376,7 +429,7 @@ function drawSelected() {
   if (!track.length) return;
   const latlngs = track.map((p) => [p.lat, p.lon]);
   L.polyline(latlngs, { color: '#000', weight: 8, opacity: 0.45 }).addTo(selectedLayer);
-  L.polyline(latlngs, { color: '#36c2ff', weight: 4 }).addTo(selectedLayer);
+  L.polyline(latlngs, { color: pathColor(), weight: 4 }).addTo(selectedLayer);
   L.marker(latlngs[0], { icon: homeIcon }).bindTooltip('Take-off point').addTo(selectedLayer);
   for (const e of events) {
     if (e.kind !== 'warn' || e.lat == null) continue;
@@ -389,7 +442,7 @@ function drawSelected() {
 function renderDetail() {
   const { summary: s, track, events } = state.detail;
   $('#detail').classList.remove('hidden');
-  $('#d-title').textContent = `${s.aircraftName} · ${fmt.date(s.start)}`;
+  $('#d-title').textContent = `${displayName(s.serial, s.aircraftName)} · ${fmt.date(s.start)}`;
   const extra = [];
   if (s.source === 'geojson') extra.push('GeoJSON – fewer details');
   const copies = state.flights.find((f) => f.id === s.id)?.copies || 1;
@@ -547,17 +600,21 @@ document.querySelectorAll('.tabs button').forEach((btn) => btn.addEventListener(
 }));
 
 $('#search').addEventListener('input', (e) => { state.filter = e.target.value; renderFlights(state.lastData); });
-$('#btn-refresh').addEventListener('click', () => refresh({ force: true }));
+$('#btn-refresh').addEventListener('click', () => refresh({ force: true, rescan: true }));
 $('#btn-fit').addEventListener('click', () => { if (state.detail) closeFlight(); fitAll(); });
-$('#btn-layer').addEventListener('click', () => setLayer(state.layer === 'dark' ? 'satellite' : 'dark'));
+$('#sel-layer').addEventListener('change', (e) => {
+  state.layer = e.target.value;      // remembered in this browser only
+  saveSetting('layer', state.layer);
+  applyMapStyle();
+});
 $('#btn-units').addEventListener('click', () => {
-  state.units = state.units === 'imperial' ? 'metric' : 'imperial';
+  state.units = units() === 'imperial' ? 'metric' : 'imperial';
   saveSetting('units', state.units);
   updateUnitsButton();
   refresh({ force: true });
   if (state.detail) { renderDetail(); setIndex(state.idx); }
 });
-function updateUnitsButton() { $('#btn-units').textContent = state.units === 'imperial' ? 'ft · mph' : 'm · km/h'; }
+function updateUnitsButton() { $('#btn-units').textContent = units() === 'imperial' ? 'ft · mph' : 'm · km/h'; }
 
 $('#d-close').addEventListener('click', closeFlight);
 $('#p-play').addEventListener('click', () => (state.playing ? stopPlayback() : startPlayback()));
@@ -577,7 +634,7 @@ document.addEventListener('keydown', (e) => {
 });
 
 // ---------- start ----------
-setLayer(state.layer);
+applyMapStyle();
 updateUnitsButton();
 refresh();
 setInterval(refresh, REFRESH_MS);

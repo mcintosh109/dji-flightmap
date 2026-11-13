@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Settings · Flight Map</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 48'%3E%3Cg fill='%2336c2ff'%3E%3Ccircle cx='10' cy='10' r='7'/%3E%3Ccircle cx='38' cy='10' r='7'/%3E%3Ccircle cx='10' cy='38' r='7'/%3E%3Ccircle cx='38' cy='38' r='7'/%3E%3Crect x='17' y='17' width='14' height='14' rx='4'/%3E%3C/g%3E%3C/svg%3E">
+  <link rel="stylesheet" href="vendor/leaflet/leaflet.css">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body class="page-settings">
+  <main class="settings">
+    <header class="settings-head">
+      <a href="./" class="chip" id="back">← Back to map</a>
+      <div>
+        <h1>Settings</h1>
+        <p id="version">Loading…</p>
+      </div>
+    </header>
+
+    <p id="load-error" class="banner error hidden" role="alert"></p>
+
+    <form id="form" class="hidden" autocomplete="off">
+      <!-- ================= MAP ================= -->
+      <section class="card">
+        <h2>Map</h2>
+
+        <div class="field">
+          <label for="mapStyle">Default map style</label>
+          <select id="mapStyle" data-key="mapStyle"></select>
+          <p class="help" id="mapStyle-help">The style the map opens with. You can still switch with the drop-down at the top of the map.</p>
+        </div>
+
+        <div class="preview-wrap">
+          <div id="preview" aria-label="Preview of the selected map style"></div>
+          <p id="preview-status" class="help">Preview</p>
+        </div>
+
+        <label class="check">
+          <input type="checkbox" data-key="satelliteLabels">
+          <span>Show road and place names on the free satellite map</span>
+        </label>
+
+        <h3>Map keys <span class="muted">(optional)</span></h3>
+        <p class="help">Some map companies need a free key, a password-like code from their website. Without a key, the free styles still work. Keys are saved on your server and only sent to that map company.</p>
+
+        <div class="field">
+          <label for="mapboxToken">Mapbox access token</label>
+          <div class="secret">
+            <input id="mapboxToken" data-key="mapboxToken" type="password" spellcheck="false" placeholder="pk.eyJ1Ijoi…">
+            <button type="button" class="chip show-btn" data-for="mapboxToken">Show</button>
+          </div>
+          <p class="help">Free at <a href="https://account.mapbox.com/access-tokens/" target="_blank" rel="noopener">account.mapbox.com → Access tokens</a>. Use the "Default public token" (it starts with <code>pk.</code>).</p>
+        </div>
+
+        <div class="field">
+          <label for="maptilerKey">MapTiler API key</label>
+          <div class="secret">
+            <input id="maptilerKey" data-key="maptilerKey" type="password" spellcheck="false" placeholder="AbCdEf123…">
+            <button type="button" class="chip show-btn" data-for="maptilerKey">Show</button>
+          </div>
+          <p class="help">Free at <a href="https://cloud.maptiler.com/account/keys/" target="_blank" rel="noopener">cloud.maptiler.com → API keys</a>.</p>
+        </div>
+
+        <details class="advanced">
+          <summary>Custom map address (advanced)</summary>
+          <div class="field">
+            <label for="customTileUrl">Tile address</label>
+            <input id="customTileUrl" data-key="customTileUrl" type="url" spellcheck="false" placeholder="https://tiles.example.com/{z}/{x}/{y}.png">
+            <p class="help">Any "XYZ" map tile address. It must contain <code>{z}</code>, <code>{x}</code> and <code>{y}</code>.</p>
+          </div>
+          <div class="field">
+            <label for="customTileName">Name in the style list</label>
+            <input id="customTileName" data-key="customTileName" maxlength="40">
+          </div>
+          <div class="field">
+            <label for="customAttribution">Credit line</label>
+            <input id="customAttribution" data-key="customAttribution" maxlength="200" placeholder="© Example Maps">
+            <p class="help">Shown in the bottom corner of the map, as most map companies require.</p>
+          </div>
+        </details>
+      </section>
+
+      <!-- ================= DISPLAY ================= -->
+      <section class="card">
+        <h2>Display</h2>
+
+        <fieldset class="field">
+          <legend>Default units</legend>
+          <label class="check"><input type="radio" name="units" value="imperial" data-key="units"> <span>Feet, miles, mph</span></label>
+          <label class="check"><input type="radio" name="units" value="metric" data-key="units"> <span>Metres, kilometres, km/h</span></label>
+          <p class="help">The ft·mph button on the map still switches, just for that browser.</p>
+        </fieldset>
+
+        <div class="field inline">
+          <label for="pathColor">Flight path colour</label>
+          <input id="pathColor" data-key="pathColor" type="color">
+        </div>
+
+        <div class="field inline">
+          <label for="playbackSpeed">Replay speed</label>
+          <select id="playbackSpeed" data-key="playbackSpeed" data-number>
+            <option value="1">1×</option><option value="2">2×</option><option value="5">5×</option>
+            <option value="10">10×</option><option value="25">25×</option>
+          </select>
+        </div>
+
+        <div class="field inline">
+          <label for="openAt">When opening a flight, show the drone</label>
+          <select id="openAt" data-key="openAt">
+            <option value="last">where it landed (last position)</option>
+            <option value="start">where it took off</option>
+          </select>
+        </div>
+
+        <div class="field inline">
+          <label for="navApp">"Navigate" button opens</label>
+          <select id="navApp" data-key="navApp">
+            <option value="google">Google Maps</option>
+            <option value="apple">Apple Maps</option>
+            <option value="waze">Waze</option>
+          </select>
+        </div>
+
+        <label class="check">
+          <input type="checkbox" data-key="showAllPaths">
+          <span>Draw a faint line for every flight on the overview map</span>
+        </label>
+      </section>
+
+      <!-- ================= FLIGHTS ================= -->
+      <section class="card">
+        <h2>Flights</h2>
+
+        <div class="field inline">
+          <label for="minFlightSeconds">Hide flights shorter than</label>
+          <span class="with-unit"><input id="minFlightSeconds" data-key="minFlightSeconds" data-number type="number" min="0" max="3600" step="1"> seconds</span>
+        </div>
+        <p class="help">Handy for hiding quick tests. 0 shows every flight.</p>
+
+        <label class="check">
+          <input type="checkbox" data-key="hideNoGps">
+          <span>Hide flights with no GPS position (indoor flights)</span>
+        </label>
+
+        <h3>Aircraft nicknames</h3>
+        <p class="help">Shown instead of the model name. Leave empty to use the model name.</p>
+        <div id="aircraft-names"></div>
+      </section>
+
+      <!-- ================= SERVER ================= -->
+      <section class="card">
+        <h2>Server</h2>
+
+        <div class="field inline">
+          <label for="scanSeconds">Check for new log files every</label>
+          <span class="with-unit"><input id="scanSeconds" data-key="scanSeconds" data-number type="number" min="5" max="3600" step="1"> seconds</span>
+        </div>
+
+        <div class="field inline">
+          <label for="sessionDays">Stay signed in for</label>
+          <span class="with-unit"><input id="sessionDays" data-key="sessionDays" data-number type="number" min="1" max="365" step="1"> days</span>
+        </div>
+
+        <dl class="facts">
+          <dt>Login page</dt><dd id="info-login"></dd>
+          <dt>Logs are read from</dt><dd><code id="info-data"></code></dd>
+        </dl>
+        <p class="help">To turn the login on or off, or change the password, run this in the Proxmox Shell (replace <code>105</code> with your container's number):</p>
+        <pre class="cmd">pct exec 105 -- bash /opt/dji-flightmap/deploy/set-login.sh</pre>
+      </section>
+    </form>
+  </main>
+
+  <!-- Save bar (stays at the bottom of the screen) -->
+  <div id="savebar" class="savebar hidden">
+    <span id="save-msg" role="status">No changes</span>
+    <button type="button" id="btn-defaults" class="chip">Reset to defaults</button>
+    <button type="button" id="btn-save" class="chip accent" disabled>Save</button>
+  </div>
+
+  <script src="vendor/leaflet/leaflet.js"></script>
+  <script src="maps.js"></script>
+  <script src="settings.js"></script>
+</body>
+</html>

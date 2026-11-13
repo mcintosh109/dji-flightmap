@@ -149,10 +149,40 @@ Open the address the script printed, for example `http://192.168.1.50:8080`.
   box to filter.
 - Click a flight to see its path, statistics and a height chart. Press ▶ to
   replay it (keyboard: **Space** = play/pause, **← →** = skip, **Esc** = close).
-- Top-right buttons: dark map ↔ satellite, ft/mph ↔ m/km/h, and show everything.
-- The arrow-out-of-a-door icon next to the refresh button signs you out.
+- Top-right: a map style drop-down, ft/mph ↔ m/km/h, and show everything.
+- Top of the left panel: ⚙ opens **Settings**, ↻ checks TrueNAS for new
+  flights right away, and the door icon signs you out (when the login is on).
 
 When the dock adds new flights, they show up within about a minute.
+
+---
+
+## The settings page (⚙)
+
+Everything here is saved on the server, so it applies on every device.
+
+| Section | What you can change |
+|---|---|
+| **Map** | Default map style, with a live preview. Free styles: dark, light, street map, satellite (with optional road/place names). With a free key: **Mapbox** and **MapTiler** styles. Or any custom "XYZ" tile address. |
+| **Display** | Default units, flight path colour, replay speed, whether a flight opens at the landing or take-off spot, which app **Navigate** opens (Google Maps, Apple Maps, Waze), faint lines for all flights. |
+| **Flights** | Hide flights shorter than N seconds (quick tests), hide flights without GPS, **nicknames** for each drone. |
+| **Server** | How often to check for new files, how many days you stay signed in. |
+
+**Getting a map key** (optional; the free styles need none):
+
+- **Mapbox**: make a free account at mapbox.com, then go to
+  *Account → Access tokens* and copy the **Default public token**
+  (it starts with `pk.`).
+- **MapTiler**: make a free account at maptiler.com, then go to
+  *Account → API keys* and copy a key.
+
+Paste it on the settings page, pick one of that company's styles, and check
+that the preview says **Preview loaded ✓** before pressing **Save**.
+
+The keys are saved in `/var/lib/dji-flightmap/settings.json` inside the
+container, a file only the map service can read. The browser still has to
+send the key to the map company to fetch the pictures; that's how these keys
+are designed to work, so use a *public* key (Mapbox `pk.`), never a secret one.
 
 ---
 
@@ -276,9 +306,9 @@ Inside the container, settings live in `/etc/default/dji-flightmap`:
 ```
 DATA_DIR=/srv/dji-logs      # where the logs are (inside the container)
 PORT=8080                   # web page port
-SCAN_SECONDS=30             # how often to look for new files
+SCAN_SECONDS=30             # starting value; change it on the settings page
 CACHE_FILE=/var/lib/dji-flightmap/summaries.json
-SESSION_DAYS=30             # how long you stay signed in
+SESSION_DAYS=30             # starting value; change it on the settings page
 AUTH_USER=...               # added by set-login.sh
 AUTH_PASSWORD_HASH=...      # added by set-login.sh
 ```
@@ -300,6 +330,8 @@ pct exec 105 -- systemctl restart dji-flightmap
 | `app/static/login.html` | The login page (self-contained) | *"HTML form POST"* |
 | `app/static/style.css` | Colours and layout, including the phone layout | *"CSS flexbox"*, *"CSS media queries"* |
 | `app/static/app.js` | Fetches the data and draws the map with Leaflet | *"javascript fetch"*, *"leaflet polyline"* |
+| `app/static/maps.js` | The list of map styles and where their pictures come from | *"leaflet tileLayer"*, *"XYZ tiles"* |
+| `app/static/settings.html`, `settings.js` | The settings page | *"HTML forms"*, *"fetch PUT JSON"* |
 | `app/static/vendor/leaflet/` | A copy of the Leaflet 1.9.4 map library (BSD-2 licence) | *"leafletjs"* |
 | `deploy/setup-truenas-mount.sh` | Proxmox host: connects the TrueNAS share | *"mount cifs fstab"* |
 | `deploy/create-ct.sh` | Proxmox host: creates the container | *"pct create"*, *"proxmox bind mount"* |
