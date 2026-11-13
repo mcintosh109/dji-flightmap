@@ -32,8 +32,8 @@ HOSTNAME="${CT_HOSTNAME:-dji-flightmap}"
 STORAGE="${STORAGE:-local-lvm}"                 # where the container's disk lives
 TEMPLATE_STORAGE="${TEMPLATE_STORAGE:-local}"   # where OS templates are kept
 BRIDGE="${BRIDGE:-vmbr0}"                       # network bridge
-IP="${IP:-dhcp}"                                # or e.g. 192.168.1.50/24 (then also set GATEWAY)
-GATEWAY="${GATEWAY:-}"
+IP="${IP:-}"                                    # empty = ask; or dhcp; or e.g. 192.168.1.50/24
+GATEWAY="${GATEWAY:-}"                          # router address, needed with a fixed IP
 DISK_GB="${DISK_GB:-4}"
 MEMORY_MB="${MEMORY_MB:-512}"
 CORES="${CORES:-1}"
@@ -63,6 +63,51 @@ if ! pvesm status --content rootdir 2>/dev/null | awk 'NR>1 {print $1}' | grep -
   pvesm status --content rootdir 2>/dev/null | awk 'NR>1 {print "  " $1}' >&2
   echo "To allow another one: Datacenter > Storage > double-click it > Content > also select 'Container'." >&2
   exit 1
+fi
+
+# ---- Network: automatic (DHCP) or a fixed address ---------------------------
+IP_RE='^([0-9]{1,3}\.){3}[0-9]{1,3}$'
+HOST_CIDR=$(ip -4 -o addr show "$BRIDGE" 2>/dev/null | awk '{print $4}' | head -1)   # e.g. 192.168.1.200/24
+HOST_PREFIX="${HOST_CIDR#*/}"
+HOST_GW=$(ip route 2>/dev/null | awk '/^default/ {print $3; exit}')
+
+if [[ -z "$IP" && -t 0 ]]; then
+  echo
+  echo "Network address for the container:"
+  echo "  - Press Enter for AUTOMATIC (DHCP): your router picks it, and it may change."
+  echo "  - Or type a FIXED address that nothing else uses${HOST_CIDR:+ (this Proxmox server is ${HOST_CIDR%/*})}."
+  while true; do
+    read -rp "Address [automatic]: " IP
+    IP="${IP// /}"
+    if [[ -z "$IP" || "${IP,,}" == dhcp ]]; then IP=dhcp; break; fi
+    [[ "$IP" != */* && -n "$HOST_PREFIX" ]] && IP="${IP}/${HOST_PREFIX}"   # add the /24 part
+    if [[ ! "${IP%/*}" =~ $IP_RE || ! "${IP#*/}" =~ ^[0-9]{1,2}$ ]]; then
+      echo "That doesn't look like an address. Example: 192.168.1.50"; continue
+    fi
+    if ping -c 1 -W 1 "${IP%/*}" >/dev/null 2>&1; then
+      echo "Something already answers at ${IP%/*}. Please pick a different address."; continue
+    fi
+    break
+  done
+fi
+IP="${IP:-dhcp}"
+
+if [[ "$IP" != dhcp && -z "$GATEWAY" ]]; then
+  if [[ -t 0 ]]; then
+    while true; do
+      read -rp "Gateway (your router's address) [${HOST_GW}]: " GATEWAY
+      GATEWAY="${GATEWAY// /}"; GATEWAY="${GATEWAY:-$HOST_GW}"
+      [[ "$GATEWAY" =~ $IP_RE ]] && break
+      echo "That doesn't look like an address. Example: 192.168.1.1"
+    done
+  else
+    GATEWAY="$HOST_GW"
+  fi
+fi
+if [[ "$IP" == dhcp ]]; then
+  echo "==> Network: automatic (DHCP)"
+else
+  echo "==> Network: fixed address ${IP}, gateway ${GATEWAY}"
 fi
 
 # Templates exist for different processor types (amd64 = normal Intel/AMD PCs,

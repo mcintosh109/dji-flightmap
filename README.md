@@ -107,14 +107,18 @@ bash deploy/create-ct.sh
 What it does, in order:
 
 1. Finds and downloads the newest Debian container template.
-2. Creates an **unprivileged** container named `dji-flightmap`
-   (1 CPU, 512 MB RAM, 4 GB disk, network via DHCP on `vmbr0`).
-3. Shares `/mnt/dji-archive` into the container at `/srv/dji-logs`,
+2. Asks for the container's **network address**: press Enter for automatic
+   (DHCP), or type a fixed address such as `192.168.1.50`. With a fixed
+   address it also asks for your router (gateway) and suggests the one this
+   Proxmox server uses; press Enter to accept it.
+3. Creates an **unprivileged** container named `dji-flightmap`
+   (1 CPU, 512 MB RAM, 4 GB disk, on `vmbr0`).
+4. Shares `/mnt/dji-archive` into the container at `/srv/dji-logs`,
    **read-only**, so the map can never change or delete your logs.
-4. Copies the app in and installs it.
-5. Asks whether you want a **login page**. Press Enter for yes, then choose a
+5. Copies the app in and installs it.
+6. Asks whether you want a **login page**. Press Enter for yes, then choose a
    username and a password (at least 8 characters).
-6. Prints the web address.
+7. Prints the web address.
 
 Optional settings go in front of the command:
 
@@ -123,15 +127,14 @@ Optional settings go in front of the command:
 | `CTID` | next free number | container ID |
 | `STORAGE` | `local-lvm` | where the container's disk is stored |
 | `BRIDGE` | `vmbr0` | network bridge |
-| `IP` / `GATEWAY` | `dhcp` | a fixed address |
+| `IP` / `GATEWAY` | asks | skip the network question, e.g. `IP=192.168.1.50/24 GATEWAY=192.168.1.1` |
 
-Example with a fixed address:
+Settings must be in **capital letters**: `STORAGE=...` works, `storage=...` doesn't.
+Example, putting the disk on a storage called `VM-Storage-Array`:
 
 ```bash
-IP=192.168.1.50/24 GATEWAY=192.168.1.1 bash deploy/create-ct.sh
+STORAGE=VM-Storage-Array bash deploy/create-ct.sh
 ```
-
-(Change those numbers to a free address on your own network.)
 
 ---
 
