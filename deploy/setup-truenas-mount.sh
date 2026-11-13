@@ -5,22 +5,24 @@
 # Connects the TrueNAS share that holds your flight logs to this Proxmox
 # host, READ-ONLY, so the flight map container can read it:
 #
-#   \\192.168.1.10\Backups\DJI Flight logs\archive   ->   /mnt/dji-archive
+#   \\<truenas-ip>\<share>\<folders>\archive   ->   /mnt/dji-archive
 #
 #   bash deploy/setup-truenas-mount.sh
 #
-# It asks for the TrueNAS username and password (the same ones you use in
-# Windows). They are saved in /etc/smb-dji-flightmap.cred, a file only root
-# can read, and the connection is added to /etc/fstab so it comes back
-# after a reboot.
+# It asks for:
+#   - the TrueNAS address and the folder (as shown in Windows Explorer)
+#   - the TrueNAS username and password (the same ones you use in Windows)
+# The login is saved in /etc/smb-dji-flightmap.cred, a file only root can
+# read, and the connection is added to /etc/fstab so it comes back after a
+# reboot. Nothing about your network is stored in this project.
 #
-# Different server or folder? Override the defaults, e.g.:
-#   SERVER=10.0.0.5 SHARE_PATH="Backups/DJI Flight logs/archive" bash deploy/setup-truenas-mount.sh
+# You can also answer the first two questions ahead of time:
+#   SERVER=192.168.1.10 SHARE_PATH="MyShare/DJI logs/archive" bash deploy/setup-truenas-mount.sh
 # ---------------------------------------------------------------------------
 set -euo pipefail
 
-SERVER="${SERVER:-192.168.1.10}"
-SHARE_PATH="${SHARE_PATH:-Backups/DJI Flight logs/archive}"   # share name, then folders
+SERVER="${SERVER:-}"           # TrueNAS IP address, e.g. 192.168.1.10
+SHARE_PATH="${SHARE_PATH:-}"   # share name, then folders, e.g. MyShare/DJI logs/archive
 MOUNT_POINT="${MOUNT_POINT:-/mnt/dji-archive}"
 CRED_FILE=/etc/smb-dji-flightmap.cred
 
@@ -32,6 +34,29 @@ fi
 echo "==> Installing the SMB/CIFS tools (cifs-utils)"
 apt-get update -qq
 DEBIAN_FRONTEND=noninteractive apt-get install -y -qq cifs-utils >/dev/null
+
+echo
+if [[ -z "$SERVER" ]]; then
+  read -rp "TrueNAS IP address (example: 192.168.1.10): " SERVER
+fi
+if [[ -z "$SHARE_PATH" ]]; then
+  echo "Folder to read: look at the address bar in Windows Explorer."
+  echo "  Explorer shows:  \\\\192.168.1.10\\MyShare\\DJI logs\\archive"
+  echo "  You type:        MyShare/DJI logs/archive"
+  read -rp "Folder: " SHARE_PATH
+fi
+# Accept Windows-style paths: turn backslashes into slashes, and if the
+# whole \\server\share\... address was pasted, drop the server part.
+SERVER="${SERVER//\\//}"; SERVER="${SERVER#//}"; SERVER="${SERVER%%/*}"
+SHARE_PATH="${SHARE_PATH//\\//}"
+if [[ "$SHARE_PATH" == //* ]]; then
+  SHARE_PATH="${SHARE_PATH#//}"; SHARE_PATH="${SHARE_PATH#*/}"
+fi
+SHARE_PATH="${SHARE_PATH#/}"; SHARE_PATH="${SHARE_PATH%/}"
+if [[ -z "$SERVER" || -z "$SHARE_PATH" ]]; then
+  echo "The IP address and folder are both needed." >&2
+  exit 1
+fi
 
 echo
 echo "This will connect (read-only) to:  //${SERVER}/${SHARE_PATH}"

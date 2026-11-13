@@ -12,7 +12,7 @@ saves to TrueNAS.
 
 ```
  RC 2 controller ─▶ Raspberry Pi (dji-rc2-dock) ─▶ TrueNAS
-                                                   \\192.168.1.10\Backups\DJI Flight logs\archive
+                                                   \\<truenas-ip>\<share>\...\archive
                                                                │
                                      connected read-only (SMB) │  setup-truenas-mount.sh
                                                                ▼
@@ -71,8 +71,16 @@ cd /root/dji-flightmap
 bash deploy/setup-truenas-mount.sh
 ```
 
-It asks for your **TrueNAS username and password**. Nothing shows on screen
-while you type the password; that is normal.
+It asks four questions:
+
+1. **TrueNAS IP address**, for example `192.168.1.10`.
+2. **Folder**: copy it from the address bar in Windows Explorer. If Explorer
+   shows `\\192.168.1.10\MyShare\DJI logs\archive`, type
+   `MyShare/DJI logs/archive`. Pasting the whole Explorer address also works.
+3. **TrueNAS username**.
+4. **TrueNAS password**. Nothing shows on screen while you type it; that is normal.
+
+Your address and login are saved only on the Proxmox host, never in this project.
 
 What it does:
 
