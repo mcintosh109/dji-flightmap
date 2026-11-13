@@ -486,13 +486,21 @@ function renderLive(p) {
   $('#d-live').innerHTML = items.map(([k, v]) => `<div><span>${esc(k)}</span><b>${esc(v)}</b></div>`).join('');
 }
 
+// Pan only if the drone is hidden behind a panel or off screen.
+function keepDroneVisible() {
+  const ll = state.droneMarker?.getLatLng();
+  if (!ll) return;
+  const o = fitOptions();
+  map.panInside(ll, { paddingTopLeft: o.paddingTopLeft, paddingBottomRight: o.paddingBottomRight });
+}
+
 function seekTime(t) {
   const track = state.detail?.track;
   if (!track?.length) return;
   let i = 0;
   while (i < track.length - 1 && track[i + 1].t <= t) i++;
   setIndex(i);
-  if (state.droneMarker) map.panTo(state.droneMarker.getLatLng());
+  keepDroneVisible();
 }
 
 // ---------- playback ----------
@@ -524,9 +532,7 @@ function tick(now) {
   while (i < track.length - 1 && track[i + 1].t <= state.playT) i++;
   if (i !== state.idx) {
     setIndex(i);
-    // Keep the drone on screen while it plays.
-    const ll = state.droneMarker?.getLatLng();
-    if (ll && !map.getBounds().pad(-0.15).contains(ll)) map.panTo(ll, { animate: true });
+    keepDroneVisible();   // keep the drone on screen while it plays
   }
   if (i >= track.length - 1) { stopPlayback(); return; }
   requestAnimationFrame(tick);

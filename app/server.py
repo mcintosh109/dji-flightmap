@@ -75,7 +75,7 @@ STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
 MAX_TRACK_POINTS = 3000   # most points sent to the browser for one flight
 PREVIEW_POINTS = 80       # points in the small "overview" line of each flight
 DETAIL_CACHE_SIZE = 16    # how many full flights to keep in memory
-CACHE_VERSION = 2         # bump this when the summary format changes
+CACHE_VERSION = 3         # bump this when the summary format changes
 
 # DJI CSV rows can be very wide; raise Python's default field size limit.
 csv.field_size_limit(10_000_000)
@@ -162,6 +162,7 @@ def parse_csv(path):
     points, events = [], []
     meta = {}
     start = None
+    clock_base = None   # the drone's flight clock at the first row of this file
     last_lat = last_lon = None
     last_text = {"tip": None, "warn": None}
 
@@ -190,9 +191,14 @@ def parse_csv(path):
                             break
 
             when = parse_time(get("CUSTOM.dateTime"))
-            t = num(get("OSD.flyTime"), 0.0)
+            # The drone's flight clock does NOT always start at 0: if you land
+            # and take off again without switching the drone off, it carries
+            # on from the last flight. So count from this file's first row.
+            clock = num(get("OSD.flyTime"), 0.0)
+            if clock_base is None:
+                clock_base = clock
+            t = max(0.0, clock - clock_base)
             if when and start is None:
-                # Work back to the moment the flight clock was 0.
                 start = when - timedelta(seconds=t)
 
             lat, lon = num(get("OSD.latitude")), num(get("OSD.longitude"))

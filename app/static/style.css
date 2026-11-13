@@ -116,6 +116,7 @@ a.icon-btn { color: var(--text); }
 .chip:hover { background: var(--card-hover); }
 .chip.accent { background: var(--accent); color: #04121a; border-color: transparent; font-weight: 600; }
 .chip.accent:hover { filter: brightness(1.08); }
+#d-nav { gap: 0.3em; }
 
 /* Flight list */
 .day { color: var(--muted); font-size: 12px; margin: 14px 4px 6px; text-transform: uppercase; letter-spacing: 0.04em; }
@@ -175,7 +176,7 @@ a.icon-btn { color: var(--text); }
 #detail {
   position: fixed; z-index: 1000;
   left: calc(var(--panel-w) + 32px); right: 16px; bottom: 16px;
-  max-height: calc(100% - 90px); overflow-y: auto;
+  max-height: min(50vh, calc(100% - 90px)); overflow-y: auto;
   background: var(--panel); backdrop-filter: blur(14px);
   border: 1px solid var(--line); border-radius: var(--radius);
   box-shadow: var(--shadow);
@@ -187,13 +188,13 @@ a.icon-btn { color: var(--text); }
 .detail-title p { margin: 2px 0 0; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
 .detail-actions { display: flex; gap: 8px; align-items: center; }
 
-.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 8px; margin: 12px 0; }
-.stat { background: var(--card); border-radius: 10px; padding: 8px 10px; }
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(104px, 1fr)); gap: 6px; margin: 10px 0; }
+.stat { background: var(--card); border-radius: 10px; padding: 6px 10px; }
 .stat span { display: block; color: var(--muted); font-size: 11px; }
-.stat b { font-size: 16px; font-weight: 650; font-variant-numeric: tabular-nums; }
+.stat b { font-size: 15px; font-weight: 650; font-variant-numeric: tabular-nums; }
 .note { color: var(--muted); background: var(--card); padding: 10px 12px; border-radius: 10px; }
 
-.profile { position: relative; height: 64px; background: var(--card); border-radius: 10px; overflow: hidden; cursor: crosshair; }
+.profile { position: relative; height: 54px; background: var(--card); border-radius: 10px; overflow: hidden; cursor: crosshair; }
 .profile svg { width: 100%; height: 100%; display: block; }
 .profile .area { fill: var(--accent-dim); }
 .profile .line { fill: none; stroke: var(--accent); stroke-width: 1.5; vector-effect: non-scaling-stroke; }
@@ -212,7 +213,7 @@ a.icon-btn { color: var(--text); }
 
 #d-events { margin-top: 12px; }
 #d-events summary { cursor: pointer; color: var(--muted); }
-#d-events ul { list-style: none; padding: 0; margin: 8px 0 0; max-height: 160px; overflow-y: auto; }
+#d-events ul { list-style: none; padding: 0; margin: 8px 0 0; max-height: 120px; overflow-y: auto; }
 #d-events li { display: flex; gap: 10px; padding: 5px 8px; border-radius: 8px; cursor: pointer; }
 #d-events li:hover { background: var(--card); }
 #d-events li time { color: var(--muted); font-variant-numeric: tabular-nums; flex: none; }
