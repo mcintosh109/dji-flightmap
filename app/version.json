@@ -1,13 +1,9 @@
 {
-  "version": "1.5.0",
+  "version": "1.6.0",
   "released": "2026-11-14",
   "updateUrl": "https://raw.githubusercontent.com/mcintosh109/dji-flightmap/main/app/version.json",
   "notes": [
-    "Simpler maps: pick the provider in Settings, then Road / Satellite / Dark / Terrain from the new layers button on the map",
-    "Each layer button shows a small real picture of your area",
-    "Details checkbox: roads and place names on satellite",
-    "New free Terrain layer (OpenTopoMap); providers without a layer use the free one",
-    "Settings show only the key box for the chosen provider",
-    "Flight paths are easier to see on satellite maps"
+    "When a flight is open, only its path is shown; the others come back when you close it (switch in Settings \u2192 Display)",
+    "Behind the scenes: automatic tests for the map, settings, login and safe updates, so future changes are checked before you get them"
   ]
 }

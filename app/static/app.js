@@ -34,7 +34,7 @@ const state = {
   settings: {
     mapProvider: 'free', mapLayer: 'dark', satelliteLabels: true, units: 'imperial', pathColor: '#36c2ff',
     playbackSpeed: 5, openAt: 'last', navApp: 'google', showAllPaths: true,
-    minFlightSeconds: 0, hideNoGps: false, aircraftNames: {},
+    minFlightSeconds: 0, hideNoGps: false, aircraftNames: {}, focusSelected: true,
   },
   settingsKey: '',
   layerKey: '',
@@ -454,6 +454,7 @@ function applySettings() {
   updateUnitsButton();
   $('#p-speed').value = String(state.settings.playbackSpeed);
   if (state.detail) { drawSelected(); renderDetail(); setIndex(state.idx); }
+  updateOverviewVisibility();
 }
 
 async function refresh({ force = false, rescan = false } = {}) {
@@ -485,7 +486,7 @@ async function refresh({ force = false, rescan = false } = {}) {
       renderAircraft(data);
       renderFlights(data);
       drawOverview();
-      if (state.detail) map.removeLayer(overviewDrones);
+      updateOverviewVisibility();
     }
     if (state.firstLoad && !data.scanning) {
       state.firstLoad = false;
@@ -517,7 +518,7 @@ async function selectFlight(id, { fit = true } = {}) {
   }
   state.detail = data;
   history.replaceState(null, '', `#flight=${id}`);
-  map.removeLayer(overviewDrones);
+  updateOverviewVisibility();
 
   drawSelected();
   renderDetail();
@@ -530,11 +531,19 @@ async function selectFlight(id, { fit = true } = {}) {
   }
 }
 
+// While a flight is open, hide the other aircraft markers and (if the
+// settings page says so) the other flights' paths, so only it is on the map.
+function updateOverviewVisibility() {
+  const open = !!state.detail;
+  if (open) map.removeLayer(overviewDrones); else overviewDrones.addTo(map);
+  if (open && state.settings.focusSelected) map.removeLayer(overviewLines); else overviewLines.addTo(map);
+}
+
 function closeFlight() {
   stopPlayback();
   state.detail = null;
   selectedLayer.clearLayers();
-  overviewDrones.addTo(map);
+  updateOverviewVisibility();
   $('#detail').classList.add('hidden');
   history.replaceState(null, '', location.pathname + location.search);
   renderFlights(state.lastData);

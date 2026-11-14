@@ -148,7 +148,7 @@ Open the address the script printed, for example `http://192.168.1.50:8080`.
 - **Flights** tab: every flight, newest first, grouped by day. Type in the
   box to filter.
 - Click a flight to see its path, statistics and a height chart. Press ▶ to
-  replay it: the drone glides along the path, the part already flown is drawn
+  replay it: only that flight's path is shown, the drone glides along it, the part already flown is drawn
   bright and the rest faint. **Follow** keeps the map centred on the drone;
   dragging the map turns it off.
   Keyboard: **Space** = play/pause, **← →** = skip, **F** = follow, **Esc** = close.
@@ -169,7 +169,7 @@ Everything here is saved on the server, so it applies on every device.
 | Section | What you can change |
 |---|---|
 | **Map** | **Map provider**: who draws the map. *Free* (OpenStreetMap + Esri, no key), **CARTO**, **Azure Maps** (Microsoft's replacement for Bing Maps), **Mapbox**, **MapTiler**, or a custom "XYZ" tile address. Only the chosen provider's key box is shown. **Default layer** (Road, Satellite, Dark, Terrain), **Details** on satellite, and a live preview. A layer a provider doesn't have (e.g. Terrain on Azure Maps) uses the free one. |
-| **Display** | Default units, flight path colour, replay speed, whether a flight opens at the landing or take-off spot, which app **Navigate** opens (Google Maps, Apple Maps, Waze), faint lines for all flights. |
+| **Display** | Default units, flight path colour, replay speed, whether a flight opens at the landing or take-off spot, which app **Navigate** opens (Google Maps, Apple Maps, Waze), lines for all flights, and whether an open flight is shown on its own (on by default). |
 | **Flights** | Hide flights shorter than N seconds (quick tests), hide flights without GPS, **nicknames** for each drone. |
 | **Server** | How often to check for new files, how many days you stay signed in. |
 
@@ -426,6 +426,16 @@ contain garbage values, so the first GPS point is used as the take-off spot.
 
 Two files count as the **same flight** when they have the same aircraft serial
 number and start time. The CSV is preferred over the GeoJSON.
+
+### Tests
+
+`bash tests/run-all.sh` checks everything: privacy (nothing personal in the
+repository), the server, the pages in a hidden browser, and the update scripts.
+See [tests/README.md](tests/README.md). The tests use made-up flights only.
+
+`CLAUDE.md` and `.claude/skills/release/` are notes for Claude (the AI that
+helps build this project): how to explain things, the privacy rules, and the
+checklist for every change.
 
 ### Trying it on your own computer
 

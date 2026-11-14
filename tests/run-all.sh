@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+# ---------------------------------------------------------------------------
+# run-all.sh - run every check, in order. Stops at the first part that fails.
+#
+#   bash tests/run-all.sh
+#
+# Parts:
+#   1. privacy   nothing personal is about to be published
+#   2. syntax    every Python, JavaScript and shell file can be read
+#   3. server    tests/test_server.py   (Python, no extra installs)
+#   4. browser   tests/browser.test.js  (needs Node.js + Playwright; skipped if missing)
+#   5. deploy    tests/deploy.test.sh   (only on a throw-away machine; see that file)
+# ---------------------------------------------------------------------------
+set -uo pipefail
+cd "$(dirname "${BASH_SOURCE[0]}")/.."
+export PYTHONDONTWRITEBYTECODE=1
+
+part() { echo; echo "==> $1"; }
+fail() { echo; echo "STOPPED: $1 failed. Fix it before pushing."; exit 1; }
+
+part "1/5 Privacy"
+bash tests/privacy_check.sh || fail "the privacy check"
+
+part "2/5 Syntax"
+ok=1
+python3 -m py_compile app/server.py tests/*.py || ok=0
+for f in app/static/*.js tests/*.js; do node --check "$f" || { echo "  bad: $f"; ok=0; }; done
+for f in deploy/*.sh tests/*.sh; do bash -n "$f" || { echo "  bad: $f"; ok=0; }; done
+python3 -c "import json; json.load(open('app/version.json'))" || ok=0
+rm -rf app/__pycache__ tests/__pycache__
+[[ $ok == 1 ]] && echo "  PASS  all files read cleanly" || fail "the syntax check"
+
+part "3/5 Server"
+python3 -m unittest discover -s tests -p 'test_*.py' 2>&1 | tail -4
+[[ ${PIPESTATUS[0]} == 0 ]] || fail "the server tests"
+
+part "4/5 Browser"
+if node -e "require('playwright')" >/dev/null 2>&1; then
+  node tests/browser.test.js || fail "the browser tests"
+else
+  echo "  SKIP  Playwright isn't installed (npm install playwright && npx playwright install chromium)"
+fi
+
+part "5/5 Update scripts"
+bash tests/deploy.test.sh || fail "the update-script tests"
+
+echo
+echo "All checks passed."

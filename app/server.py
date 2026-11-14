@@ -140,6 +140,7 @@ DEFAULT_SETTINGS = {
     "openAt": "last",
     "navApp": "google",
     "showAllPaths": True,
+    "focusSelected": True,
     # Flights
     "minFlightSeconds": 0,
     "hideNoGps": False,
@@ -208,6 +209,7 @@ def clean_settings(incoming):
     pick("openAt", lambda v: v in ("last", "start"), "Unknown start position.")
     pick("navApp", lambda v: v in ("google", "apple", "waze"), "Unknown navigation app.")
     pick("showAllPaths", is_bool, "Show all paths must be on or off.")
+    pick("focusSelected", is_bool, "Hide other flights must be on or off.")
     pick("minFlightSeconds", whole(0, 3600), "Shortest flight must be 0 to 3600 seconds.")
     pick("hideNoGps", is_bool, "Hide flights without GPS must be on or off.")
     pick("aircraftNames", lambda v: isinstance(v, dict) and len(v) <= 50 and all(
