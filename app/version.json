@@ -1,11 +1,12 @@
 {
-  "version": "3.0.0",
+  "version": "3.0.1",
   "released": "2026-11-14",
   "repo": "mcintosh109/dji-flightmap",
   "notes": [
     "New: Google Maps as a map provider (road, dark, satellite, satellite + roads, terrain). Its road map shows businesses, gas stations and doctors like the Google Maps app",
     "Your Google key stays on the map server, like the Azure key. Add it in Settings \u2192 Map",
     "Needs one step in Google Cloud: turn on the Map Tiles API for your key (see the README)",
+    "If Google refuses, the server waits a minute before asking again, and its log says what to check",
     "The map's credit line now stays visible above the flight and planner panels"
   ]
 }

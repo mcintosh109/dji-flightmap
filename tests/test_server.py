@@ -701,6 +701,7 @@ class FakeGoogle:
         self.sessions = []      # the body of each createSession request
         self.tiles = []         # (path, session) of each picture request
         self.expired = set()    # session codes to refuse ("ran out")
+        self.session_status = 200   # set to 404 to refuse making sessions
         self.cache_control = 'public, max-age=3600'
         outer = self
 
@@ -730,6 +731,10 @@ class FakeGoogle:
                 body = json.loads(self.rfile.read(int(self.headers.get('Content-Length') or 0)))
                 if self.bad_key(q):
                     return
+                if outer.session_status != 200:
+                    outer.sessions.append(None)
+                    return self.reply(outer.session_status, json.dumps({'error': {
+                        'code': 404, 'message': 'Requested entity was not found.', 'status': 'NOT_FOUND'}}).encode())
                 outer.sessions.append(body)
                 code = f'S{len(outer.sessions)}'
                 self.reply(200, json.dumps({'session': code, 'expiry': str(int(time.time()) + 1209600),
@@ -798,7 +803,7 @@ class LiveGoogleKey(unittest.TestCase):
         self.srv.request('/tiles/google/hybrid/15/9650/12318.png')
         made = self.google.sessions[before:]
         self.assertLessEqual(len(made), 2)
-        kinds = {(b['mapType'], tuple(b.get('layerTypes', []))) for b in self.google.sessions}
+        kinds = {(b['mapType'], tuple(b.get('layerTypes', []))) for b in self.google.sessions if b}
         self.assertIn(('roadmap', ()), kinds)
         self.assertIn(('satellite', ('layerRoadmap',)), kinds)
 
@@ -834,6 +839,20 @@ class LiveGoogleKey(unittest.TestCase):
         with open(os.path.join(self.tmp, 'state', 'server.log')) as fh:
             log = fh.read()
         self.assertNotIn('WRONG-KEY', log, 'the key must not be written to the log')
+
+    def test_refused_session_not_asked_for_every_picture(self):
+        self.google.session_status = 404
+        try:
+            before = len(self.google.sessions)
+            for x in range(5):
+                self.assertEqual(self.srv.request(f'/tiles/google/dark/12/{x}/0.png')[0], 404)
+            self.assertEqual(len(self.google.sessions) - before, 1, 'Google is asked once, not once per picture')
+        finally:
+            self.google.session_status = 200
+        with open(os.path.join(self.tmp, 'state', 'server.log')) as fh:
+            log = fh.read()
+        self.assertIn('Requested entity was not found. / NOT_FOUND', log)
+        self.assertIn('Map Tiles API is enabled', log)
 
     def test_remove_key(self):
         self.srv.put_settings({'units': 'metric', 'googleMapsKey': ''})

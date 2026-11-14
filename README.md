@@ -472,6 +472,11 @@ pct exec $(pct list | awk '/dji-flightmap/{print $1; exit}') -- journalctl -u dj
 
   Look for lines starting with `Google Maps`. For example *"Map Tiles API
   has not been used in project … or it is disabled"* means step 2 above.
+  *"Requested entity was not found … NOT_FOUND"* usually means the key's
+  project can't use the Map Tiles API yet: check that the API is enabled in
+  the **same project** as the key, that billing is linked to that project,
+  and that the key's **API restrictions** allow the Map Tiles API. After
+  Google refuses, the server waits a minute before asking again.
   The key itself is never written to the log.
 
 **Places don't show up**

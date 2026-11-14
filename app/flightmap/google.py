@@ -54,17 +54,23 @@ GOOGLE_SETS = {
 }
 
 _sessions = {}                    # (set, key) -> (session code, valid until)
+_refused = {}                     # (set, key) -> (ask again after, status): Google said no
 _sessions_lock = threading.Lock()
+RETRY_AFTER = 60                  # after Google refuses a session, wait this long before asking again
 
 
 def _error_text(body, key):
     """Google's error message (e.g. "Map Tiles API has not been used in
-    project ..."), for the log. Never includes the key."""
+    project ..."), its status word and reasons, for the log. Never includes the key."""
     try:
-        message = json.loads(body).get("error", {}).get("message", "")
+        error = json.loads(body).get("error", {})
+        parts = [str(error.get("message", "")), str(error.get("status", ""))]
+        for detail in error.get("details") or []:
+            if isinstance(detail, dict) and detail.get("reason"):
+                parts.append(f"reason {detail['reason']}")
     except (ValueError, AttributeError):
-        message = ""
-    return str(message).replace(key, "<key>")[:300]
+        parts = []
+    return " / ".join(p for p in parts if p).replace(key, "<key>")[:400] or "(no details)"
 
 
 def _session(tileset, key, fresh=False):
@@ -73,13 +79,21 @@ def _session(tileset, key, fresh=False):
         hit = _sessions.get((tileset, key))
         if hit and not fresh and hit[1] > time.time() + 3600:
             return hit[0]
+        # Google said no a moment ago: don't ask again for every map picture.
+        refused = _refused.get((tileset, key))
+        if refused and refused[0] > time.time():
+            raise GoogleError(refused[1])
         body = json.dumps({**GOOGLE_SETS[tileset], "language": "en-US", "region": "US"}).encode()
         status, _, answer, _ = GOOGLE.request(
             "POST", "/v1/createSession?" + urlencode({"key": key}, quote_via=quote),
             body=body, headers={"Content-Type": "application/json"})
         if status != 200:
-            log(f"Google Maps: making a {tileset} session failed ({status}): {_error_text(answer, key)}")
+            log(f"Google Maps: making a {tileset} session failed ({status}): {_error_text(answer, key)}. "
+                "Check in Google Cloud that the Map Tiles API is enabled for this key's project, "
+                f"billing is set up, and the key may use it. Trying again in {RETRY_AFTER} s.")
+            _refused[(tileset, key)] = (time.time() + RETRY_AFTER, status)
             raise GoogleError(status)
+        _refused.pop((tileset, key), None)
         data = json.loads(answer)
         try:
             expires = float(data.get("expiry", 0)) or time.time() + 86400
