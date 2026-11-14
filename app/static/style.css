@@ -160,6 +160,40 @@ a.icon-btn { color: var(--text); }
 #d-nav { gap: 0.3em; }
 /* The free "Dark" map: the OpenStreetMap street map with its colours flipped. */
 .tiles-dark { filter: invert(100%) hue-rotate(180deg) brightness(95%) contrast(90%); }
+/* ---- Layers button + panel ---- */
+.layers-wrap { position: relative; }
+.layers-panel {
+  position: absolute; top: calc(100% + 8px); right: 0; z-index: 1100;
+  width: 312px; max-width: calc(100vw - 32px);
+  background: var(--panel); backdrop-filter: blur(14px);
+  border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow);
+  padding: 14px;
+}
+.layer-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.layer-opt {
+  display: flex; flex-direction: column; align-items: center; gap: 5px;
+  background: transparent; border: 0; padding: 4px 2px; border-radius: 10px; cursor: pointer; color: var(--text);
+}
+.layer-opt:hover { background: var(--card); }
+.layer-opt .thumb {
+  width: 54px; height: 54px; border-radius: 50%; overflow: hidden; display: block;
+  border: 2px solid var(--line); box-shadow: 0 2px 6px rgba(0,0,0,0.4);
+}
+.layer-opt .thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+/* Colours shown if a picture can't load */
+.thumb-road { background: linear-gradient(135deg, #e9e5dc 45%, #f4c86a 46% 52%, #e9e5dc 53%); }
+.thumb-satellite { background: radial-gradient(circle at 30% 30%, #5d7a3a, #2f4a22 60%, #3d5a6b); }
+.thumb-dark { background: linear-gradient(135deg, #1c1f24 45%, #444b55 46% 52%, #1c1f24 53%); }
+.thumb-terrain { background: repeating-radial-gradient(circle at 40% 60%, #cfd8b0 0 6px, #b9c493 6px 8px); }
+.layer-opt.active .thumb { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-dim); }
+.layer-opt.active .name { color: var(--accent); font-weight: 600; }
+.layer-opt .name { font-size: 13px; }
+.layer-opt small { font-size: 10.5px; color: var(--muted); margin-top: -4px; }
+.layer-details { margin: 12px 4px 4px; font-size: 14px; }
+.layer-details small { color: var(--muted); }
+.layer-details.disabled { opacity: 0.5; }
+.layers-foot { margin: 8px 4px 0; font-size: 12px; color: var(--muted); }
+.layers-foot a { color: var(--accent); }
 .select-chip { padding: 0; }
 .select-chip select {
   appearance: none; -webkit-appearance: none; border: 0; background: transparent; cursor: pointer;
@@ -346,6 +380,14 @@ code, .cmd { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 1
 .banner { padding: 12px 14px; border-radius: 10px; background: rgba(255,107,107,0.12); }
 
 .preview-wrap { margin: 0 0 14px; }
+/* Row of joined buttons (Default layer) */
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; flex-wrap: wrap; }
+.seg label { cursor: pointer; }
+.seg input { position: absolute; opacity: 0; pointer-events: none; }
+.seg span { display: block; padding: 8px 14px; background: var(--card); border-right: 1px solid var(--line); }
+.seg label:last-child span { border-right: 0; }
+.seg input:checked + span { background: var(--accent-dim); color: var(--accent); font-weight: 600; }
+.seg input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: -2px; }
 .settings .steps, .settings .notes { margin: 0 0 12px; padding-left: 20px; }
 .settings .steps li, .settings .notes li { margin: 6px 0; }
 .settings .dialog-actions { margin: 10px 0 0; }

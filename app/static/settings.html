@@ -26,25 +26,12 @@
         <h2>Map</h2>
 
         <div class="field">
-          <label for="mapStyle">Default map style</label>
-          <select id="mapStyle" data-key="mapStyle"></select>
-          <p class="help" id="mapStyle-help">The style the map opens with. You can still switch with the drop-down at the top of the map.</p>
+          <label for="mapProvider">Map provider</label>
+          <select id="mapProvider" data-key="mapProvider"></select>
+          <p class="help">Who draws the map. "Free" needs no key; the others need a key from that company (below).</p>
         </div>
 
-        <div class="preview-wrap">
-          <div id="preview" aria-label="Preview of the selected map style"></div>
-          <p id="preview-status" class="help">Preview</p>
-        </div>
-
-        <label class="check">
-          <input type="checkbox" data-key="satelliteLabels">
-          <span>Show road and place names on the free satellite map</span>
-        </label>
-
-        <h3>Map keys <span class="muted">(optional)</span></h3>
-        <p class="help">Some map companies need a free key, a password-like code from their website. Without a key, the free styles still work. Keys are saved on your server and only sent to that map company.</p>
-
-        <div class="field">
+        <div class="field provider-key" data-provider="carto">
           <label for="cartoKey">CARTO key <span class="muted">(for CARTO Dark Matter and Positron)</span></label>
           <div class="secret">
             <input id="cartoKey" data-key="cartoKey" type="password" spellcheck="false" placeholder="Your CARTO basemaps key">
@@ -53,7 +40,7 @@
           <p class="help">Free at <a href="https://carto.com/basemaps/apikey" target="_blank" rel="noopener">carto.com/basemaps/apikey</a>. CARTO's maps used to work without a key; without one they now show "API KEY REQUIRED".</p>
         </div>
 
-        <div class="field">
+        <div class="field provider-key" data-provider="mapbox">
           <label for="mapboxToken">Mapbox access token</label>
           <div class="secret">
             <input id="mapboxToken" data-key="mapboxToken" type="password" spellcheck="false" placeholder="pk.eyJ1Ijoi…">
@@ -62,7 +49,7 @@
           <p class="help">Free at <a href="https://account.mapbox.com/access-tokens/" target="_blank" rel="noopener">account.mapbox.com → Access tokens</a>. Use the "Default public token" (it starts with <code>pk.</code>).</p>
         </div>
 
-        <div class="field">
+        <div class="field provider-key" data-provider="maptiler">
           <label for="maptilerKey">MapTiler API key</label>
           <div class="secret">
             <input id="maptilerKey" data-key="maptilerKey" type="password" spellcheck="false" placeholder="AbCdEf123…">
@@ -71,7 +58,7 @@
           <p class="help">Free at <a href="https://cloud.maptiler.com/account/keys/" target="_blank" rel="noopener">cloud.maptiler.com → API keys</a>.</p>
         </div>
 
-        <div class="field">
+        <div class="field provider-key" data-provider="azure">
           <label for="azureMapsKey">Azure Maps key <span class="muted">(Microsoft's replacement for Bing Maps)</span></label>
           <div class="secret">
             <input id="azureMapsKey" data-key="azureMapsKey" type="password" spellcheck="false" placeholder="Primary key from your Azure Maps account">
@@ -80,15 +67,14 @@
           <p class="help">In the <a href="https://portal.azure.com/#create/Microsoft.Maps" target="_blank" rel="noopener">Azure portal</a>, create an <b>Azure Maps Account</b>, then open it and go to <b>Settings → Authentication</b> and copy the <b>Primary Key</b>.</p>
         </div>
 
-        <details class="advanced">
-          <summary>Custom map address (advanced)</summary>
+        <div class="provider-key" data-provider="custom">
           <div class="field">
-            <label for="customTileUrl">Tile address</label>
+            <label for="customTileUrl">Custom tile address</label>
             <input id="customTileUrl" data-key="customTileUrl" type="url" spellcheck="false" placeholder="https://tiles.example.com/{z}/{x}/{y}.png">
-            <p class="help">Any "XYZ" map tile address. It must contain <code>{z}</code>, <code>{x}</code> and <code>{y}</code>.</p>
+            <p class="help">Any "XYZ" map tile address. It must contain <code>{z}</code>, <code>{x}</code> and <code>{y}</code>. It is used for the Road layer.</p>
           </div>
           <div class="field">
-            <label for="customTileName">Name in the style list</label>
+            <label for="customTileName">Name</label>
             <input id="customTileName" data-key="customTileName" maxlength="40">
           </div>
           <div class="field">
@@ -96,7 +82,29 @@
             <input id="customAttribution" data-key="customAttribution" maxlength="200" placeholder="© Example Maps">
             <p class="help">Shown in the bottom corner of the map, as most map companies require.</p>
           </div>
-        </details>
+        </div>
+        <p class="help">Keys are saved on your server and only sent to that map company. Keys for other providers are kept, just hidden.</p>
+
+        <fieldset class="field">
+          <legend>Default layer</legend>
+          <div class="seg" role="radiogroup" aria-label="Default layer">
+            <label><input type="radio" name="mapLayer" value="road" data-key="mapLayer"><span>Road</span></label>
+            <label><input type="radio" name="mapLayer" value="satellite" data-key="mapLayer"><span>Satellite</span></label>
+            <label><input type="radio" name="mapLayer" value="dark" data-key="mapLayer"><span>Dark</span></label>
+            <label><input type="radio" name="mapLayer" value="terrain" data-key="mapLayer"><span>Terrain</span></label>
+          </div>
+          <p class="help">The kind of map it opens with. The layers button on the map switches between them.</p>
+        </fieldset>
+
+        <label class="check">
+          <input type="checkbox" data-key="satelliteLabels">
+          <span>Details: show roads and place names on satellite</span>
+        </label>
+
+        <div class="preview-wrap">
+          <div id="preview" aria-label="Preview of the selected map"></div>
+          <p id="preview-status" class="help">Preview</p>
+        </div>
       </section>
 
       <!-- ================= DISPLAY ================= -->

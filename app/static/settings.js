@@ -30,7 +30,8 @@ function fillForm(values) {
   for (const input of $$('[data-serial]')) {
     input.value = values.aircraftNames?.[input.dataset.serial] || '';
   }
-  fillStyleList(values);
+  fillProviderList(values);
+  showProviderFields(values.mapProvider);
 }
 
 function readForm() {
@@ -49,18 +50,18 @@ function readForm() {
   return out;
 }
 
-// The style list, with a note on styles that still need a key.
-function fillStyleList(values) {
-  const select = $('#mapStyle');
-  const chosen = values.mapStyle;
-  const groups = {};
-  for (const st of MapStyles.STYLES) (groups[st.group] ||= []).push(st);
-  select.innerHTML = Object.entries(groups).map(([group, styles]) =>
-    `<optgroup label="${esc(group)}">${styles.map((st) => {
-      const missing = st.needs && !String(values[st.needs] || '').trim();
-      const name = MapStyles.label(st, values) + (missing ? ' (needs key)' : '');
-      return `<option value="${st.id}"${st.id === chosen ? ' selected' : ''}>${esc(name)}</option>`;
-    }).join('')}</optgroup>`).join('');
+// The provider list, noting which still need a key.
+function fillProviderList(values) {
+  const select = $('#mapProvider');
+  select.innerHTML = Object.entries(MapStyles.PROVIDERS).map(([id, p]) => {
+    const missing = p.needs && !String(values[p.needs] || '').trim();
+    return `<option value="${id}"${id === values.mapProvider ? ' selected' : ''}>${esc(p.name)}${missing ? ' (add key below)' : ''}</option>`;
+  }).join('');
+}
+
+// Show only the key box for the chosen provider (the others stay saved).
+function showProviderFields(provider) {
+  for (const box of $$('.provider-key')) box.classList.toggle('hidden', box.dataset.provider !== provider);
 }
 
 function renderAircraft() {
@@ -79,23 +80,23 @@ function renderAircraft() {
 // ---------- preview map ----------
 function updatePreview() {
   const values = readForm();
-  const style = MapStyles.find(values.mapStyle);
+  const provider = MapStyles.PROVIDERS[values.mapProvider] || MapStyles.PROVIDERS.free;
+  const layerName = MapStyles.LAYERS.find((l) => l.id === values.mapLayer)?.name || 'Road';
+  const r = MapStyles.resolve(values, values.mapLayer, values.satelliteLabels);
   const status = $('#preview-status');
   if (previewLayer) previewMap.removeLayer(previewLayer);
-  previewLayer = MapStyles.build(values.mapStyle, values);
-  if (!previewLayer) {
-    status.textContent = `"${MapStyles.label(style, values)}" needs a key: fill in the ${style.group} key below.`;
-    status.className = 'help warn';
-    return;
-  }
+  previewLayer = MapStyles.build(r.id, values, { details: values.satelliteLabels });
+  // A note shown with the preview result, when free maps stand in.
+  const note = r.noKey ? ` ${provider.name} needs a key (above), so this preview shows the free map.`
+    : r.fallback ? ` ${provider.name} has no ${layerName} layer, so the free one is used.` : '';
   let loaded = 0, failed = 0;
   const report = () => {
     if (failed && !loaded) {
-      status.textContent = 'The map pictures did not load. Check the key or address, and that this browser has internet.';
+      status.textContent = 'The map pictures did not load. Check the key or address, and that this browser has internet.' + note;
       status.className = 'help warn';
     } else if (loaded) {
-      status.textContent = failed ? `Preview loaded (${failed} pictures failed).` : 'Preview loaded ✓';
-      status.className = 'help ok';
+      status.textContent = (failed ? `Preview loaded (${failed} pictures failed).` : 'Preview loaded ✓') + note;
+      status.className = note && r.noKey ? 'help warn' : 'help ok';
     }
   };
   // A style can be several layers (satellite + names): listen to each one.
@@ -220,10 +221,11 @@ async function start() {
 
   $('#form').addEventListener('input', (e) => {
     // Typing a key can make a style usable, so refresh the list's notes.
-    if (['cartoKey', 'mapboxToken', 'maptilerKey', 'azureMapsKey', 'customTileUrl', 'customTileName'].includes(e.target.dataset.key)) {
-      fillStyleList(readForm());
+    if (['cartoKey', 'mapboxToken', 'maptilerKey', 'azureMapsKey', 'customTileUrl'].includes(e.target.dataset.key)) {
+      fillProviderList(readForm());
     }
-    if (e.target.closest('.card') === $('#mapStyle').closest('.card')) updatePreview();
+    if (e.target.dataset.key === 'mapProvider') showProviderFields(e.target.value);
+    if (e.target.closest('.card') === $('#mapProvider').closest('.card')) updatePreview();
     updateSaveBar();
   });
   $('#form').addEventListener('change', () => { updatePreview(); updateSaveBar(); });

@@ -104,17 +104,27 @@ def log(message):
 # --------------------------------------------------------------------------
 # Settings page values (saved in settings.json)
 # --------------------------------------------------------------------------
-# Map styles the page knows how to draw (see static/maps.js).
-MAP_STYLES = {
-    "osm-dark", "osm", "esri-satellite", "carto-dark", "carto-light",
-    "mapbox-satellite", "mapbox-dark", "mapbox-outdoors",
-    "maptiler-hybrid", "maptiler-satellite", "maptiler-streets", "maptiler-outdoor",
-    "azure-road", "azure-dark", "azure-satellite", "azure-hybrid",
-    "custom",
+# Map providers and layers the page knows (see PROVIDERS in static/maps.js).
+MAP_PROVIDERS = {"free", "carto", "azure", "mapbox", "maptiler", "custom"}
+MAP_LAYERS = {"road", "satellite", "dark", "terrain"}
+# Older versions saved one "mapStyle"; this turns it into provider + layer
+# (+ whether "Details" was part of it).
+OLD_MAP_STYLES = {
+    "osm-dark": ("free", "dark", None), "osm": ("free", "road", None),
+    "esri-satellite": ("free", "satellite", None),
+    "carto-dark": ("carto", "dark", None), "carto-light": ("carto", "road", None),
+    "mapbox-satellite": ("mapbox", "satellite", True), "mapbox-dark": ("mapbox", "dark", None),
+    "mapbox-outdoors": ("mapbox", "terrain", None),
+    "maptiler-hybrid": ("maptiler", "satellite", True), "maptiler-satellite": ("maptiler", "satellite", False),
+    "maptiler-streets": ("maptiler", "road", None), "maptiler-outdoor": ("maptiler", "terrain", None),
+    "azure-road": ("azure", "road", None), "azure-dark": ("azure", "dark", None),
+    "azure-satellite": ("azure", "satellite", False), "azure-hybrid": ("azure", "satellite", True),
+    "custom": ("custom", "road", None),
 }
 DEFAULT_SETTINGS = {
     # Map
-    "mapStyle": "osm-dark",
+    "mapProvider": "free",
+    "mapLayer": "dark",
     "satelliteLabels": True,
     "cartoKey": "",
     "mapboxToken": "",
@@ -174,7 +184,8 @@ def clean_settings(incoming):
     is_bool = lambda v: isinstance(v, bool)
     plain = lambda n: (lambda v: isinstance(v, str) and len(v) <= n and not re.search(r"[<>\"\\\x00-\x1f]", v))
 
-    pick("mapStyle", lambda v: v in MAP_STYLES, "Unknown map style.")
+    pick("mapProvider", lambda v: v in MAP_PROVIDERS, "Unknown map provider.")
+    pick("mapLayer", lambda v: v in MAP_LAYERS, "Unknown map layer.")
     pick("satelliteLabels", is_bool, "Satellite labels must be on or off.")
     pick("cartoKey", lambda v: isinstance(v, str) and KEY_RE.match(v.strip()),
          "The CARTO key can only contain letters, numbers, dots, dashes and underscores.")
@@ -221,11 +232,25 @@ def load_settings():
     except Exception as exc:
         log(f"Ignoring broken settings file {SETTINGS_FILE}: {exc}")
         return
-    new, problems = clean_settings(saved if isinstance(saved, dict) else {})
+    if not isinstance(saved, dict):
+        saved = {}
+    if "mapProvider" not in saved and saved.get("mapStyle") in OLD_MAP_STYLES:
+        provider, layer, details = OLD_MAP_STYLES[saved["mapStyle"]]
+        saved.update(mapProvider=provider, mapLayer=layer)
+        if details is not None:
+            saved["satelliteLabels"] = details
+        log(f"Settings: map style '{saved['mapStyle']}' is now provider '{provider}', layer '{layer}'")
+    migrated = "mapStyle" in saved and "mapProvider" in saved and saved.get("mapStyle") is not None
+    new, problems = clean_settings(saved)
     for problem in problems:
         log(f"Settings file: {problem} (using the default instead)")
     with SETTINGS_LOCK:
         SETTINGS.update(new)
+    if migrated:
+        try:
+            save_settings(new)   # write the new format once, without the old "mapStyle"
+        except OSError as exc:
+            log(f"Could not save the converted settings: {exc}")
 
 
 def save_settings(new):

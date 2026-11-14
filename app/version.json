@@ -1,13 +1,13 @@
 {
-  "version": "1.4.0",
+  "version": "1.5.0",
   "released": "2026-11-14",
   "updateUrl": "https://raw.githubusercontent.com/mcintosh109/dji-flightmap/main/app/version.json",
   "notes": [
-    "Update reminder in the sidebar, with the update command ready to copy",
-    "Safer updates: settings are backed up and put back, and a failed update undoes itself",
-    "Azure Maps credit line shows clean text; the left panel fits its contents",
-    "New free Dark map (no key needed); CARTO maps now need a free CARTO key",
-    "Azure Maps styles: road, dark grey, satellite, satellite + roads",
-    "Smoother replay with a trail and a Follow button"
+    "Simpler maps: pick the provider in Settings, then Road / Satellite / Dark / Terrain from the new layers button on the map",
+    "Each layer button shows a small real picture of your area",
+    "Details checkbox: roads and place names on satellite",
+    "New free Terrain layer (OpenTopoMap); providers without a layer use the free one",
+    "Settings show only the key box for the chosen provider",
+    "Flight paths are easier to see on satellite maps"
   ]
 }

@@ -51,9 +51,20 @@
 
   <!-- Buttons in the top-right corner of the map -->
   <div id="map-tools">
-    <label class="chip select-chip" title="Map style">
-      <select id="sel-layer" aria-label="Map style"></select>
-    </label>
+    <div class="layers-wrap">
+      <button id="btn-layers" class="chip" type="button" aria-haspopup="true" aria-expanded="false" title="Map layers">
+        <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M12 3 2 8.5l10 5.5 10-5.5L12 3Zm-7.6 9.3L2 13.6 12 19l10-5.4-2.4-1.3L12 16.4l-7.6-4.1Z"/></svg>
+        <span id="layers-label">Layers</span>
+      </button>
+      <div id="layers-panel" class="layers-panel hidden" role="dialog" aria-label="Map layers">
+        <div id="layer-grid" class="layer-grid"></div>
+        <label class="check layer-details">
+          <input type="checkbox" id="layer-details">
+          <span>Details <small>(roads and names on satellite)</small></span>
+        </label>
+        <p id="layers-foot" class="layers-foot"></p>
+      </div>
+    </div>
     <button id="btn-units" class="chip">ft · mph</button>
     <button id="btn-fit" class="chip">Show all</button>
   </div>

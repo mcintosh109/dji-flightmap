@@ -152,7 +152,9 @@ Open the address the script printed, for example `http://192.168.1.50:8080`.
   bright and the rest faint. **Follow** keeps the map centred on the drone;
   dragging the map turns it off.
   Keyboard: **Space** = play/pause, **← →** = skip, **F** = follow, **Esc** = close.
-- Top-right: a map style drop-down, ft/mph ↔ m/km/h, and show everything.
+- Top-right: the **layers button** (Road, Satellite, Dark, Terrain, each
+  with a small picture of your area, plus **Details** for road and place names
+  on satellite), ft/mph ↔ m/km/h, and show everything.
 - Top of the left panel: ⚙ opens **Settings**, ↻ checks TrueNAS for new
   flights right away, and the door icon signs you out (when the login is on).
 
@@ -166,7 +168,7 @@ Everything here is saved on the server, so it applies on every device.
 
 | Section | What you can change |
 |---|---|
-| **Map** | Default map style, with a live preview. Free styles (no key): dark, street map, satellite (with optional road/place names). With a key: **CARTO** Dark Matter and Positron, **Azure Maps** (Microsoft's replacement for Bing Maps), **Mapbox** and **MapTiler** styles. Or any custom "XYZ" tile address. |
+| **Map** | **Map provider**: who draws the map. *Free* (OpenStreetMap + Esri, no key), **CARTO**, **Azure Maps** (Microsoft's replacement for Bing Maps), **Mapbox**, **MapTiler**, or a custom "XYZ" tile address. Only the chosen provider's key box is shown. **Default layer** (Road, Satellite, Dark, Terrain), **Details** on satellite, and a live preview. A layer a provider doesn't have (e.g. Terrain on Azure Maps) uses the free one. |
 | **Display** | Default units, flight path colour, replay speed, whether a flight opens at the landing or take-off spot, which app **Navigate** opens (Google Maps, Apple Maps, Waze), faint lines for all flights. |
 | **Flights** | Hide flights shorter than N seconds (quick tests), hide flights without GPS, **nicknames** for each drone. |
 | **Server** | How often to check for new files, how many days you stay signed in. |
@@ -389,7 +391,7 @@ pct exec 105 -- systemctl restart dji-flightmap
 | `app/static/app.js` | Fetches the data and draws the map with Leaflet | *"javascript fetch"*, *"leaflet polyline"* |
 | `app/version.json` | The version number and "what's new" list, compared with the copy on GitHub to spot updates | *"semantic versioning"* |
 | `app/static/updates.js` | Checks GitHub for a newer version; the Copy button | *"fetch JSON"*, *"clipboard copy javascript"* |
-| `app/static/maps.js` | The list of map styles and where their pictures come from | *"leaflet tileLayer"*, *"XYZ tiles"* |
+| `app/static/maps.js` | Every map style, which style each provider uses for each layer, and the layer-button pictures | *"leaflet tileLayer"*, *"XYZ tiles"* |
 | `app/static/settings.html`, `settings.js` | The settings page | *"HTML forms"*, *"fetch PUT JSON"* |
 | `app/static/vendor/leaflet/` | A copy of the Leaflet 1.9.4 map library (BSD-2 licence) | *"leafletjs"* |
 | `deploy/setup-truenas-mount.sh` | Proxmox host: connects the TrueNAS share | *"mount cifs fstab"* |

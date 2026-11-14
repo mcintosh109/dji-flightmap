@@ -11,6 +11,12 @@
     Azure Maps (Microsoft's replacement for Bing Maps) -> Azure portal,
       create an "Azure Maps Account", then Settings > Authentication > Primary Key
   Used by both index.html (the map) and settings.html (the preview).
+
+  How it fits together:
+    STYLES     every map the page can draw (one per provider + kind of map)
+    PROVIDERS  which style each provider uses for Road / Satellite / Dark / Terrain
+    resolve()  picks the style for the chosen provider + layer, falling back
+               to the free one when a provider doesn't offer that layer
 */
 window.MapStyles = (() => {
   const OSM = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
@@ -32,6 +38,10 @@ window.MapStyles = (() => {
     { id: 'esri-satellite', name: 'Satellite (Esri)', group: 'Free', satellite: true,
       url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
       opts: { maxNativeZoom: 19, attribution: 'Imagery &copy; Esri, Maxar, Earthstar Geographics' } },
+    { id: 'opentopo', name: 'Terrain (OpenTopoMap)', group: 'Free',
+      url: 'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',
+      opts: { subdomains: 'abc', maxNativeZoom: 17,
+        attribution: OSM + ', SRTM | style &copy; <a href="https://opentopomap.org">OpenTopoMap</a> (CC-BY-SA)' } },
 
     { id: 'carto-dark', name: 'CARTO Dark Matter', group: 'CARTO', needs: 'cartoKey',
       url: (s) => `https://basemaps.cartocdn.com/rastertiles/dark_all/{z}/{x}/{y}.png?key=${encodeURIComponent(s.cartoKey)}`,
@@ -40,7 +50,13 @@ window.MapStyles = (() => {
       url: (s) => `https://basemaps.cartocdn.com/rastertiles/light_all/{z}/{x}/{y}.png?key=${encodeURIComponent(s.cartoKey)}`,
       opts: { maxNativeZoom: 20, attribution: OSM + ' &copy; <a href="https://carto.com/attributions">CARTO</a>' } },
 
-    { id: 'mapbox-satellite', name: 'Mapbox satellite + streets', group: 'Mapbox', needs: 'mapboxToken',
+    { id: 'mapbox-streets', name: 'Mapbox streets', group: 'Mapbox', needs: 'mapboxToken',
+      url: (s) => `https://api.mapbox.com/styles/v1/mapbox/streets-v12/tiles/256/{z}/{x}/{y}@2x?access_token=${encodeURIComponent(s.mapboxToken)}`,
+      opts: { maxNativeZoom: 22, attribution: MAPBOX } },
+    { id: 'mapbox-satellite', name: 'Mapbox satellite', group: 'Mapbox', needs: 'mapboxToken', detailed: 'mapbox-satellite-streets',
+      url: (s) => `https://api.mapbox.com/styles/v1/mapbox/satellite-v9/tiles/256/{z}/{x}/{y}@2x?access_token=${encodeURIComponent(s.mapboxToken)}`,
+      opts: { maxNativeZoom: 22, attribution: MAPBOX } },
+    { id: 'mapbox-satellite-streets', name: 'Mapbox satellite + streets', group: 'Mapbox', needs: 'mapboxToken',
       url: (s) => `https://api.mapbox.com/styles/v1/mapbox/satellite-streets-v12/tiles/256/{z}/{x}/{y}@2x?access_token=${encodeURIComponent(s.mapboxToken)}`,
       opts: { maxNativeZoom: 22, attribution: MAPBOX } },
     { id: 'mapbox-dark', name: 'Mapbox dark', group: 'Mapbox', needs: 'mapboxToken',
@@ -53,7 +69,7 @@ window.MapStyles = (() => {
     { id: 'maptiler-hybrid', name: 'MapTiler satellite + labels', group: 'MapTiler', needs: 'maptilerKey',
       url: (s) => `https://api.maptiler.com/maps/hybrid/256/{z}/{x}/{y}.jpg?key=${encodeURIComponent(s.maptilerKey)}`,
       opts: { maxNativeZoom: 20, attribution: MAPTILER } },
-    { id: 'maptiler-satellite', name: 'MapTiler satellite', group: 'MapTiler', needs: 'maptilerKey', satellite: true,
+    { id: 'maptiler-satellite', name: 'MapTiler satellite', group: 'MapTiler', needs: 'maptilerKey', satellite: true, detailed: 'maptiler-hybrid',
       url: (s) => `https://api.maptiler.com/maps/satellite/256/{z}/{x}/{y}.jpg?key=${encodeURIComponent(s.maptilerKey)}`,
       opts: { maxNativeZoom: 20, attribution: MAPTILER } },
     { id: 'maptiler-streets', name: 'MapTiler streets', group: 'MapTiler', needs: 'maptilerKey',
@@ -69,7 +85,7 @@ window.MapStyles = (() => {
     { id: 'azure-dark', name: 'Azure Maps dark grey', group: 'Azure Maps', needs: 'azureMapsKey',
       azure: 'microsoft.base.darkgrey', opts: { maxNativeZoom: 22 } },
     { id: 'azure-satellite', name: 'Azure Maps satellite', group: 'Azure Maps', needs: 'azureMapsKey',
-      azure: 'microsoft.imagery', satellite: true, opts: { maxNativeZoom: 19 } },
+      azure: 'microsoft.imagery', satellite: true, detailed: 'azure-hybrid', opts: { maxNativeZoom: 19 } },
     { id: 'azure-hybrid', name: 'Azure Maps satellite + roads', group: 'Azure Maps', needs: 'azureMapsKey',
       azure: 'microsoft.imagery', overlay: 'microsoft.base.hybrid.road', opts: { maxNativeZoom: 19 } },
 
@@ -77,6 +93,61 @@ window.MapStyles = (() => {
       url: (s) => s.customTileUrl,
       opts: { maxNativeZoom: 19 } },
   ];
+
+  // ---- Providers: who draws the map. Each lists its style for each layer.
+  // A layer a provider doesn't have uses the free style instead.
+  const LAYERS = [
+    { id: 'road', name: 'Road' },
+    { id: 'satellite', name: 'Satellite' },
+    { id: 'dark', name: 'Dark' },
+    { id: 'terrain', name: 'Terrain' },
+  ];
+  const PROVIDERS = {
+    free:     { name: 'Free (OpenStreetMap + Esri)', needs: null,
+                layers: { road: 'osm', satellite: 'esri-satellite', dark: 'osm-dark', terrain: 'opentopo' } },
+    carto:    { name: 'CARTO', needs: 'cartoKey',
+                layers: { road: 'carto-light', dark: 'carto-dark' } },
+    azure:    { name: 'Azure Maps', needs: 'azureMapsKey',
+                layers: { road: 'azure-road', satellite: 'azure-satellite', dark: 'azure-dark' } },
+    mapbox:   { name: 'Mapbox', needs: 'mapboxToken',
+                layers: { road: 'mapbox-streets', satellite: 'mapbox-satellite', dark: 'mapbox-dark', terrain: 'mapbox-outdoors' } },
+    maptiler: { name: 'MapTiler', needs: 'maptilerKey',
+                layers: { road: 'maptiler-streets', satellite: 'maptiler-satellite', terrain: 'maptiler-outdoor' } },
+    custom:   { name: 'Custom map address', needs: 'customTileUrl',
+                layers: { road: 'custom' } },
+  };
+
+  const hasValue = (settings, key) => !key || String(settings[key] || '').trim() !== '';
+
+  // Which style to draw for this provider + layer (+ "Details").
+  //   id        the style to build
+  //   fallback  true when the provider doesn't have this layer (free one used)
+  //   noKey     true when the chosen provider's key is missing (free one used)
+  function resolve(settings, layer, details) {
+    const chosen = PROVIDERS[settings.mapProvider] || PROVIDERS.free;
+    const ready = hasValue(settings, chosen.needs);
+    const provider = ready ? chosen : PROVIDERS.free;
+    let id = provider.layers[layer];
+    const fallback = !id && provider !== PROVIDERS.free;
+    if (!id) id = PROVIDERS.free.layers[layer] || PROVIDERS.free.layers.road;
+    const style = find(id);
+    if (details && style?.detailed) id = style.detailed;
+    return { id, fallback, noKey: !ready };
+  }
+
+  // A small picture of one map tile around (lat, lon), for the layer buttons.
+  function thumbUrl(id, settings, lat, lon, zoom = 14) {
+    const style = find(id);
+    if (!usable(style, settings)) return '';
+    const n = 2 ** zoom;
+    const x = Math.floor(((lon + 180) / 360) * n);
+    const rad = (lat * Math.PI) / 180;
+    const y = Math.floor(((1 - Math.log(Math.tan(rad) + 1 / Math.cos(rad)) / Math.PI) / 2) * n);
+    const template = style.azure ? azureTileUrl(style.azure, settings.azureMapsKey)
+      : (typeof style.url === 'function' ? style.url(settings) : style.url);
+    const sub = (style.opts.subdomains || 'a')[0];
+    return template.replace('{s}', sub).replace('{r}', '').replace('{z}', zoom).replace('{x}', x).replace('{y}', y);
+  }
 
   // Road and place names drawn on top of the free satellite pictures.
   const LABELS = [
@@ -159,7 +230,8 @@ window.MapStyles = (() => {
   }
 
   // Build a Leaflet layer for a style. Returns null if it can't be used.
-  function build(id, settings) {
+  // options.details: draw road/place names on the free satellite map.
+  function build(id, settings, options = {}) {
     const style = find(id);
     if (!usable(style, settings)) return null;
     if (style.azure) return buildAzure(style, settings);
@@ -167,11 +239,12 @@ window.MapStyles = (() => {
     const opts = { maxZoom: 22, ...style.opts };
     if (style.id === 'custom') opts.attribution = esc(settings.customAttribution);
     const base = L.tileLayer(url, opts);
-    if (style.id === 'esri-satellite' && settings.satelliteLabels) {
+    const details = options.details ?? settings.satelliteLabels;
+    if (style.id === 'esri-satellite' && details) {
       return L.layerGroup([base, ...LABELS.map((u) => L.tileLayer(u, { maxZoom: 22, maxNativeZoom: 19 }))]);
     }
     return base;
   }
 
-  return { STYLES, find, available, label, build };
+  return { STYLES, LAYERS, PROVIDERS, find, available, label, build, resolve, thumbUrl };
 })();
