@@ -99,7 +99,7 @@ def log(message):
 # --------------------------------------------------------------------------
 # Map styles the page knows how to draw (see static/maps.js).
 MAP_STYLES = {
-    "carto-dark", "carto-light", "osm", "esri-satellite",
+    "osm-dark", "osm", "esri-satellite", "carto-dark", "carto-light",
     "mapbox-satellite", "mapbox-dark", "mapbox-outdoors",
     "maptiler-hybrid", "maptiler-satellite", "maptiler-streets", "maptiler-outdoor",
     "azure-road", "azure-dark", "azure-satellite", "azure-hybrid",
@@ -107,8 +107,9 @@ MAP_STYLES = {
 }
 DEFAULT_SETTINGS = {
     # Map
-    "mapStyle": "carto-dark",
+    "mapStyle": "osm-dark",
     "satelliteLabels": True,
+    "cartoKey": "",
     "mapboxToken": "",
     "maptilerKey": "",
     "azureMapsKey": "",
@@ -167,6 +168,8 @@ def clean_settings(incoming):
 
     pick("mapStyle", lambda v: v in MAP_STYLES, "Unknown map style.")
     pick("satelliteLabels", is_bool, "Satellite labels must be on or off.")
+    pick("cartoKey", lambda v: isinstance(v, str) and KEY_RE.match(v.strip()),
+         "The CARTO key can only contain letters, numbers, dots, dashes and underscores.")
     pick("mapboxToken", lambda v: isinstance(v, str) and KEY_RE.match(v.strip()),
          "The Mapbox token can only contain letters, numbers, dots, dashes and underscores.")
     pick("maptilerKey", lambda v: isinstance(v, str) and KEY_RE.match(v.strip()),
@@ -194,7 +197,7 @@ def clean_settings(incoming):
     pick("scanSeconds", whole(5, 3600), "Check for new files every 5 to 3600 seconds.")
     pick("sessionDays", whole(1, 365), "Stay signed in for 1 to 365 days.")
 
-    for key in ("mapboxToken", "maptilerKey", "azureMapsKey", "customTileName", "customAttribution"):
+    for key in ("cartoKey", "mapboxToken", "maptilerKey", "azureMapsKey", "customTileName", "customAttribution"):
         new[key] = new[key].strip()
     new["aircraftNames"] = {k: n.strip() for k, n in new["aircraftNames"].items() if n.strip()}
     return new, problems

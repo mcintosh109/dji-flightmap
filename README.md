@@ -166,12 +166,17 @@ Everything here is saved on the server, so it applies on every device.
 
 | Section | What you can change |
 |---|---|
-| **Map** | Default map style, with a live preview. Free styles: dark, light, street map, satellite (with optional road/place names). With a key: **Azure Maps** (Microsoft's replacement for Bing Maps), **Mapbox** and **MapTiler** styles. Or any custom "XYZ" tile address. |
+| **Map** | Default map style, with a live preview. Free styles (no key): dark, street map, satellite (with optional road/place names). With a key: **CARTO** Dark Matter and Positron, **Azure Maps** (Microsoft's replacement for Bing Maps), **Mapbox** and **MapTiler** styles. Or any custom "XYZ" tile address. |
 | **Display** | Default units, flight path colour, replay speed, whether a flight opens at the landing or take-off spot, which app **Navigate** opens (Google Maps, Apple Maps, Waze), faint lines for all flights. |
 | **Flights** | Hide flights shorter than N seconds (quick tests), hide flights without GPS, **nicknames** for each drone. |
 | **Server** | How often to check for new files, how many days you stay signed in. |
 
 **Getting a map key** (optional; the free styles need none):
+
+- **CARTO** (Dark Matter, Positron): free at carto.com/basemaps/apikey.
+  CARTO started requiring a key in late 2026; without one their maps show
+  "API KEY REQUIRED". The free "Dark" style here doesn't use CARTO: it is the
+  OpenStreetMap street map with its colours flipped.
 
 - **Azure Maps** (road, dark grey, satellite, satellite + roads):
   1. Sign in to the Azure portal (portal.azure.com).

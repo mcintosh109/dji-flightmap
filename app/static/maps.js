@@ -4,6 +4,8 @@
   pictures called tiles; each style below says where to download them.
 
   Some need a key (a password-like code you get free from the map company):
+    CARTO    -> https://carto.com/basemaps/apikey  (free; CARTO started requiring
+                keys in late 2026; without one its tiles say "API KEY REQUIRED")
     Mapbox   -> https://account.mapbox.com/access-tokens/  (an "access token", starts with pk.)
     MapTiler -> https://cloud.maptiler.com/account/keys/    (an "API key")
     Azure Maps (Microsoft's replacement for Bing Maps) -> Azure portal,
@@ -19,18 +21,24 @@ window.MapStyles = (() => {
 
   // needs: which setting must be filled in for the style to work.
   const STYLES = [
-    { id: 'carto-dark', name: 'Dark', group: 'Free',
-      url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
-      opts: { subdomains: 'abcd', maxNativeZoom: 20, attribution: OSM + ' &copy; <a href="https://carto.com/attributions">CARTO</a>' } },
-    { id: 'carto-light', name: 'Light', group: 'Free',
-      url: 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
-      opts: { subdomains: 'abcd', maxNativeZoom: 20, attribution: OSM + ' &copy; <a href="https://carto.com/attributions">CARTO</a>' } },
+    // The OpenStreetMap street map, darkened in the browser by a colour
+    // filter (see .tiles-dark in style.css). Needs no key.
+    { id: 'osm-dark', name: 'Dark', group: 'Free',
+      url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+      opts: { maxNativeZoom: 19, className: 'tiles-dark', attribution: OSM } },
     { id: 'osm', name: 'Street map (OpenStreetMap)', group: 'Free',
       url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
       opts: { maxNativeZoom: 19, attribution: OSM } },
     { id: 'esri-satellite', name: 'Satellite (Esri)', group: 'Free', satellite: true,
       url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
       opts: { maxNativeZoom: 19, attribution: 'Imagery &copy; Esri, Maxar, Earthstar Geographics' } },
+
+    { id: 'carto-dark', name: 'CARTO Dark Matter', group: 'CARTO', needs: 'cartoKey',
+      url: (s) => `https://basemaps.cartocdn.com/rastertiles/dark_all/{z}/{x}/{y}.png?key=${encodeURIComponent(s.cartoKey)}`,
+      opts: { maxNativeZoom: 20, attribution: OSM + ' &copy; <a href="https://carto.com/attributions">CARTO</a>' } },
+    { id: 'carto-light', name: 'CARTO Positron (light)', group: 'CARTO', needs: 'cartoKey',
+      url: (s) => `https://basemaps.cartocdn.com/rastertiles/light_all/{z}/{x}/{y}.png?key=${encodeURIComponent(s.cartoKey)}`,
+      opts: { maxNativeZoom: 20, attribution: OSM + ' &copy; <a href="https://carto.com/attributions">CARTO</a>' } },
 
     { id: 'mapbox-satellite', name: 'Mapbox satellite + streets', group: 'Mapbox', needs: 'mapboxToken',
       url: (s) => `https://api.mapbox.com/styles/v1/mapbox/satellite-streets-v12/tiles/256/{z}/{x}/{y}@2x?access_token=${encodeURIComponent(s.mapboxToken)}`,

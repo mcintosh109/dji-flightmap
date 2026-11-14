@@ -45,6 +45,15 @@
         <p class="help">Some map companies need a free key, a password-like code from their website. Without a key, the free styles still work. Keys are saved on your server and only sent to that map company.</p>
 
         <div class="field">
+          <label for="cartoKey">CARTO key <span class="muted">(for CARTO Dark Matter and Positron)</span></label>
+          <div class="secret">
+            <input id="cartoKey" data-key="cartoKey" type="password" spellcheck="false" placeholder="Your CARTO basemaps key">
+            <button type="button" class="chip show-btn" data-for="cartoKey">Show</button>
+          </div>
+          <p class="help">Free at <a href="https://carto.com/basemaps/apikey" target="_blank" rel="noopener">carto.com/basemaps/apikey</a>. CARTO's maps used to work without a key; without one they now show "API KEY REQUIRED".</p>
+        </div>
+
+        <div class="field">
           <label for="mapboxToken">Mapbox access token</label>
           <div class="secret">
             <input id="mapboxToken" data-key="mapboxToken" type="password" spellcheck="false" placeholder="pk.eyJ1Ijoi…">

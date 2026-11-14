@@ -31,7 +31,7 @@ const state = {
   layer: loadSetting('layer', null),
   // Settings page values (the server sends the real ones with every refresh).
   settings: {
-    mapStyle: 'carto-dark', satelliteLabels: true, units: 'imperial', pathColor: '#36c2ff',
+    mapStyle: 'osm-dark', satelliteLabels: true, units: 'imperial', pathColor: '#36c2ff',
     playbackSpeed: 5, openAt: 'last', navApp: 'google', showAllPaths: true,
     minFlightSeconds: 0, hideNoGps: false, aircraftNames: {},
   },
@@ -134,16 +134,16 @@ let baseLayer = null;
 function currentStyleId() {
   const ids = MapStyles.available(state.settings).map((st) => st.id);
   if (state.layer && ids.includes(state.layer)) return state.layer;
-  return ids.includes(state.settings.mapStyle) ? state.settings.mapStyle : 'carto-dark';
+  return ids.includes(state.settings.mapStyle) ? state.settings.mapStyle : 'osm-dark';   // free, no key
 }
 
 function applyMapStyle() {
   const s = state.settings;
   const id = currentStyleId();
-  const key = [id, s.mapboxToken, s.maptilerKey, s.azureMapsKey, s.customTileUrl, s.customAttribution, s.satelliteLabels].join('|');
+  const key = [id, s.cartoKey, s.mapboxToken, s.maptilerKey, s.azureMapsKey, s.customTileUrl, s.customAttribution, s.satelliteLabels].join('|');
   if (key !== state.layerKey) {
     if (baseLayer) map.removeLayer(baseLayer);
-    baseLayer = MapStyles.build(id, s) || MapStyles.build('carto-dark', s);
+    baseLayer = MapStyles.build(id, s) || MapStyles.build('osm-dark', s);
     baseLayer.addTo(map);
     state.layerKey = key;
   }

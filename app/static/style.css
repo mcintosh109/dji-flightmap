@@ -117,6 +117,8 @@ a.icon-btn { color: var(--text); }
 .chip.accent { background: var(--accent); color: #04121a; border-color: transparent; font-weight: 600; }
 .chip.accent:hover { filter: brightness(1.08); }
 #d-nav { gap: 0.3em; }
+/* The free "Dark" map: the OpenStreetMap street map with its colours flipped. */
+.tiles-dark { filter: invert(100%) hue-rotate(180deg) brightness(95%) contrast(90%); }
 .select-chip { padding: 0; }
 .select-chip select {
   appearance: none; -webkit-appearance: none; border: 0; background: transparent; cursor: pointer;
