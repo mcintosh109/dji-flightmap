@@ -244,17 +244,44 @@ Tailscale or WireGuard.
 
 ## Updating later
 
-On the Proxmox host:
+On the Proxmox host, one command does everything:
 
 ```bash
-cd /root/dji-flightmap && git pull
+cd /root/dji-flightmap && bash deploy/update-ct.sh
 ```
+
+(If you have more than one container named `dji-flightmap`, put
+`CTID=111` in front, with your container's number.)
+
+What it does:
+
+1. **Downloads** the newest version from GitHub.
+2. **Saves** your settings, map keys and login to the Proxmox host, in
+   `/root/dji-flightmap-backups/` (root only; the newest 10 are kept).
+3. **Saves the current version**, so the update can be undone.
+4. **Installs** the new version.
+5. **Puts your settings back**, only replacing files that changed.
+6. **Checks that the map answers.** If it doesn't, it **undoes the update by
+   itself**: the old version and your settings come back, and it prints the
+   error so you can ask for help.
+
+Afterwards, press **Ctrl+Shift+R** in the browser to load the new version.
+
+### Restoring settings (for example after rebuilding the container)
+
+Put the newest backup into the container:
 
 ```bash
-CTID=105 bash deploy/update-ct.sh
+bash deploy/restore-ct.sh
 ```
 
-Your settings and login are kept.
+Or choose a specific backup (list them with `ls /root/dji-flightmap-backups`):
+
+```bash
+bash deploy/restore-ct.sh /root/dji-flightmap-backups/ct111_2026-11-14_10-00-00
+```
+
+It shows what it found and asks before changing anything.
 
 ---
 
@@ -359,7 +386,9 @@ pct exec 105 -- systemctl restart dji-flightmap
 | `app/static/vendor/leaflet/` | A copy of the Leaflet 1.9.4 map library (BSD-2 licence) | *"leafletjs"* |
 | `deploy/setup-truenas-mount.sh` | Proxmox host: connects the TrueNAS share | *"mount cifs fstab"* |
 | `deploy/create-ct.sh` | Proxmox host: creates the container | *"pct create"*, *"proxmox bind mount"* |
-| `deploy/update-ct.sh` | Proxmox host: installs a newer version | *"pct push"* |
+| `deploy/update-ct.sh` | Proxmox host: backs up settings, installs a newer version, puts settings back, undoes it if the map doesn't start | *"pct push"*, *"pct pull"* |
+| `deploy/restore-ct.sh` | Proxmox host: puts saved settings back into a container | |
+| `deploy/ct-backup.sh` | Shared save/restore steps used by the two scripts above | *"bash source"* |
 | `deploy/install.sh` | Inside the container: installs the app | *"bash script basics"* |
 | `deploy/set-login.sh` | Inside the container: sets up the login | |
 | `deploy/dji-flightmap.service` | Runs the server at boot and restarts it if it crashes | *"systemd service file"* |
