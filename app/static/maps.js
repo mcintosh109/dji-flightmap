@@ -114,7 +114,16 @@ window.MapStyles = (() => {
             `&zoom=${zoom}&bounds=${bounds}&subscription-key=${encodeURIComponent(key)}`);
           if (!res.ok || !map) return;
           const data = await res.json();
-          show((data.copyrights || []).map(esc).join(', '));
+          // Azure sends each credit as a small piece of HTML, e.g.
+          // <a data-azure-...>&copy;2026 TomTom</a>. Keep only the readable
+          // text (DOMParser reads it without running or loading anything).
+          const toText = (html) => {
+            const doc = new DOMParser().parseFromString(String(html), 'text/html');
+            doc.querySelectorAll('script, style').forEach((el) => el.remove());
+            return doc.body.textContent.replace(/\s+/g, ' ').trim();
+          };
+          const credits = [...new Set((data.copyrights || []).map(toText).filter(Boolean))];
+          show(credits.map(esc).join(', '));
         } catch { /* keep the old credit line */ }
       }, 800);   // wait until the map has stopped moving
     };
