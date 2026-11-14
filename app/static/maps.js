@@ -9,7 +9,9 @@
     Mapbox   -> https://account.mapbox.com/access-tokens/  (an "access token", starts with pk.)
     MapTiler -> https://cloud.maptiler.com/account/keys/    (an "API key")
     Azure Maps (Microsoft's replacement for Bing Maps) -> Azure portal,
-      create an "Azure Maps Account", then Settings > Authentication > Primary Key
+      create an "Azure Maps Account", then Settings > Authentication > Primary Key.
+      The Azure key stays on the server: the map asks OUR server for Azure
+      pictures (tiles/azure/...), and the server asks Azure with the key.
   Used by both index.html (the map) and settings.html (the preview).
 
   How it fits together:
@@ -117,7 +119,8 @@ window.MapStyles = (() => {
                 layers: { road: 'custom' } },
   };
 
-  const hasValue = (settings, key) => !key || String(settings[key] || '').trim() !== '';
+  // A key counts as present if it's typed in, or saved on the server ("<key>Set").
+  const hasValue = (settings, key) => !key || String(settings[key] || '').trim() !== '' || settings[`${key}Set`] === true;
 
   // Which style to draw for this provider + layer (+ "Details").
   //   id        the style to build
@@ -143,7 +146,7 @@ window.MapStyles = (() => {
     const x = Math.floor(((lon + 180) / 360) * n);
     const rad = (lat * Math.PI) / 180;
     const y = Math.floor(((1 - Math.log(Math.tan(rad) + 1 / Math.cos(rad)) / Math.PI) / 2) * n);
-    const template = style.azure ? azureTileUrl(style.azure, settings.azureMapsKey)
+    const template = style.azure ? azureUrl(style.azure, settings)
       : (typeof style.url === 'function' ? style.url(settings) : style.url);
     const sub = (style.opts.subdomains || 'a')[0];
     return template.replace('{s}', sub).replace('{r}', '').replace('{z}', zoom).replace('{x}', x).replace('{y}', y);
@@ -158,6 +161,11 @@ window.MapStyles = (() => {
   const AZURE = 'https://atlas.microsoft.com/map';
   const azureTileUrl = (tilesetId, key) =>
     `${AZURE}/tile?api-version=2024-04-01&tilesetId=${tilesetId}&zoom={z}&x={x}&y={y}&tileSize=256&subscription-key=${encodeURIComponent(key)}`;
+  // Normally: through our server, which adds the saved key. Only a key typed
+  // into the settings page (not saved yet) is used directly, for its preview.
+  const azureUrl = (tilesetId, settings) => (String(settings.azureMapsKey || '').trim()
+    ? azureTileUrl(tilesetId, settings.azureMapsKey.trim())
+    : `tiles/azure/${tilesetId}/{z}/{x}/{y}.png`);
 
   // Azure Maps' terms say the map must show the copyright credit for the
   // area on screen. Azure has an address that returns it ("Get Map
@@ -181,8 +189,9 @@ window.MapStyles = (() => {
         const bounds = [clampLon(b.getWest()), clampLat(b.getSouth()), clampLon(b.getEast()), clampLat(b.getNorth())].join(',');
         const zoom = Math.max(0, Math.min(maxZoom, Math.round(map.getZoom())));
         try {
-          const res = await fetch(`${AZURE}/attribution?api-version=2024-04-01&tilesetId=${tilesetId}` +
-            `&zoom=${zoom}&bounds=${bounds}&subscription-key=${encodeURIComponent(key)}`);
+          const res = await fetch(key
+            ? `${AZURE}/attribution?api-version=2024-04-01&tilesetId=${tilesetId}&zoom=${zoom}&bounds=${bounds}&subscription-key=${encodeURIComponent(key)}`
+            : `api/azure-credits?tileset=${tilesetId}&zoom=${zoom}&bounds=${bounds}`);
           if (!res.ok || !map) return;
           const data = await res.json();
           // Azure sends each credit as a small piece of HTML, e.g.
@@ -203,11 +212,11 @@ window.MapStyles = (() => {
   }
 
   function buildAzure(style, settings) {
-    const key = settings.azureMapsKey;
+    const key = String(settings.azureMapsKey || '').trim();   // only set while typing a new key in Settings
     const opts = { maxZoom: 22, ...style.opts, attribution: '&copy; Microsoft Azure Maps' };
-    const base = L.tileLayer(azureTileUrl(style.azure, key), opts);
+    const base = L.tileLayer(azureUrl(style.azure, settings), opts);
     const layer = style.overlay
-      ? L.layerGroup([base, L.tileLayer(azureTileUrl(style.overlay, key), { maxZoom: 22, maxNativeZoom: 22 })])
+      ? L.layerGroup([base, L.tileLayer(azureUrl(style.overlay, settings), { maxZoom: 22, maxNativeZoom: 22 })])
       : base;
     azureCredits(layer, style.azure, key, style.opts.maxNativeZoom);
     return layer;
@@ -216,7 +225,7 @@ window.MapStyles = (() => {
   function find(id) { return STYLES.find((st) => st.id === id); }
 
   function usable(style, settings) {
-    return !!style && (!style.needs || String(settings[style.needs] || '').trim() !== '');
+    return !!style && hasValue(settings, style.needs);
   }
 
   // Styles that can be used with these settings (keys filled in).

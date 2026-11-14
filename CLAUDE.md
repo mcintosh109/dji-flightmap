@@ -105,6 +105,11 @@ cd /root/dji-flightmap && bash deploy/update-ct.sh
 - **Bing Maps** is retired for free accounts; **Azure Maps** replaces it.
   Azure's *Get Map Attribution* returns credits as **HTML** — show only the text,
   and the credit must be shown (Azure terms).
+- **Azure key stays on the server** (2.1.0): tiles go through
+  `/tiles/azure/<tileset>/<z>/<x>/<y>.png` and credits through
+  `/api/azure-credits`; `public_settings()` replaces the key with
+  `azureMapsKeySet`. On save, an empty key box means "keep", `removeAzureMapsKey`
+  deletes it. Tests use `AZURE_MAPS_URL` to point the server at a fake Azure.
 - **Copy buttons:** `navigator.clipboard` needs https; the map is plain http,
   so `updates.js` falls back to `document.execCommand('copy')`.
 - **Claude's sandbox can't reach tile servers or most websites.** The tests

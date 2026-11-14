@@ -32,6 +32,10 @@ Web addresses it answers:
   /api/health           {"ok": true} - handy for checking the service is up
   /api/settings         GET: the settings page's values, PUT: save them
   /api/rescan           POST: look for new log files right now
+  /tiles/azure/<tileset>/<z>/<x>/<y>.png
+                        one Azure Maps picture, fetched by this server with
+                        the saved key (the key never goes to the browser)
+  /api/azure-credits    Azure's copyright line for the area on screen
   /api/plans            GET: saved flight plans
   /api/plans/<id>       PUT: save a plan (id "new" makes one), DELETE: remove it
   /login.html           the login page (only used when a login is set)
@@ -61,9 +65,12 @@ import threading
 import time
 from collections import OrderedDict
 from datetime import datetime, timedelta, timezone
+from html.parser import HTMLParser
 from http.cookies import SimpleCookie
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import parse_qs, unquote, urlparse
+from urllib.error import HTTPError, URLError
+from urllib.parse import parse_qs, quote, unquote, urlencode, urlparse
+from urllib.request import Request, urlopen
 
 # --------------------------------------------------------------------------
 # Settings
@@ -79,6 +86,8 @@ AUTH_ENABLED = bool(AUTH_USER and AUTH_PASSWORD_HASH)
 SESSION_DAYS = int(os.environ.get("SESSION_DAYS", "30"))   # stay signed in this long
 SECRET_FILE = os.path.join(os.path.dirname(CACHE_FILE), "session-secret")
 SETTINGS_FILE = os.path.join(os.path.dirname(CACHE_FILE), "settings.json")
+# Where Azure Maps is reached (only changed by the tests, to use a fake one).
+AZURE_MAPS_URL = os.environ.get("AZURE_MAPS_URL", "https://atlas.microsoft.com").rstrip("/")
 PLANS_FILE = os.path.join(os.path.dirname(CACHE_FILE), "plans.json")
 # The version number and "what's new" list live in app/version.json, so the
 # web page can compare them with the newest copy on GitHub.
@@ -399,6 +408,74 @@ def clean_plan(incoming):
 def current_settings():
     with SETTINGS_LOCK:
         return json.loads(json.dumps(SETTINGS))   # a copy
+
+
+# Keys that stay on the server: the page only learns whether one is saved.
+SERVER_ONLY_KEYS = ("azureMapsKey",)
+
+
+def public_settings():
+    """Settings as sent to the browser: server-only keys replaced by
+    "<name>Set": true/false, so the key itself never leaves the server."""
+    settings = current_settings()
+    for key in SERVER_ONLY_KEYS:
+        settings[key + "Set"] = bool(settings.pop(key, ""))
+    return settings
+
+
+# --------------------------------------------------------------------------
+# Azure Maps through this server
+# --------------------------------------------------------------------------
+# The browser asks THIS server for map pictures; this server asks Azure
+# (over HTTPS) with the saved key and passes the picture back.
+AZURE_TILESETS = {"microsoft.base.road", "microsoft.base.darkgrey", "microsoft.imagery", "microsoft.base.hybrid.road"}
+AZURE_TIMEOUT = 10
+
+
+def azure_request(path, params):
+    """Call Azure Maps with the saved key. Returns (status, content type, body, headers)."""
+    key = current_settings().get("azureMapsKey", "")
+    if not key:
+        return 404, "application/json", b'{"error":"no Azure Maps key saved"}', {}
+    query = urlencode({"api-version": "2024-04-01", **params, "subscription-key": key}, quote_via=quote)
+    req = Request(f"{AZURE_MAPS_URL}{path}?{query}", headers={"User-Agent": "dji-flightmap"})
+    try:
+        with urlopen(req, timeout=AZURE_TIMEOUT) as res:
+            return res.status, res.headers.get("Content-Type", "application/octet-stream"), res.read(), dict(res.headers)
+    except HTTPError as err:
+        # Don't pass Azure's error text on (it can echo the request); just the status.
+        log(f"Azure Maps answered {err.code} for {path}")
+        return 502, "application/json", json.dumps({"error": f"Azure Maps answered {err.code}"}).encode(), {}
+    except (URLError, OSError) as err:
+        log(f"Could not reach Azure Maps: {err}")
+        return 502, "application/json", b'{"error":"could not reach Azure Maps"}', {}
+
+
+class _TextOnly(HTMLParser):
+    """Keeps the readable text of an HTML snippet (scripts and styles dropped)."""
+
+    def __init__(self):
+        super().__init__()
+        self.parts, self._skip = [], 0
+
+    def handle_starttag(self, tag, attrs):
+        if tag in ("script", "style"):
+            self._skip += 1
+
+    def handle_endtag(self, tag):
+        if tag in ("script", "style") and self._skip:
+            self._skip -= 1
+
+    def handle_data(self, data):
+        if not self._skip:
+            self.parts.append(data)
+
+
+def html_to_text(snippet):
+    parser = _TextOnly()
+    parser.feed(str(snippet))
+    parser.close()
+    return re.sub(r"\s+", " ", "".join(parser.parts)).strip()
 
 
 # --------------------------------------------------------------------------
@@ -810,7 +887,7 @@ class FlightLibrary:
             return {
                 "auth": AUTH_ENABLED,
                 "app": {"version": APP_VERSION, "updateUrl": VERSION_INFO.get("updateUrl", "")},
-                "settings": current_settings(),
+                "settings": public_settings(),
                 "files": len(self.entries),
                 "version": self.version,
                 "scanning": self.scanning,
@@ -968,9 +1045,12 @@ class Handler(SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=STATIC_DIR, **kwargs)
 
+    cache_control = None   # set per request to override "no-cache"
+
     def end_headers(self):
-        # Tell browsers to re-check files, so updates show up straight away.
-        self.send_header("Cache-Control", "no-cache")
+        # Tell browsers to re-check files, so updates show up straight away
+        # (map pictures are the exception: they set cache_control).
+        self.send_header("Cache-Control", self.cache_control or "no-cache")
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("X-Frame-Options", "DENY")
         super().end_headers()
@@ -1036,6 +1116,10 @@ class Handler(SimpleHTTPRequestHandler):
             return self.send_json(LIBRARY.listing())
         if path == "/api/settings":
             return self.send_json(self.settings_payload())
+        if path.startswith("/tiles/azure/"):
+            return self.azure_tile(path)
+        if path == "/api/azure-credits":
+            return self.azure_credits()
         if path == "/api/plans":
             with PLANS_LOCK:
                 plans = [dict(p, id=k) for k, p in load_plans().items()]
@@ -1053,6 +1137,51 @@ class Handler(SimpleHTTPRequestHandler):
         if path.startswith("/api/"):
             return self.send_json({"error": "unknown address"}, 404)
         return super().do_GET()
+
+    # ---- Azure Maps through this server -----------------------------------
+    def azure_tile(self, path):
+        m = re.fullmatch(r"/tiles/azure/([a-z.]+)/(\d{1,2})/(\d{1,7})/(\d{1,7})\.png", path)
+        if not m or m.group(1) not in AZURE_TILESETS:
+            return self.send_json({"error": "unknown map picture"}, 400)
+        tileset, z, x, y = m.group(1), int(m.group(2)), int(m.group(3)), int(m.group(4))
+        if z > 22 or x >= 2 ** z or y >= 2 ** z:
+            return self.send_json({"error": "map picture out of range"}, 400)
+        status, ctype, body, headers = azure_request("/map/tile", {
+            "tilesetId": tileset, "zoom": z, "x": x, "y": y, "tileSize": 256})
+        if status != 200:
+            return self.send_raw(status, ctype, body)
+        # Let the browser keep pictures for a while (Azure's own advice if given).
+        self.cache_control = headers.get("Cache-Control") or "private, max-age=86400"
+        return self.send_raw(200, ctype, body)
+
+    def azure_credits(self):
+        q = parse_qs(urlparse(self.path).query)
+        tileset = (q.get("tileset") or [""])[0]
+        zoom = (q.get("zoom") or [""])[0]
+        bounds = (q.get("bounds") or [""])[0]
+        if (tileset not in AZURE_TILESETS or not zoom.isdigit() or int(zoom) > 22
+                or not re.fullmatch(r"-?\d{1,3}(\.\d+)?(,-?\d{1,3}(\.\d+)?){3}", bounds)):
+            return self.send_json({"error": "bad request"}, 400)
+        status, _, body, _ = azure_request("/map/attribution", {"tilesetId": tileset, "zoom": zoom, "bounds": bounds})
+        if status != 200:
+            return self.send_json({"copyrights": []}, 200 if status == 404 else status)
+        try:
+            raw = json.loads(body).get("copyrights", [])
+        except ValueError:
+            raw = []
+        credits = []
+        for item in raw if isinstance(raw, list) else []:
+            text = html_to_text(item)
+            if text and text not in credits:
+                credits.append(text[:200])
+        return self.send_json({"copyrights": credits})
+
+    def send_raw(self, status, ctype, body):
+        self.send_response(status)
+        self.send_header("Content-Type", ctype)
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
 
     # ---- settings + rescan --------------------------------------------------
     def from_our_page(self):
@@ -1072,7 +1201,7 @@ class Handler(SimpleHTTPRequestHandler):
             if f["serial"] and f["serial"] not in aircraft:
                 aircraft[f["serial"]] = f["aircraftName"]
         return {
-            "settings": current_settings(),
+            "settings": public_settings(),
             "defaults": DEFAULT_SETTINGS,
             "info": {
                 "version": APP_VERSION,
@@ -1134,6 +1263,15 @@ class Handler(SimpleHTTPRequestHandler):
         incoming = self.read_json_body()
         if incoming is None:
             return
+        # The page never sees saved keys, so an empty box means "keep it";
+        # "remove<Key>": true deletes it.
+        for key in SERVER_ONLY_KEYS:
+            remove_flag = "remove" + key[0].upper() + key[1:]
+            if incoming.pop(remove_flag, False) is True:
+                incoming[key] = ""
+            elif not str(incoming.get(key, "")).strip():
+                incoming.pop(key, None)
+            incoming.pop(key + "Set", None)
         new, problems = clean_settings(incoming)
         if problems:
             return self.send_json({"error": " ".join(problems), "problems": problems}, 400)

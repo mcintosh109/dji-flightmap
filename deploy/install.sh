@@ -19,7 +19,7 @@ fi
 
 echo "==> Installing Python 3"
 apt-get update -qq
-DEBIAN_FRONTEND=noninteractive apt-get install -y -qq python3 >/dev/null
+DEBIAN_FRONTEND=noninteractive apt-get install -y -qq python3 ca-certificates >/dev/null   # ca-certificates: HTTPS to Azure Maps
 
 echo "==> Creating the 'flightmap' service user"
 if ! id flightmap >/dev/null 2>&1; then

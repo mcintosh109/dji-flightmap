@@ -58,6 +58,32 @@ const putSettings = (base, values) => fetch(`${base}/api/settings`, {
   method: 'PUT', headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'flightmap' }, body: JSON.stringify(values),
 });
 
+// A fake Azure Maps for OUR SERVER to talk to (the browser must never call
+// Azure itself). It records which key it was given.
+const AZURE_KEY = 'TEST-AZURE-KEY-123';
+async function startFakeAzure() {
+  const http = require('http');
+  const port = await freePort();
+  const got = { tiles: 0, credits: 0, keys: new Set() };
+  const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYGD4DwABBAEAwS2OUAAAAABJRU5ErkJggg==', 'base64');
+  const server = http.createServer((req, res) => {
+    const u = new URL(req.url, 'http://x');
+    got.keys.add(u.searchParams.get('subscription-key'));
+    if (u.pathname === '/map/attribution') {
+      got.credits++;
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ copyrights: [
+        '<a data-azure-maps-attribution-dynamic="true">&copy;2026 TomTom</a>',
+        '<a data-azure-maps-attribution-dynamic="true">&copy;2026 TomTom</a>',
+        '<img src=x onerror="window.HACKED=1">Evil<script>window.HACKED=2</script>'] }));
+    }
+    got.tiles++;
+    res.writeHead(200, { 'Content-Type': 'image/png' });
+    res.end(png);
+  }).listen(port, '127.0.0.1');
+  return { base: `http://127.0.0.1:${port}`, got, close: () => server.close() };
+}
+
 // A made-up 16-day forecast in Open-Meteo's format: cold (3 °C), strong wind
 // up high (12 m/s at 120 m), sunrise 06:45, sunset 17:15 every day.
 function fakeForecast() {
@@ -81,11 +107,17 @@ const localDay = (offsetDays) => {
 
 // Fake internet: coloured squares for map pictures, Azure credits, GitHub version file, weather.
 function fakeInternet(ctx, { github = null } = {}) {
-  const seen = { tiles: [], github: 0, weather: 0 };
+  const seen = { tiles: [], github: 0, weather: 0, keyLeaks: 0 };
   const svg = (c) => `<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256"><rect width="256" height="256" fill="${c}"/></svg>`;
   return ctx.route(/^https?:\/\//, (route) => {
     const u = new URL(route.request().url());
-    if (u.hostname === '127.0.0.1') return route.continue();
+    if (/subscription-key|TEST-AZURE-KEY/.test(route.request().url())) seen.keyLeaks++;
+    if (u.hostname === '127.0.0.1') {
+      const m = u.pathname.match(/^\/tiles\/azure\/([a-z.]+)\//);
+      if (m) seen.tiles.push(`azure:${m[1]}`);
+      return route.continue();
+    }
+    if (u.hostname === 'atlas.microsoft.com') seen.keyLeaks++;   // the browser must not call Azure directly
     if (u.hostname === 'raw.githubusercontent.com') {
       seen.github++;
       return github ? route.fulfill({ contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' }, body: JSON.stringify(github) })
@@ -113,13 +145,14 @@ function fakeInternet(ctx, { github = null } = {}) {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'flightmap-browser-'));
   const archive = path.join(tmp, 'archive');
   const expect = JSON.parse(execFileSync(process.env.PYTHON || 'python3', [path.join(__dirname, 'fixtures.py'), archive]).toString());
-  const app = await startServer(archive);
+  const azure = await startFakeAzure();
+  const app = await startServer(archive, { AZURE_MAPS_URL: azure.base });
   const browser = await chromium.launch();
   const servers = [app];
   try {
     // ---- 1. map page ----
     console.log('Map page');
-    await putSettings(app.base, { mapProvider: 'azure', mapLayer: 'road', azureMapsKey: 'TESTKEY', satelliteLabels: true, checkUpdates: false });
+    await putSettings(app.base, { mapProvider: 'azure', mapLayer: 'road', azureMapsKey: AZURE_KEY, satelliteLabels: true, checkUpdates: false });
     let ctx = await browser.newContext({ viewport: { width: 1400, height: 860 } });
     let seen = await fakeInternet(ctx);
     let page = await ctx.newPage();
@@ -130,6 +163,10 @@ function fakeInternet(ctx, { github = null } = {}) {
     check('shows the made-up flights', (await page.textContent('#status')).includes(`${expect.flights} flights`), await page.textContent('#status'));
     check('one card per aircraft (2)', (await page.locator('.aircraft').count()) === 2);
     check('uses the saved provider (Azure road)', seen.tiles.includes('azure:microsoft.base.road'), seen.tiles.join());
+    check('Azure pictures come through our server', azure.got.tiles > 0 && azure.got.keys.has(AZURE_KEY), `${azure.got.tiles} tiles`);
+    check('the browser never sees or sends the Azure key', seen.keyLeaks === 0
+      && !(await page.content()).includes(AZURE_KEY)
+      && !JSON.stringify(await (await fetch(`${app.base}/api/settings`)).json()).includes(AZURE_KEY), `${seen.keyLeaks} leaks`);
     const credit = await page.textContent('#map .leaflet-control-attribution');
     check('Azure credit shows clean text, once', credit.includes('©2026 TomTom') && credit.split('TomTom').length === 2 && !credit.includes('<a'), credit);
     check('code inside the credit does not run', !(await page.evaluate(() => window.HACKED)));
@@ -286,6 +323,8 @@ function fakeInternet(ctx, { github = null } = {}) {
     await page.waitForTimeout(500);
     const shownKeys = () => page.$$eval('.provider-key', (els) => els.filter((e) => !e.classList.contains('hidden')).map((e) => e.dataset.provider).join());
     check('only the Azure key box is shown', (await shownKeys()) === 'azure', await shownKeys());
+    check('saved Azure key is shown as hidden, not filled in', (await page.inputValue('#azureMapsKey')) === ''
+      && (await page.textContent('#azure-key-status')).includes('saved'));
     await page.selectOption('#mapProvider', 'mapbox');
     check('switching provider shows its key box', (await shownKeys()) === 'mapbox');
     await page.waitForTimeout(800);
@@ -379,6 +418,7 @@ function fakeInternet(ctx, { github = null } = {}) {
   } finally {
     await browser.close();
     for (const s of servers) { s.proc.kill(); fs.rmSync(s.state, { recursive: true, force: true }); }
+    azure.close();
     fs.rmSync(tmp, { recursive: true, force: true });
   }
   const failed = results.filter((r) => !r.ok).length;

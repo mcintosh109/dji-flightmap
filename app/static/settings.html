@@ -63,7 +63,11 @@
           <div class="secret">
             <input id="azureMapsKey" data-key="azureMapsKey" type="password" spellcheck="false" placeholder="Primary key from your Azure Maps account">
             <button type="button" class="chip show-btn" data-for="azureMapsKey">Show</button>
+            <button type="button" class="chip hidden" id="azure-remove">Remove saved key</button>
+            <input type="checkbox" class="hidden" data-key="removeAzureMapsKey" id="removeAzureMapsKey">
           </div>
+          <p class="help key-status" id="azure-key-status"></p>
+          <p class="help">🔒 This key stays on your server: the map fetches Azure pictures through the server, so the key is never sent to your browser.</p>
           <p class="help">In the <a href="https://portal.azure.com/#create/Microsoft.Maps" target="_blank" rel="noopener">Azure portal</a>, create an <b>Azure Maps Account</b>, then open it and go to <b>Settings → Authentication</b> and copy the <b>Primary Key</b>.</p>
         </div>
 

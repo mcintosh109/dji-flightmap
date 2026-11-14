@@ -321,6 +321,101 @@ class LivePlans(unittest.TestCase):
         self.assertEqual(status, 400)
 
 
+class FakeAzure:
+    """A pretend Azure Maps on a local port, for the server to talk to."""
+
+    def __init__(self, key):
+        import http.server
+        import threading
+        self.key, self.seen = key, []
+        outer = self
+
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def do_GET(self):
+                from urllib.parse import parse_qs, urlparse
+                u = urlparse(self.path)
+                q = parse_qs(u.query)
+                outer.seen.append((u.path, q.get('subscription-key', [''])[0]))
+                if q.get('subscription-key', [''])[0] != outer.key:
+                    self.send_response(401)
+                    self.end_headers()
+                    self.wfile.write(b'bad key ' + q.get('subscription-key', [''])[0].encode())
+                    return
+                if u.path == '/map/attribution':
+                    body = json.dumps({'copyrights': ['<a x="1">&copy;2026 TomTom</a>', '<a>&copy;2026 TomTom</a>',
+                                                      '<script>alert(1)</script>Vexcel']}).encode()
+                    ctype = 'application/json'
+                else:
+                    body, ctype = b'\x89PNG fake tile', 'image/png'
+                self.send_response(200)
+                self.send_header('Content-Type', ctype)
+                self.end_headers()
+                self.wfile.write(body)
+
+            def log_message(self, *args):
+                pass
+
+        self.server = http.server.ThreadingHTTPServer(('127.0.0.1', 0), Handler)
+        self.url = f'http://127.0.0.1:{self.server.server_address[1]}'
+        threading.Thread(target=self.server.serve_forever, daemon=True).start()
+
+    def stop(self):
+        self.server.shutdown()
+
+
+class LiveAzureKey(unittest.TestCase):
+    """The Azure Maps key stays on the server; pictures and credits come through it."""
+    KEY = 'SECRET-AZURE-KEY-123'
+
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = tempfile.mkdtemp(prefix='flightmap-test-')
+        os.makedirs(os.path.join(cls.tmp, 'state'))
+        os.makedirs(os.path.join(cls.tmp, 'archive'))
+        cls.azure = FakeAzure(cls.KEY)
+        cls.srv = LiveServer(os.path.join(cls.tmp, 'archive'), os.path.join(cls.tmp, 'state'), AZURE_MAPS_URL=cls.azure.url)
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.srv.stop()
+        cls.azure.stop()
+        shutil.rmtree(cls.tmp, ignore_errors=True)
+
+    def test_key_never_sent_to_the_browser(self):
+        self.srv.put_settings({'mapProvider': 'azure', 'azureMapsKey': self.KEY})
+        for path in ('/api/settings', '/api/flights'):
+            self.assertNotIn(self.KEY.encode(), self.srv.request(path)[2])
+        self.assertTrue(self.srv.json('/api/settings')['settings']['azureMapsKeySet'])
+
+    def test_tiles_and_credits_through_the_server(self):
+        self.srv.put_settings({'azureMapsKey': self.KEY})
+        status, headers, body = self.srv.request('/tiles/azure/microsoft.imagery/15/9650/12318.png')
+        self.assertEqual((status, body), (200, b'\x89PNG fake tile'))
+        self.assertIn('max-age', headers.get('Cache-Control', ''))
+        self.assertIn(('/map/tile', self.KEY), self.azure.seen)
+        credits = self.srv.json('/api/azure-credits?tileset=microsoft.base.road&zoom=15&bounds=-74.0,40.7,-73.9,40.8')
+        self.assertEqual(credits['copyrights'], ['\u00a92026 TomTom', 'Vexcel'])   # text only, once each
+
+    def test_bad_requests_refused(self):
+        for path in ('/tiles/azure/evil.example/1/0/0.png', '/tiles/azure/microsoft.imagery/2/9/0.png',
+                     '/tiles/azure/microsoft.imagery/1/0/0.jpg', '/api/azure-credits?tileset=microsoft.imagery&zoom=3&bounds=x'):
+            self.assertEqual(self.srv.request(path)[0], 400, path)
+
+    def test_empty_box_keeps_key_and_remove_deletes_it(self):
+        self.srv.put_settings({'azureMapsKey': self.KEY})
+        self.srv.put_settings({'units': 'metric', 'azureMapsKey': ''})
+        self.assertTrue(self.srv.json('/api/settings')['settings']['azureMapsKeySet'])
+        self.srv.put_settings({'removeAzureMapsKey': True})
+        self.assertFalse(self.srv.json('/api/settings')['settings']['azureMapsKeySet'])
+        self.assertEqual(self.srv.request('/tiles/azure/microsoft.imagery/1/0/0.png')[0], 404)
+
+    def test_wrong_key_error_not_passed_on(self):
+        self.srv.put_settings({'azureMapsKey': 'WRONG-KEY'})
+        status, _, body = self.srv.request('/tiles/azure/microsoft.imagery/1/0/0.png')
+        self.assertEqual(status, 502)
+        self.assertNotIn(b'WRONG-KEY', body)
+
+
 class LiveMigration(unittest.TestCase):
     """Settings saved by versions before 1.5.0 used one 'mapStyle'."""
 

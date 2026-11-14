@@ -32,6 +32,18 @@ function fillForm(values) {
   }
   fillProviderList(values);
   showProviderFields(values.mapProvider);
+  showKeyStatus();
+}
+
+// "A key is saved (hidden)" / "will be removed" under the Azure key box.
+function showKeyStatus() {
+  const box = $('#azureMapsKey');
+  const remove = $('#removeAzureMapsKey').checked;
+  const isSaved = !!saved?.azureMapsKeySet;
+  box.placeholder = isSaved && !remove ? 'A key is saved (hidden). Type a new one to replace it.' : 'Primary key from your Azure Maps account';
+  $('#azure-remove').classList.toggle('hidden', !isSaved || remove);
+  $('#azure-key-status').textContent = remove ? 'The saved key will be removed when you press Save.'
+    : isSaved ? '✓ A key is saved on the server.' : 'No key saved yet.';
 }
 
 function readForm() {
@@ -43,6 +55,8 @@ function readForm() {
     else if ('number' in el.dataset) out[key] = el.value === '' ? NaN : Math.round(Number(el.value));
     else out[key] = el.value.trim();
   }
+  // The Azure key itself is never sent to this page; only whether one is saved.
+  out.azureMapsKeySet = !!saved?.azureMapsKeySet && !out.removeAzureMapsKey;
   out.aircraftNames = {};
   for (const input of $$('[data-serial]')) {
     if (input.value.trim()) out.aircraftNames[input.dataset.serial] = input.value.trim();
@@ -249,6 +263,14 @@ async function start() {
     const next = { ...defaults };
     for (const key of KEEP_ON_RESET) next[key] = current[key];
     fillForm(next);
+    updatePreview();
+    updateSaveBar();
+  });
+  $('#azure-remove').addEventListener('click', () => {
+    $('#removeAzureMapsKey').checked = true;
+    $('#azureMapsKey').value = '';
+    showKeyStatus();
+    fillProviderList(readForm());
     updatePreview();
     updateSaveBar();
   });

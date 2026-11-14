@@ -239,13 +239,27 @@ Paste it on the settings page, pick one of that company's styles, and check
 that the preview says **Preview loaded ✓** before pressing **Save**.
 
 The keys are saved in `/var/lib/dji-flightmap/settings.json` inside the
-container, a file only the map service can read. The browser still has to
-send the key to the map company to fetch the pictures; that's how these keys
-are designed to work. So use a *public* key (Mapbox `pk.`), never a secret
-one. For Azure Maps, use a separate Azure Maps account just for this map,
-turn the login page on, and keep the budget alert, because anyone who can
-open the map can see the key. If a key ever leaks, make a new one (Azure:
-**Regenerate**) and paste it into the settings page.
+container, a file only the map service can read.
+
+**The Azure Maps key never leaves the server.** The map asks *your server*
+for Azure pictures and copyright credits, and the server asks Azure over
+HTTPS with the key. The settings page only shows *"A key is saved"*: you can
+replace or remove it, but the page can't read it back.
+
+```
+ browser ──"map picture 15/9650/12318"──▶ your map server ──HTTPS + key──▶ Azure Maps
+ browser ◀──────── picture ────────────── your map server ◀─── picture ───
+```
+
+(The one time the key crosses your network is when you paste it into the
+settings page and press Save, until the map page itself uses HTTPS.)
+
+The CARTO, Mapbox and MapTiler keys still go to the browser, because their
+terms don't allow passing their maps through another server. Use a *public*
+key for them (Mapbox `pk.`), never a secret one.
+
+For Azure Maps, keep the budget alert anyway. If a key ever leaks, make a new
+one (Azure: **Regenerate**) and paste it into the settings page.
 
 ---
 
