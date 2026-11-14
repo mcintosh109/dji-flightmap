@@ -10,10 +10,13 @@ most bugs in this project were found by testing, not by reading.
 
 ## 1. Version and notes (`app/version.json`)
 
-- Raise `version` ([semantic versioning](https://semver.org)):
-  - bug fix only → last number (1.5.0 → 1.5.1)
-  - new feature or visible change → middle number (1.5.0 → 1.6.0), last number back to 0
-  - something that needs the owner to do a manual step → first number
+- Raise `version` (MAJOR.MINOR.PATCH, based on [semantic versioning](https://semver.org)),
+  using **the owner's rule**:
+  - bug fix only → last number (2.0.0 → 2.0.1)
+  - an improvement to something the app already does → middle number (2.0.1 → 2.1.0), last number back to 0
+  - **a whole new function** (like the flight planner was, in 2.0.0), or something that
+    needs the owner to do a manual step → first number (2.1.0 → 3.0.0), the others back to 0
+  - If unsure which, ask the owner before releasing.
 - Set `released` to today's date (`YYYY-MM-DD`).
 - Replace `notes` with 2–6 short lines in **plain English, from the owner's
   point of view** ("Flight paths are easier to see on satellite maps"), not code

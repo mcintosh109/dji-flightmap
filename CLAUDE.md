@@ -65,6 +65,9 @@ Inside the container: settings in `/var/lib/dji-flightmap/settings.json`
 ## Making a change
 
 Use the **release** skill (`.claude/skills/release/SKILL.md`) for every change.
+Version numbers follow the owner's rule: a **whole new function** raises the
+first number (the flight planner made it 2.0.0); improvements raise the middle
+one; bug fixes the last one.
 In short: raise the version in `app/version.json` and write plain-English
 notes, update the README, run `FLIGHTMAP_ALLOW_SYSTEM_TEST=1 bash tests/run-all.sh`,
 commit, push to `main` (the owner works directly on main), then tell the owner:
