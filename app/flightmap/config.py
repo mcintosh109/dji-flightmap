@@ -24,6 +24,10 @@ SETTINGS_FILE = os.path.join(STATE_DIR, "settings.json")
 # Where Azure Maps is reached (only changed by the tests, to use a fake one).
 AZURE_MAPS_URL = os.environ.get("AZURE_MAPS_URL", "https://atlas.microsoft.com").rstrip("/")
 PLANS_FILE = os.path.join(STATE_DIR, "plans.json")
+# Where places (shops, schools, parks...) come from: the free OpenStreetMap
+# Overpass API. Another Overpass server can be used if this one is busy;
+# the tests point it at a fake one.
+OVERPASS_URL = os.environ.get("OVERPASS_URL", "https://overpass-api.de/api/interpreter")
 # The version number and "what's new" list live in app/version.json, so the
 # web page can compare them with the newest copy on GitHub.
 try:

@@ -70,9 +70,9 @@ another third-party library is ever bundled, add its notice there.
 | Path | What |
 |---|---|
 | `app/server.py` | Python, standard library only. Entry point: the `Handler` class (every web address) and start-up. |
-| `app/flightmap/` | One module per job: `config` (env + paths), `flightlogs` (read one log), `library` (all flights), `settings`, `plans`, `auth` (login), `azure` (key-hiding proxy). Modules read the environment at import, so tests set env vars first and re-import. |
+| `app/flightmap/` | One module per job: `config` (env + paths), `flightlogs` (read one log), `library` (all flights), `settings`, `plans`, `auth` (login), `azure` (key-hiding proxy), `places` (OpenStreetMap places). Modules read the environment at import, so tests set env vars first and re-import. |
 | `app/version.json` | Version number + "what's new" notes. The page compares it with GitHub to show the update notice. |
-| `app/static/` | Classic scripts sharing globals, loaded in this order by `index.html`: `common.js` (helpers), `updates.js`, `maps.js` (providers/layers), `app.js` (state, formatting, map, icons), `layers.js`, `overview.js` (sidebar + all flights), `flight.js` (open flight + replay), `update-notice.js`, `main.js` (refresh + start), `planner.js`. Each file wires its own buttons at the bottom. Also `settings.*`, `login.html` (self-contained), `style.css`, `vendor/leaflet` (1.9.4). |
+| `app/static/` | Classic scripts sharing globals, loaded in this order by `index.html`: `common.js` (helpers), `updates.js`, `maps.js` (providers/layers), `app.js` (state, formatting, map, icons), `layers.js`, `places.js` (shops/schools/parks layer), `overview.js` (sidebar + all flights), `flight.js` (open flight + replay), `update-notice.js`, `main.js` (refresh + start), `planner.js`. Each file wires its own buttons at the bottom. Also `settings.*`, `login.html` (self-contained), `style.css`, `vendor/leaflet` (1.9.4). |
 | `deploy/` | `setup-truenas-mount.sh`, `create-ct.sh` (host), `install.sh` (in container), `update-ct.sh` + `restore-ct.sh` + `ct-backup.sh` (host), `set-login.sh` (container). |
 | `tests/` | `run-all.sh` runs everything (privacy, syntax + ruff/shellcheck when installed, server, browser, update scripts). See `tests/README.md`. |
 
@@ -162,5 +162,13 @@ owner confirms it works**, release it with a tag (`git tag -a vX.Y.Z` +
   `LICENSE` and `NOTICE`). Before every push: `git fetch origin`, look at
   `git log HEAD..origin/main`, and `git rebase origin/main`. Never force-push
   over their commits, and keep their wording.
+- **Places** (2.4.0): from OpenStreetMap's Overpass API, through the server
+  (`/api/places?x0=&x1=&y0=&y1=`, zoom-15 tile numbers, at most 30). One
+  Overpass question at a time, per-tile memory cache for a week; a cut-off
+  answer (>= 4000 places) is never cached. Azure was ruled out: its new
+  Search 2026-01-01 has **no POI search**, only the superseded v1 does.
+  Shown from zoom 16, names from 17, in a pane under the flight paths;
+  `#map.planning` makes them click-through. Never call it a no-fly map.
+  Tests use `OVERPASS_URL` to point at a fake.
 - Old installs had an `update-ct.sh` that could not download its own
   replacement; the current one does `git pull` and restarts itself.

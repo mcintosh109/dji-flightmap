@@ -154,11 +154,36 @@ Open the address the script printed, for example `http://192.168.1.50:8080`.
   Keyboard: **Space** = play/pause, **← →** = skip, **F** = follow, **Esc** = close.
 - Top-right: the **layers button** (Road, Satellite, Dark, Terrain, each
   with a small picture of your area, plus **Details** for road and place names
-  on satellite), ft/mph ↔ m/km/h, and show everything.
+  on satellite, and **Places**), ft/mph ↔ m/km/h, and show everything.
 - Top of the left panel: ⚙ opens **Settings**, ↻ checks TrueNAS for new
   flights right away, and the door icon signs you out (when the login is on).
 
 When the dock adds new flights, they show up within about a minute.
+
+### Places: what is around you
+
+To help you get your bearings, the map can show shops, restaurants,
+schools, parks, hospitals, petrol stations, hotels, airports and more, each
+with a coloured icon. Turn it on or off with **Places** in the layers panel
+(it starts on, and your choice is remembered in that browser).
+
+- Places appear when you **zoom in** (about street level). Further out there
+  would be thousands, so the layers panel says "Zoom in closer to see places".
+- Zoom in one more step and the **names** appear under the icons.
+- Click an icon for its name, address and opening hours (when known), a
+  **Navigate** link, and a link to more details on OpenStreetMap.
+- Places come from **OpenStreetMap** (research: *"OpenStreetMap"*,
+  *"Overpass API"*), the free map made by volunteers. It is very good in
+  towns and can be thin in the countryside. If something is missing, anyone
+  can add it at openstreetmap.org.
+- It works with every map provider, needs no key and costs nothing. The
+  container asks OpenStreetMap once per area and remembers the answer for a
+  week, so looking around the same area again is instant.
+
+> ⚠️ **Places is not a no-fly map.** Airports, heliports, schools, hospitals
+> and stadiums are shown when OpenStreetMap knows them, but the map does not
+> check airspace or local rules. Always check your local laws and
+> regulations before flying.
 
 ---
 
@@ -407,6 +432,14 @@ It shows what it found and asks before changing anything.
 
 ## Troubleshooting
 
+**Places don't show up**
+
+- Zoom in further: places only appear at about street level.
+- Open the layers panel: the line under **Places** says what is going on
+  (for example "OpenStreetMap is busy": it is a free, shared service; move
+  the map again in a minute).
+- The container needs internet access to reach `overpass-api.de`.
+
 **The page says "No flight logs found yet"**
 
 Check that the Proxmox host can see the files:
@@ -480,6 +513,7 @@ PORT=8080                   # web page port
 SCAN_SECONDS=30             # starting value; change it on the settings page
 CACHE_FILE=/var/lib/dji-flightmap/summaries.json
 SESSION_DAYS=30             # starting value; change it on the settings page
+OVERPASS_URL=...            # optional: another OpenStreetMap Overpass server for Places
 AUTH_USER=...               # added by set-login.sh
 AUTH_PASSWORD_HASH=...      # added by set-login.sh
 ```
@@ -510,6 +544,8 @@ pct exec 105 -- systemctl restart dji-flightmap
 | `app/static/common.js` | Tiny helpers every page shares | |
 | `app/static/app.js` | What the map scripts share: the page's state, number formatting, the map and its icons | *"leafletjs"* |
 | `app/static/layers.js` | The layers button (Road / Satellite / Dark / Terrain) | |
+| `app/static/places.js` | Shops, schools, parks… on the map, drawn only for the area on screen | *"Leaflet divIcon"*, *"map tiles"* |
+| `app/flightmap/places.py` | Asks OpenStreetMap for places, sorts them into kinds and remembers them for a week | *"Overpass API"*, *"Overpass QL"* |
 | `app/static/overview.js` | The sidebar lists and the overview of all flights | *"leaflet polyline"* |
 | `app/static/flight.js` | One open flight: its path, the details panel, the replay | *"requestAnimationFrame"* |
 | `app/static/update-notice.js` | The version number, update notice and Updates window | |

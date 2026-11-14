@@ -499,6 +499,177 @@ class LiveAzureKey(unittest.TestCase):
         self.assertNotIn(b'WRONG-KEY', body)
 
 
+class FakeOverpass:
+    """A pretend OpenStreetMap Overpass API: answers with made-up places in
+    the middle of whatever box it is asked about."""
+
+    def __init__(self):
+        import http.server
+        import re
+        import threading
+        from urllib.parse import parse_qs
+        self.queries, self.agents = [], []
+        self.status = 200          # set to 429 to play "too busy"
+        self.extra = 0             # add this many extra shops (to test "too many")
+        outer = self
+
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def do_POST(self):
+                length = int(self.headers.get('Content-Length') or 0)
+                query = parse_qs(self.rfile.read(length).decode())['data'][0]
+                outer.queries.append(query)
+                outer.agents.append(self.headers.get('User-Agent', ''))
+                if outer.status != 200:
+                    self.send_response(outer.status)
+                    self.send_header('Content-Length', '0')
+                    self.end_headers()
+                    return
+                s, w, n, e = map(float, re.search(r'\[bbox:([^\]]+)\]', query).group(1).split(','))
+                lat, lon = (s + n) / 2, (w + e) / 2
+                elements = [
+                    {'type': 'node', 'id': 1, 'lat': lat, 'lon': lon,
+                     'tags': {'name': 'Joe\'s <b>Cafe</b>', 'amenity': 'cafe', 'addr:housenumber': '12',
+                              'addr:street': 'Main St', 'opening_hours': 'Mo-Fr 07:00-15:00'}},
+                    {'type': 'way', 'id': 2, 'center': {'lat': lat + 0.0005, 'lon': lon},
+                     'tags': {'name': 'Hillside School', 'amenity': 'school'}},
+                    {'type': 'node', 'id': 3, 'lat': lat, 'lon': lon + 0.0005,
+                     'tags': {'name': 'County Heliport', 'aeroway': 'heliport'}},
+                    {'type': 'node', 'id': 4, 'lat': lat, 'lon': lon, 'tags': {'amenity': 'cafe'}},        # no name
+                    {'type': 'node', 'id': 5, 'lat': lat, 'lon': lon, 'tags': {'name': 'Bench', 'amenity': 'bench'}},
+                    {'type': 'node', 'id': 6, 'lat': n + 1, 'lon': e + 1, 'tags': {'name': 'Far away', 'shop': 'yes'}},
+                ] + [{'type': 'node', 'id': 100 + i, 'lat': lat, 'lon': lon, 'tags': {'name': f'Shop {i}', 'shop': 'yes'}}
+                     for i in range(outer.extra)]
+                body = json.dumps({'elements': elements}).encode()
+                self.send_response(200)
+                self.send_header('Content-Type', 'application/json')
+                self.send_header('Content-Length', str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def log_message(self, *args):
+                pass
+
+        self.server = http.server.ThreadingHTTPServer(('127.0.0.1', 0), Handler)
+        self.url = f'http://127.0.0.1:{self.server.server_address[1]}/api/interpreter'
+        threading.Thread(target=self.server.serve_forever, daemon=True).start()
+
+    def stop(self):
+        self.server.shutdown()
+
+
+class PlacesRules(unittest.TestCase):
+    """Sorting OpenStreetMap places into kinds, and the map squares."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = tempfile.mkdtemp(prefix='flightmap-test-')
+        load_server(cls.tmp)
+        cls.places = importlib.import_module('flightmap.places')
+
+    @classmethod
+    def tearDownClass(cls):
+        shutil.rmtree(cls.tmp, ignore_errors=True)
+
+    def test_kinds(self):
+        c = self.places.classify
+        self.assertEqual(c({'amenity': 'fast_food'}), ('food', 'Fast food'))
+        self.assertEqual(c({'shop': 'car_repair'}), ('car', 'Car repair'))   # not just "shop"
+        self.assertEqual(c({'shop': 'bakery'}), ('shop', 'Bakery'))
+        self.assertEqual(c({'aeroway': 'aerodrome'}), ('air', 'Aerodrome'))
+        self.assertEqual(c({'leisure': 'park'}), ('park', 'Park'))
+        self.assertEqual(c({'office': 'yes'}), ('work', 'Business'))
+        self.assertIsNone(c({'amenity': 'bench'}))
+        self.assertIsNone(c({'highway': 'residential'}))
+
+    def test_squares_round_trip(self):
+        x, y = self.places.tile_of(40.7812, -73.9665)          # Central Park
+        s, w, n, e = self.places.tile_bounds(x, y)
+        self.assertTrue(s <= 40.7812 <= n and w <= -73.9665 <= e)
+        self.assertEqual(self.places.tile_of((s + n) / 2, (w + e) / 2), (x, y))
+
+    def test_range_checks(self):
+        pr = self.places.parse_range
+        self.assertEqual(pr({'x0': ['1'], 'x1': ['2'], 'y0': ['3'], 'y1': ['4']}), (1, 2, 3, 4))
+        for bad in ({'x0': ['2'], 'x1': ['1'], 'y0': ['3'], 'y1': ['4']},     # backwards
+                    {'x0': ['0'], 'x1': ['99'], 'y0': ['0'], 'y1': ['0']},    # far too many squares
+                    {'x0': ['-1'], 'x1': ['1'], 'y0': ['0'], 'y1': ['0']},
+                    {'x0': ['0'], 'x1': ['40000'], 'y0': ['0'], 'y1': ['0']},
+                    {'x0': ['a'], 'x1': ['1'], 'y0': ['0'], 'y1': ['0']}, {}):
+            self.assertIsNone(pr(bad), bad)
+
+
+class LivePlaces(unittest.TestCase):
+    """Places come from OpenStreetMap through our server, and are remembered."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = tempfile.mkdtemp(prefix='flightmap-test-')
+        os.makedirs(os.path.join(cls.tmp, 'state'))
+        os.makedirs(os.path.join(cls.tmp, 'archive'))
+        cls.osm = FakeOverpass()
+        cls.srv = LiveServer(os.path.join(cls.tmp, 'archive'), os.path.join(cls.tmp, 'state'), OVERPASS_URL=cls.osm.url)
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.srv.stop()
+        cls.osm.stop()
+        shutil.rmtree(cls.tmp, ignore_errors=True)
+
+    def test_places_sorted_and_remembered(self):
+        before = len(self.osm.queries)
+        got = self.srv.json('/api/places?x0=9650&x1=9651&y0=12317&y1=12317')
+        self.assertEqual(len(self.osm.queries), before + 1, 'two squares, one question to OpenStreetMap')
+        names = {p['name']: p for p in got['places']}
+        self.assertEqual(set(names), {"Joe's <b>Cafe</b>", 'Hillside School', 'County Heliport'})
+        cafe = names["Joe's <b>Cafe</b>"]
+        self.assertEqual((cafe['kind'], cafe['label'], cafe['addr'], cafe['hours']),
+                         ('food', 'Cafe', '12 Main St', 'Mo-Fr 07:00-15:00'))
+        self.assertEqual(names['Hillside School']['id'], 'w2')
+        self.assertEqual(names['County Heliport']['kind'], 'air')
+        self.assertFalse(got['truncated'])
+        self.assertIn('dji-flightmap/', self.osm.agents[-1])
+        query = self.osm.queries[-1]
+        self.assertIn('[out:json]', query)
+        self.assertIn('nwr["name"]["shop"];', query)
+        # Asked again (also as part of a bigger area): nothing new goes to OpenStreetMap
+        # for the squares it already knows.
+        again = self.srv.json('/api/places?x0=9650&x1=9651&y0=12317&y1=12317')
+        self.assertEqual(again['places'], got['places'])
+        self.assertEqual(len(self.osm.queries), before + 1)
+        self.srv.json('/api/places?x0=9650&x1=9652&y0=12317&y1=12317')
+        self.assertEqual(len(self.osm.queries), before + 2)
+        bbox = query[query.index('[bbox:') + 6:query.index(']', query.index('[bbox:'))]
+        new_bbox = self.osm.queries[-1][self.osm.queries[-1].index('[bbox:') + 6:]
+        self.assertNotEqual(bbox, new_bbox.split(']')[0], 'only the new square is asked about')
+
+    def test_bad_areas_refused(self):
+        for q in ('', 'x0=1&x1=0&y0=0&y1=0', 'x0=0&x1=50&y0=0&y1=50', 'x0=a&x1=1&y0=1&y1=1'):
+            self.assertEqual(self.srv.request('/api/places?' + q)[0], 400, q)
+
+    def test_busy_openstreetmap(self):
+        self.osm.status = 429
+        try:
+            status, _, body = self.srv.request('/api/places?x0=9660&x1=9660&y0=12320&y1=12320')
+        finally:
+            self.osm.status = 200
+        self.assertEqual(status, 503)
+        self.assertTrue(json.loads(body)['busy'])
+        # Not remembered as "nothing here": asking again works.
+        got = self.srv.json('/api/places?x0=9660&x1=9660&y0=12320&y1=12320')
+        self.assertEqual(len(got['places']), 3)
+
+    def test_too_many_places_not_remembered(self):
+        self.osm.extra = 4000
+        try:
+            first = self.srv.json('/api/places?x0=9670&x1=9670&y0=12320&y1=12320')
+            self.assertTrue(first['truncated'])
+            before = len(self.osm.queries)
+            self.srv.json('/api/places?x0=9670&x1=9670&y0=12320&y1=12320')
+            self.assertEqual(len(self.osm.queries), before + 1, 'a cut-off answer must be asked again')
+        finally:
+            self.osm.extra = 0
+
+
 class LiveMigration(unittest.TestCase):
     """Settings saved by versions before 1.5.0 used one 'mapStyle'."""
 

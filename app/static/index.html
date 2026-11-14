@@ -68,6 +68,12 @@
           <input type="checkbox" id="layer-details">
           <span>Details <small>(roads and names on satellite)</small></span>
         </label>
+        <label class="check layer-details">
+          <input type="checkbox" id="layer-places">
+          <span>Places <small>(shops, schools, parks… when zoomed in)</small></span>
+        </label>
+        <p id="places-status" class="places-status" aria-live="polite"></p>
+        <p class="layers-foot">Places come from OpenStreetMap. This is not a no-fly map: check your local rules before flying.</p>
         <p id="layers-foot" class="layers-foot"></p>
       </div>
     </div>
@@ -188,6 +194,7 @@
   <script src="maps.js"></script>
   <script src="app.js"></script>
   <script src="layers.js"></script>
+  <script src="places.js"></script>
   <script src="overview.js"></script>
   <script src="flight.js"></script>
   <script src="update-notice.js"></script>

@@ -19,6 +19,7 @@ rest lives in the flightmap/ folder, one file per job:
   plans.py       saved flight plans
   auth.py        the optional login
   azure.py       Azure Maps through this server (keeps the key private)
+  places.py      shops, schools, parks... from OpenStreetMap
 
 Settings are read from environment variables (see deploy/dji-flightmap.env):
   DATA_DIR      folder that holds the flight logs     (default: /srv/dji-logs)
@@ -46,6 +47,9 @@ Web addresses it answers:
                         one Azure Maps picture, fetched by this server with
                         the saved key (the key never goes to the browser)
   /api/azure-credits    Azure's copyright line for the area on screen
+  /api/places?x0=&x1=&y0=&y1=
+                        places (shops, schools, parks...) in those map
+                        squares, from OpenStreetMap (see flightmap/places.py)
   /api/plans            GET: saved flight plans
   /api/plans/<id>       PUT: save a plan (id "new" makes one), DELETE: remove it
   /login.html           the login page (only used when a login is set)
@@ -80,6 +84,7 @@ from flightmap.azure import AZURE_TILESETS, azure_request, html_to_text
 from flightmap.config import (APP_VERSION, AUTH_ENABLED, AUTH_PASSWORD_HASH, AUTH_USER, DATA_DIR, HOST, PORT,
                               STATIC_DIR, VERSION_INFO, log)
 from flightmap.library import FlightLibrary
+from flightmap.places import PlacesError, parse_range, places_in
 from flightmap.plans import MAX_PLANS, PLAN_ID_RE, PLANS_LOCK, clean_plan, load_plans, save_plans
 from flightmap.settings import (DEFAULT_SETTINGS, SERVER_ONLY_KEYS, clean_settings, current_settings,
                                 load_settings, public_settings, save_settings)
@@ -199,6 +204,8 @@ class Handler(SimpleHTTPRequestHandler):
             return self.azure_tile(path)
         if path == "/api/azure-credits":
             return self.azure_credits()
+        if path == "/api/places":
+            return self.places()
         if path == "/api/plans":
             with PLANS_LOCK:
                 plans = [dict(p, id=k) for k, p in load_plans().items()]
@@ -254,6 +261,20 @@ class Handler(SimpleHTTPRequestHandler):
             if text and text not in credits:
                 credits.append(text[:200])
         return self.send_json({"copyrights": credits})
+
+    # ---- places from OpenStreetMap ------------------------------------------
+    def places(self):
+        squares = parse_range(parse_qs(urlparse(self.path).query))
+        if squares is None:
+            return self.send_json({"error": "bad or too large map area"}, 400)
+        try:
+            answer = places_in(*squares)
+        except PlacesError as err:
+            log(f"Places: {err}")
+            if err.busy:
+                return self.send_json({"error": "OpenStreetMap is busy, try again in a minute", "busy": True}, 503)
+            return self.send_json({"error": "could not get places from OpenStreetMap"}, 502)
+        return self.send_json(answer)
 
     def send_raw(self, status, ctype, body):
         self.send_response(status)

@@ -9,6 +9,7 @@
     maps.js           map providers and layers
     app.js            (this file) state, formatting, the map, icons
     layers.js         the layers button (Road / Satellite / Dark / Terrain)
+    places.js         shops, schools, parks... on the map (OpenStreetMap)
     overview.js       the sidebar lists and the overview of all flights
     flight.js         one open flight: path, details panel, replay
     update-notice.js  the version number, update notice and Updates window

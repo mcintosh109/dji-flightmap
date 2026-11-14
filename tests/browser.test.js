@@ -84,6 +84,32 @@ async function startFakeAzure() {
   return { base: `http://127.0.0.1:${port}`, got, close: () => server.close() };
 }
 
+// A fake OpenStreetMap (Overpass API) for OUR SERVER to ask about places.
+// It puts a cafe, a school and a heliport in the middle of the box it is asked about.
+async function startFakeOverpass() {
+  const http = require('http');
+  const port = await freePort();
+  const got = { queries: 0 };
+  const server = http.createServer((req, res) => {
+    let body = '';
+    req.on('data', (c) => { body += c; });
+    req.on('end', () => {
+      got.queries++;
+      const query = new URLSearchParams(body).get('data') || '';
+      const [s, w, n, e] = (query.match(/\[bbox:([^\]]+)\]/) || [0, '0,0,0,0'])[1].split(',').map(Number);
+      const lat = (s + n) / 2, lon = (w + e) / 2;
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ elements: [
+        { type: 'node', id: 1, lat, lon, tags: { name: 'Corner Cafe', amenity: 'cafe', 'addr:housenumber': '1', 'addr:street': 'Main St' } },
+        { type: 'way', id: 2, center: { lat: lat + 0.0004, lon }, tags: { name: 'Hillside School', amenity: 'school' } },
+        { type: 'node', id: 3, lat, lon: lon + 0.0006, tags: { name: 'County Heliport', aeroway: 'heliport' } },
+        { type: 'node', id: 4, lat: lat - 0.0004, lon, tags: { name: '<img src=x onerror="window.HACKED=3">Evil shop', shop: 'yes' } },
+      ] }));
+    });
+  }).listen(port, '127.0.0.1');
+  return { url: `http://127.0.0.1:${port}/api/interpreter`, got, close: () => server.close() };
+}
+
 // A made-up 16-day forecast in Open-Meteo's format: cold (3 °C), strong wind
 // up high (12 m/s at 120 m), sunrise 06:45, sunset 17:15 every day.
 function fakeForecast() {
@@ -153,7 +179,8 @@ function fakeInternet(ctx, { github = null } = {}) {
   const archive = path.join(tmp, 'archive');
   const expect = JSON.parse(execFileSync(process.env.PYTHON || 'python3', [path.join(__dirname, 'fixtures.py'), archive]).toString());
   const azure = await startFakeAzure();
-  const app = await startServer(archive, { AZURE_MAPS_URL: azure.base });
+  const osm = await startFakeOverpass();
+  const app = await startServer(archive, { AZURE_MAPS_URL: azure.base, OVERPASS_URL: osm.url });
   const browser = await chromium.launch();
   const servers = [app];
   try {
@@ -197,6 +224,37 @@ function fakeInternet(ctx, { github = null } = {}) {
     check('fallback is labelled "free map"', (await page.textContent('.layer-opt[data-layer=terrain]')).includes('free map'));
     await page.mouse.click(800, 600);
     check('clicking the map closes the panel', await page.isHidden('#layers-panel'));
+
+    // ---- 2b. places (shops, schools...) ----
+    console.log('Places');
+    await page.evaluate(() => map.setView([40.7812, -73.9665], 14));
+    await page.waitForTimeout(800);
+    check('zoomed out: no places drawn', (await page.locator('.place-icon').count()) === 0);
+    check('zoomed out: says to zoom in', (await page.textContent('#places-status')).includes('Zoom in'), await page.textContent('#places-status'));
+    await page.evaluate(() => map.setView([40.7812, -73.9665], 17));
+    await page.waitForTimeout(1500);
+    const placeCount = await page.locator('.place-icon').count();
+    check('zoomed in: places are drawn', placeCount >= 4, `${placeCount} places, status: ${await page.textContent('#places-status')}`);
+    check('names show under the icons', await page.isVisible('.place-icon .nm >> text=Corner Cafe'));
+    check('OpenStreetMap is credited', (await page.textContent('#map .leaflet-control-attribution')).includes('OpenStreetMap'));
+    check('a name with code in it does not run', !(await page.evaluate(() => window.HACKED)));
+    await page.locator('.place-air').first().click();
+    await page.waitForTimeout(300);
+    const pop = await page.textContent('.leaflet-popup-content');
+    check('heliport popup warns about airspace', pop.includes('County Heliport') && pop.includes('does not check airspace'), pop);
+    const asked = osm.got.queries;
+    await page.evaluate(() => { map.closePopup(); map.panBy([5, 5]); });
+    await page.waitForTimeout(800);
+    check('moving a little does not ask OpenStreetMap again', osm.got.queries === asked, `${osm.got.queries - asked} more`);
+    await page.click('#btn-layers');
+    await page.uncheck('#layer-places');
+    await page.waitForTimeout(300);
+    check('Places can be turned off', (await page.locator('.place-icon').count()) === 0);
+    check('...and that is remembered', (await page.evaluate(() => localStorage.getItem('mapPlaces'))) === '0');
+    await page.check('#layer-places');
+    await page.waitForTimeout(600);
+    check('...and on again', (await page.locator('.place-icon').count()) >= 4);
+    await page.mouse.click(800, 600);
 
     // ---- 3. replay ----
     console.log('Replay');
@@ -440,6 +498,7 @@ function fakeInternet(ctx, { github = null } = {}) {
     await browser.close();
     for (const s of servers) { s.proc.kill(); fs.rmSync(s.state, { recursive: true, force: true }); }
     azure.close();
+    osm.close();
     fs.rmSync(tmp, { recursive: true, force: true });
   }
   const failed = results.filter((r) => !r.ok).length;
