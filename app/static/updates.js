@@ -3,8 +3,9 @@
   Update checks, shared by the map page and the settings page.
 
   The server tells us which version is installed. We download the newest
-  app/version.json from GitHub and compare the two numbers. The answer is
-  remembered for 6 hours so GitHub isn't asked on every page load.
+  app/version.json from GitHub and compare the two numbers. The map asks
+  GitHub each time it opens; while it stays open, the answer is remembered
+  for 6 hours so GitHub isn't asked every minute.
 */
 window.Updates = (() => {
   const COMMAND = 'cd /root/dji-flightmap && bash deploy/update-ct.sh';

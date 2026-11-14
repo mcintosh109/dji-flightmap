@@ -249,7 +249,8 @@ Tailscale or WireGuard.
 The map tells you when there's a new version: a green **Update available**
 notice appears in the sidebar. Click it, or the version number next to
 "Flight Map", to see what's new and the update command with a **Copy**
-button. (The check asks GitHub at most every 6 hours; it can be turned off
+button. (The map asks GitHub each time it opens, and every 6 hours while it
+stays open; it can be turned off
 in Settings → Updates.)
 
 On the Proxmox host, one command does everything:

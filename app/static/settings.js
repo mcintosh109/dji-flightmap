@@ -213,7 +213,7 @@ async function start() {
   $('#upd-cmd').textContent = Updates.COMMAND;
   Updates.wireCopyButton($('#upd-copy'));
   $('#upd-check').addEventListener('click', () => showUpdates(true));
-  showUpdates();
+  showUpdates(true);   // always ask GitHub when the settings page opens
   if (location.hash === '#updates') $('#updates').scrollIntoView();
   await centrePreview();
   updatePreview();

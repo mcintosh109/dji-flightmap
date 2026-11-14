@@ -144,12 +144,21 @@ function fakeInternet(ctx, { github = null } = {}) {
     await page.selectOption('#p-speed', '1');
     await page.evaluate(() => seekTime(30));
     await page.click('#p-play');
-    const samples = [];
-    for (let i = 0; i < 6; i++) {
-      samples.push(await page.evaluate(() => { const ll = state.droneMarker.getLatLng(); return `${ll.lat.toFixed(8)},${ll.lng.toFixed(8)}`; }));
-      await page.waitForTimeout(16);
-    }
-    check('drone glides between recorded points', new Set(samples).size >= 3, `${new Set(samples).size} positions`);
+    // Record the drone's position on 12 screen frames, inside the browser,
+    // and count how many track points it passed. Gliding = many different
+    // positions per track point; hopping = one position per track point.
+    const glide = await page.evaluate(() => new Promise((resolve) => {
+      const spots = new Set(); const startIdx = state.idx; let frames = 0;
+      const step = () => {
+        const ll = state.droneMarker.getLatLng();
+        spots.add(`${ll.lat.toFixed(8)},${ll.lng.toFixed(8)}`);
+        if (++frames < 12) requestAnimationFrame(step);
+        else resolve({ spots: spots.size, points: state.idx - startIdx });
+      };
+      requestAnimationFrame(step);
+    }));
+    check('drone glides between recorded points', glide.spots > glide.points + 2,
+      `${glide.spots} positions while passing ${glide.points} track points`);
     const t1 = await page.evaluate(() => state.trail.getLatLngs().length);
     await page.waitForTimeout(800);
     const t2 = await page.evaluate(() => state.trail.getLatLngs().length);
@@ -210,7 +219,17 @@ function fakeInternet(ctx, { github = null } = {}) {
       await page.goto(app.base, { waitUntil: 'networkidle' });
       await page.waitForTimeout(500);
       check(label, (await page.isVisible('#update-banner')) === wantBanner);
-      if (!checkOn) check('checking off: GitHub not contacted', seen.github === 0, `${seen.github} requests`);
+      if (checkOn) {
+        const before = seen.github;
+        await page.reload({ waitUntil: 'networkidle' });
+        await page.waitForTimeout(400);
+        check(`${label}: checks again on every page load`, seen.github === before + 1, `${before} -> ${seen.github}`);
+      }
+      if (!checkOn) {
+        await page.reload({ waitUntil: 'networkidle' });
+        await page.waitForTimeout(400);
+        check('checking off: GitHub not contacted, even after reloading', seen.github === 0, `${seen.github} requests`);
+      }
       if (wantBanner) {
         await page.click('#update-banner');
         check('update window shows the command', (await page.textContent('#upd-cmd')).includes('deploy/update-ct.sh'));
@@ -237,19 +256,24 @@ function fakeInternet(ctx, { github = null } = {}) {
       { env: { ...process.env, PYTHONDONTWRITEBYTECODE: '1' } }).toString().trim();
     const locked = await startServer(archive, { AUTH_USER: 'tester', AUTH_PASSWORD_HASH: hash });
     servers.push(locked);
+    // (The locked server has its own settings, with update checks on by default.)
     ctx = await browser.newContext();
-    await fakeInternet(ctx);
+    seen = await fakeInternet(ctx, { github: { version: '99.0.0', notes: [] } });
     page = await ctx.newPage();
     await page.goto(locked.base);
     check('signed out: sent to the login page', page.url().endsWith('/login.html'));
+    await page.waitForTimeout(400);
+    check('login page does not check for updates', seen.github === 0, `${seen.github} requests`);
     await page.fill('#username', 'tester'); await page.fill('#password', 'wrong-password');
     await page.click('button[type=submit]');
     await page.waitForLoadState('networkidle');
     check('wrong password is refused', (await page.textContent('#error')).includes('Wrong'));
+    check('no update check after a wrong password', seen.github === 0, `${seen.github} requests`);
     await page.fill('#username', 'tester'); await page.fill('#password', 'testpass123');
     await page.click('button[type=submit]');
     await page.waitForTimeout(800);
     check('right password opens the map', page.url() === `${locked.base}/` && await page.isVisible('#btn-logout'));
+    check('update check runs right after signing in', seen.github === 1, `${seen.github} requests`);
     await page.click('#btn-logout');
     await page.waitForTimeout(500);
     check('sign out returns to the login page', page.url().endsWith('/login.html'));

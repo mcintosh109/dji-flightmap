@@ -398,14 +398,16 @@ function fitAll() {
 // ---------- loading data ----------
 // ---------- updates ----------
 // Installed version comes from the server; the newest from GitHub (updates.js).
-async function checkForUpdates({ force = false } = {}) {
+// force: the "Check again" button (checks even if automatic checks are off).
+// fresh: ask GitHub now instead of using the remembered answer (page load).
+async function checkForUpdates({ force = false, fresh = false } = {}) {
   const app = state.lastData?.app;
   if (!app) return;
   $('#btn-version').textContent = `v${app.version}`;
   if (!state.settings.checkUpdates && !force) {
     state.update = { installed: app.version, disabled: true };
   } else if (app.updateUrl) {
-    state.update = await Updates.check(app.version, app.updateUrl, { force });
+    state.update = await Updates.check(app.version, app.updateUrl, { force: force || fresh });
   }
   const u = state.update || {};
   $('#update-banner').classList.toggle('hidden', !u.available);
@@ -495,7 +497,10 @@ async function refresh({ force = false, rescan = false } = {}) {
       else fitAll();
     }
     if (data.scanning) setTimeout(refresh, 2000);  // first scan still running
-    checkForUpdates();   // uses a 6-hour memory, so this rarely contacts GitHub
+    // Every time the page opens: ask GitHub. After that, while the page stays
+    // open, the answer is remembered for 6 hours (this runs every minute).
+    checkForUpdates({ fresh: !state.checkedOnLoad });
+    state.checkedOnLoad = true;
   } catch (err) {
     $('#status').textContent = `Can't reach the server (${err.message})`;
   } finally {

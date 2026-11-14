@@ -1,9 +1,9 @@
 {
-  "version": "1.6.0",
+  "version": "1.6.1",
   "released": "2026-11-14",
   "updateUrl": "https://raw.githubusercontent.com/mcintosh109/dji-flightmap/main/app/version.json",
   "notes": [
-    "When a flight is open, only its path is shown; the others come back when you close it (switch in Settings \u2192 Display)",
-    "Behind the scenes: automatic tests for the map, settings, login and safe updates, so future changes are checked before you get them"
+    "The map checks for updates every time it opens or is reloaded, so new versions show up straight away",
+    "Turning update checks off in Settings still stops them completely"
   ]
 }
