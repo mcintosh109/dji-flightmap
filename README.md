@@ -438,7 +438,18 @@ It shows what it found and asks before changing anything.
 - Open the layers panel: the line under **Places** says what is going on
   (for example "OpenStreetMap is busy": it is a free, shared service; move
   the map again in a minute).
-- The container needs internet access to reach `overpass-api.de`.
+- "0 places here" means OpenStreetMap doesn't know any places there yet.
+  Check on [openstreetmap.org](https://www.openstreetmap.org): anyone can
+  add a missing shop.
+- The container needs internet access to reach `overpass-api.de` (or the
+  spare server, `overpass.private.coffee`). See what the map server says
+  (run on the Proxmox host):
+
+```bash
+pct exec $(pct list | awk '/dji-flightmap/{print $1; exit}') -- journalctl -u dji-flightmap -n 40 --no-pager
+```
+
+  Lines starting with `Places:` say how many places came back, or why not.
 
 **The page says "No flight logs found yet"**
 
@@ -513,7 +524,7 @@ PORT=8080                   # web page port
 SCAN_SECONDS=30             # starting value; change it on the settings page
 CACHE_FILE=/var/lib/dji-flightmap/summaries.json
 SESSION_DAYS=30             # starting value; change it on the settings page
-OVERPASS_URL=...            # optional: another OpenStreetMap Overpass server for Places
+OVERPASS_URL=...            # optional: OpenStreetMap Overpass servers for Places, comma-separated
 AUTH_USER=...               # added by set-login.sh
 AUTH_PASSWORD_HASH=...      # added by set-login.sh
 ```

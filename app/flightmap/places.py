@@ -15,6 +15,9 @@ How it works:
     any browser, doesn't ask OpenStreetMap at all.
   - Only one question goes to Overpass at a time: it is a free service
     shared by everyone, and it asks users to be gentle with it.
+  - Public Overpass servers are often busy. If one doesn't answer within
+    25 seconds (or says it is busy), the next one is tried, and the one
+    that worked is asked first next time.
 
 Each place sent to the browser is small:
     {"id": "n123", "lat": .., "lon": .., "name": "Joe's Cafe",
@@ -29,14 +32,14 @@ import urllib.request
 from collections import OrderedDict
 from urllib.parse import urlencode
 
-from .config import APP_VERSION, OVERPASS_URL, log
+from .config import APP_VERSION, OVERPASS_URLS, log
 
 GRID_ZOOM = 15                 # size of the squares (zoom 15 tiles: ~1.2 km at the equator)
 MAX_TILES = 30                 # most squares in one request (a big screen at zoom 16)
 MAX_PLACES = 4000              # most places Overpass sends in one answer
 CACHE_SECONDS = 7 * 24 * 3600  # remember a square for a week
 CACHE_TILES = 3000             # remember at most this many squares (oldest forgotten first)
-TIMEOUT = 40                   # seconds to wait for Overpass
+TIMEOUT = 25                   # seconds to wait for one Overpass server
 
 # What to show, as OpenStreetMap tags (research: "OpenStreetMap map features").
 # kind -> (tag, values or None for "any value", label used when no better one)
@@ -67,6 +70,7 @@ KINDS = [
 _cache = OrderedDict()          # (x, y) -> (expires, [places]); oldest first
 _cache_lock = threading.Lock()
 _fetch_lock = threading.Lock()  # one question to Overpass at a time
+_servers = list(OVERPASS_URLS)  # the one that answered last time comes first
 
 
 class PlacesError(Exception):
@@ -97,17 +101,23 @@ def tile_of(lat, lon, z=GRID_ZOOM):
 
 # ---- the question to Overpass ----------------------------------------------------------
 def _query(south, west, north, east):
-    """Overpass QL: every named place of the kinds above, in this box."""
+    """Overpass QL: every named place of the kinds above, in this box.
+
+    First everything with a name in the box is collected once (".named"),
+    then that set is filtered by kind. Filtering a ready set is much
+    quicker for the server than searching the box again for every kind.
+    """
     lines = []
     for _, tag, values in KINDS:
         if values:
             pattern = "|".join(sorted(values))
-            lines.append(f'  nwr["name"]["{tag}"~"^({pattern})$"];')
+            lines.append(f'  nwr.named["{tag}"~"^({pattern})$"];')
         else:
-            lines.append(f'  nwr["name"]["{tag}"];')
+            lines.append(f'  nwr.named["{tag}"];')
     unique = list(dict.fromkeys(lines))   # same line twice is pointless
     box = f"{south:.6f},{west:.6f},{north:.6f},{east:.6f}"
-    return f"[out:json][timeout:25][bbox:{box}];\n(\n" + "\n".join(unique) + f"\n);\nout center {MAX_PLACES};"
+    return (f"[out:json][timeout:{TIMEOUT}][bbox:{box}];\nnwr[\"name\"]->.named;\n(\n"
+            + "\n".join(unique) + f"\n);\nout center {MAX_PLACES};")
 
 
 def _label(value):
@@ -155,9 +165,27 @@ def _place(element):
 
 
 def _ask_overpass(south, west, north, east):
-    """Send the question. Returns the list of elements."""
+    """Ask each Overpass server in turn until one answers. Returns the elements."""
     data = urlencode({"data": _query(south, west, north, east)}).encode()
-    req = urllib.request.Request(OVERPASS_URL, data=data, headers={
+    problems = []
+    for url in list(_servers):
+        try:
+            elements = _ask_one(url, data)
+        except PlacesError as err:
+            log(f"Places: {err} ({url})")
+            problems.append(err)
+            continue
+        if _servers[0] != url:          # remember the one that worked
+            _servers.remove(url)
+            _servers.insert(0, url)
+        return elements
+    busy = all(p.busy for p in problems)
+    raise PlacesError("no OpenStreetMap (Overpass) server answered: " + "; ".join(map(str, problems)), busy=busy)
+
+
+def _ask_one(url, data):
+    """Send the question to one Overpass server. Returns the list of elements."""
+    req = urllib.request.Request(url, data=data, headers={
         "User-Agent": f"dji-flightmap/{APP_VERSION} (self-hosted flight log map)",
         "Content-Type": "application/x-www-form-urlencoded",
     })
@@ -167,13 +195,19 @@ def _ask_overpass(south, west, north, east):
     except urllib.error.HTTPError as err:
         # 429 = "too many questions", 504 = "too busy right now".
         busy = err.code in (429, 503, 504)
-        raise PlacesError(f"OpenStreetMap (Overpass) answered {err.code}", busy=busy) from None
-    except (urllib.error.URLError, OSError, ValueError) as err:
-        raise PlacesError(f"could not reach OpenStreetMap (Overpass): {err}") from None
+        raise PlacesError(f"answered {err.code}", busy=busy) from None
+    except TimeoutError:
+        raise PlacesError(f"no answer within {TIMEOUT} s", busy=True) from None
+    except urllib.error.URLError as err:
+        if isinstance(err.reason, TimeoutError):
+            raise PlacesError(f"no answer within {TIMEOUT} s", busy=True) from None
+        raise PlacesError(f"could not connect: {err.reason}") from None
+    except (OSError, ValueError) as err:
+        raise PlacesError(f"could not read the answer: {err}") from None
     if not isinstance(answer, dict) or not isinstance(answer.get("elements"), list):
-        raise PlacesError("OpenStreetMap (Overpass) sent something unexpected")
+        raise PlacesError("sent something unexpected")
     if "remark" in answer and "runtime error" in str(answer["remark"]):
-        raise PlacesError("OpenStreetMap (Overpass) is too busy right now", busy=True)
+        raise PlacesError("too busy right now (it gave up on the question)", busy=True)
     return answer["elements"]
 
 

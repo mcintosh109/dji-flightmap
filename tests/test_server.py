@@ -607,12 +607,15 @@ class LivePlaces(unittest.TestCase):
         os.makedirs(os.path.join(cls.tmp, 'state'))
         os.makedirs(os.path.join(cls.tmp, 'archive'))
         cls.osm = FakeOverpass()
-        cls.srv = LiveServer(os.path.join(cls.tmp, 'archive'), os.path.join(cls.tmp, 'state'), OVERPASS_URL=cls.osm.url)
+        cls.spare = FakeOverpass()     # the second server, tried when the first is busy
+        cls.srv = LiveServer(os.path.join(cls.tmp, 'archive'), os.path.join(cls.tmp, 'state'),
+                             OVERPASS_URL=f'{cls.osm.url},{cls.spare.url}')
 
     @classmethod
     def tearDownClass(cls):
         cls.srv.stop()
         cls.osm.stop()
+        cls.spare.stop()
         shutil.rmtree(cls.tmp, ignore_errors=True)
 
     def test_places_sorted_and_remembered(self):
@@ -630,7 +633,8 @@ class LivePlaces(unittest.TestCase):
         self.assertIn('dji-flightmap/', self.osm.agents[-1])
         query = self.osm.queries[-1]
         self.assertIn('[out:json]', query)
-        self.assertIn('nwr["name"]["shop"];', query)
+        self.assertIn('nwr["name"]->.named;', query)
+        self.assertIn('nwr.named["shop"];', query)
         # Asked again (also as part of a bigger area): nothing new goes to OpenStreetMap
         # for the squares it already knows.
         again = self.srv.json('/api/places?x0=9650&x1=9651&y0=12317&y1=12317')
@@ -646,12 +650,29 @@ class LivePlaces(unittest.TestCase):
         for q in ('', 'x0=1&x1=0&y0=0&y1=0', 'x0=0&x1=50&y0=0&y1=50', 'x0=a&x1=1&y0=1&y1=1'):
             self.assertEqual(self.srv.request('/api/places?' + q)[0], 400, q)
 
+    def test_second_server_used_when_first_is_busy(self):
+        self.osm.status = 504
+        first, spare = len(self.osm.queries), len(self.spare.queries)
+        try:
+            got = self.srv.json('/api/places?x0=9680&x1=9680&y0=12320&y1=12320')
+            self.assertEqual(len(got['places']), 3)
+            self.assertEqual((len(self.osm.queries) - first, len(self.spare.queries) - spare), (1, 1))
+            # The one that worked is asked first next time.
+            self.srv.json('/api/places?x0=9681&x1=9681&y0=12320&y1=12320')
+            self.assertEqual((len(self.osm.queries) - first, len(self.spare.queries) - spare), (1, 2))
+        finally:
+            self.osm.status = 200
+            # Make the first server busy for a moment so the order goes back.
+            self.spare.status = 429
+            self.srv.json('/api/places?x0=9682&x1=9682&y0=12320&y1=12320')
+            self.spare.status = 200
+
     def test_busy_openstreetmap(self):
-        self.osm.status = 429
+        self.osm.status = self.spare.status = 429
         try:
             status, _, body = self.srv.request('/api/places?x0=9660&x1=9660&y0=12320&y1=12320')
         finally:
-            self.osm.status = 200
+            self.osm.status = self.spare.status = 200
         self.assertEqual(status, 503)
         self.assertTrue(json.loads(body)['busy'])
         # Not remembered as "nothing here": asking again works.
@@ -659,7 +680,7 @@ class LivePlaces(unittest.TestCase):
         self.assertEqual(len(got['places']), 3)
 
     def test_too_many_places_not_remembered(self):
-        self.osm.extra = 4000
+        self.osm.extra = self.spare.extra = 4000
         try:
             first = self.srv.json('/api/places?x0=9670&x1=9670&y0=12320&y1=12320')
             self.assertTrue(first['truncated'])
@@ -667,7 +688,7 @@ class LivePlaces(unittest.TestCase):
             self.srv.json('/api/places?x0=9670&x1=9670&y0=12320&y1=12320')
             self.assertEqual(len(self.osm.queries), before + 1, 'a cut-off answer must be asked again')
         finally:
-            self.osm.extra = 0
+            self.osm.extra = self.spare.extra = 0
 
 
 class LiveMigration(unittest.TestCase):

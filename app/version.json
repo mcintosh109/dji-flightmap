@@ -1,11 +1,10 @@
 {
-  "version": "2.4.0",
+  "version": "2.4.1",
   "released": "2026-11-14",
   "repo": "mcintosh109/dji-flightmap",
   "notes": [
-    "New: Places on the map: shops, restaurants, schools, parks, hospitals, airports and more, to help you get your bearings",
-    "Turn Places on or off in the layers panel; they appear when you zoom in, with names one step closer",
-    "Click a place for its address, opening hours and a Navigate link",
-    "Places come from OpenStreetMap (free, no key). It is not a no-fly map: always check your local rules"
+    "Places load more reliably: if OpenStreetMap's main server is slow or busy, a second server is tried",
+    "Places are asked for in a quicker way",
+    "The layers panel now says when OpenStreetMap is slow, instead of showing \"Loading places\u2026\" forever"
   ]
 }

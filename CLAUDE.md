@@ -170,5 +170,12 @@ owner confirms it works**, release it with a tag (`git tag -a vX.Y.Z` +
   Shown from zoom 16, names from 17, in a pane under the flight paths;
   `#map.planning` makes them click-through. Never call it a no-fly map.
   Tests use `OVERPASS_URL` to point at a fake.
+- **Overpass is often slow** (2.4.1): 2.4.0 stuck on "Loading places…" on the
+  owner's server. Now: two servers (overpass-api.de, then
+  overpass.private.coffee; `OVERPASS_URL` takes a comma list), 25 s each,
+  the one that worked is asked first; the query collects named objects once
+  (`nwr["name"]->.named`) and filters that set; the browser says "still
+  waiting" after 8 s and gives up at 70 s. overpass-api.de wants a custom
+  User-Agent (a stock one gets 406). Claude's sandbox can't reach Overpass.
 - Old installs had an `update-ct.sh` that could not download its own
   replacement; the current one does `git pull` and restarts itself.

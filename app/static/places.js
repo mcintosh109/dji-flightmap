@@ -136,12 +136,17 @@ const Places = (() => {
     }
     busy = true;
     setStatus('Loading places…');
+    // OpenStreetMap's free servers can be slow: say so, and give up after
+    // 70 s (the container tries two servers, 25 s each).
+    const slow = setTimeout(() => setStatus('Still waiting for OpenStreetMap (its free servers can be slow)…'), 8000);
+    const stop = new AbortController();
+    const giveUp = setTimeout(() => stop.abort(), 70000);
     try {
-      const res = await fetch(`api/places?x0=${box.x0}&x1=${box.x1}&y0=${box.y0}&y1=${box.y1}`);
+      const res = await fetch(`api/places?x0=${box.x0}&x1=${box.x1}&y0=${box.y0}&y1=${box.y1}`, { signal: stop.signal });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setStatus(data.busy ? 'OpenStreetMap is busy. Places will load when you move the map again.'
-          : 'Could not load places from OpenStreetMap.');
+        setStatus(data.busy ? 'OpenStreetMap is busy right now. Places will load when you move the map again in a minute.'
+          : 'Could not reach OpenStreetMap from the map server. See Troubleshooting in the README.');
         return;
       }
       for (const p of data.places || []) known.set(p.id, p);
@@ -153,8 +158,11 @@ const Places = (() => {
       const count = on && map.getZoom() >= MIN_ZOOM ? draw() : 0;
       setStatus(data.truncated ? 'There are too many places here to show them all. Zoom in to see more.' : `${count} places here`);
     } catch {
-      setStatus('Could not load places (is the map server running?)');
+      setStatus(stop.signal.aborted ? 'OpenStreetMap did not answer. Move the map again in a minute to retry.'
+        : 'Could not load places (is the map server running?)');
     } finally {
+      clearTimeout(slow);
+      clearTimeout(giveUp);
       busy = false;
       if (again) { again = false; update(); }
     }

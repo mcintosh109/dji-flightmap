@@ -25,9 +25,12 @@ SETTINGS_FILE = os.path.join(STATE_DIR, "settings.json")
 AZURE_MAPS_URL = os.environ.get("AZURE_MAPS_URL", "https://atlas.microsoft.com").rstrip("/")
 PLANS_FILE = os.path.join(STATE_DIR, "plans.json")
 # Where places (shops, schools, parks...) come from: the free OpenStreetMap
-# Overpass API. Another Overpass server can be used if this one is busy;
-# the tests point it at a fake one.
-OVERPASS_URL = os.environ.get("OVERPASS_URL", "https://overpass-api.de/api/interpreter")
+# Overpass API. These are public servers shared by everyone and can be slow,
+# so if the first doesn't answer, the next is tried. A different list can be
+# given, separated by commas (the tests point it at a fake one).
+OVERPASS_URLS = [u.strip() for u in os.environ.get(
+    "OVERPASS_URL", "https://overpass-api.de/api/interpreter,https://overpass.private.coffee/api/interpreter"
+).split(",") if u.strip()]
 # The version number and "what's new" list live in app/version.json, so the
 # web page can compare them with the newest copy on GitHub.
 try:
