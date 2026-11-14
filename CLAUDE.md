@@ -85,13 +85,17 @@ first number (the flight planner made it 2.0.0); improvements raise the middle
 one; bug fixes the last one.
 In short: raise the version in `app/version.json` and write plain-English
 notes, update the README, run `FLIGHTMAP_ALLOW_SYSTEM_TEST=1 bash tests/run-all.sh`,
-commit, push to `main` (the owner works directly on main), then tell the owner:
+commit, push to `main`. That makes it a **test version**: nothing offers it
+yet. Ask the owner to try it:
 
 ```bash
-cd /root/dji-flightmap && bash deploy/update-ct.sh
+cd /root/dji-flightmap && bash deploy/update-ct.sh --test
 ```
 
-…and to press **Ctrl+Shift+R** on the map page afterwards.
+…and to press **Ctrl+Shift+R** on the map page afterwards. **Only when the
+owner confirms it works**, release it with a tag (`git tag -a vX.Y.Z` +
+`git push origin vX.Y.Z`). The update notice and a normal
+`bash deploy/update-ct.sh` only see tagged versions.
 
 ## Lessons learned (don't relearn these)
 
@@ -144,5 +148,13 @@ cd /root/dji-flightmap && bash deploy/update-ct.sh
   decimals so 400 ft (121.92 m) round-trips exactly. Weather is Open-Meteo,
   called from the browser (free, no key); its hourly times are the location's
   local time, matched against the planned time as text.
+- **Releases** (2.3.0): a version is released when a `vX.Y.Z` tag exists.
+  `updates.js` asks `api.github.com/repos/<repo>/tags` (60 requests/hour per
+  address without a login; a 403 there means "busy", not broken) and reads
+  the notes from `raw.githubusercontent.com/<repo>/vX.Y.Z/app/version.json`.
+  `update-ct.sh` checks out the newest tag's scripts (TOOL) and installs the
+  chosen ref with `git archive` (INSTALL), so `--version` can go back without
+  leaving old scripts on the host. First tag is v2.3.0: never tag anything
+  older, its `update-ct.sh` can't run from a detached checkout.
 - Old installs had an `update-ct.sh` that could not download its own
   replacement; the current one does `git pull` and restarts itself.

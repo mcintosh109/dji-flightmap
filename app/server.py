@@ -278,7 +278,7 @@ class Handler(SimpleHTTPRequestHandler):
         """The flight list, plus what the page needs to know about the app."""
         return {
             "auth": AUTH_ENABLED,
-            "app": {"version": APP_VERSION, "updateUrl": VERSION_INFO.get("updateUrl", "")},
+            "app": {"version": APP_VERSION, "repo": VERSION_INFO.get("repo", "")},
             "settings": public_settings(),
             **LIBRARY.listing(),
         }
@@ -295,7 +295,7 @@ class Handler(SimpleHTTPRequestHandler):
                 "version": APP_VERSION,
                 "released": VERSION_INFO.get("released", ""),
                 "notes": VERSION_INFO.get("notes", []),
-                "updateUrl": VERSION_INFO.get("updateUrl", ""),
+                "repo": VERSION_INFO.get("repo", ""),
                 "auth": AUTH_ENABLED,
                 "user": AUTH_USER if AUTH_ENABLED else "",
                 "dataDir": DATA_DIR,

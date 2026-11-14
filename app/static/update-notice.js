@@ -14,8 +14,8 @@ async function checkForUpdates({ force = false, fresh = false } = {}) {
   $('#btn-version').textContent = `v${app.version}`;
   if (!state.settings.checkUpdates && !force) {
     state.update = { installed: app.version, disabled: true };
-  } else if (app.updateUrl) {
-    state.update = await Updates.check(app.version, app.updateUrl, { force: force || fresh });
+  } else if (app.repo) {
+    state.update = await Updates.check(app.version, app.repo, { force: force || fresh });
   }
   const u = state.update || {};
   $('#update-banner').classList.toggle('hidden', !u.available);
@@ -38,10 +38,14 @@ function fillUpdateDialog() {
     status.innerHTML = `<b>Version ${esc(u.latest)}</b> is available${u.released ? ` (released ${esc(u.released)})` : ''}. You have version ${esc(u.installed)}.`;
     status.className = 'upd-status available';
     notesTitle = `What's new in ${u.latest}`;
+  } else if (u.testing) {
+    status.textContent = u.latest
+      ? `You have version ${u.installed}, a test version that isn't released yet. The newest release is ${u.latest}.`
+      : `You have version ${u.installed}. No version has been released yet.`;
+    status.className = 'upd-status';
   } else if (u.latest) {
-    status.textContent = `You're up to date: version ${u.installed}.`;
+    status.textContent = `You're up to date: version ${u.installed} is the newest release.`;
     status.className = 'upd-status ok';
-    notesTitle = `In this version`;
   } else {
     status.textContent = 'Checking…';
     status.className = 'upd-status';

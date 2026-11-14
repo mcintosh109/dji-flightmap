@@ -163,6 +163,39 @@ echo y | OFFSITE_DIR="$OFF" OFFSITE_NO_MOUNT_CHECK=1 CTID=999 bash "$ROOT/deploy
 check "restore from TrueNAS when this server's backups are gone" grep -q "Done. The map is working" "$LOGS/h.log"
 check "flight plans restored from TrueNAS" cmp -s "$WORK/plans-before.json" /var/lib/dji-flightmap/plans.json
 
+echo "Released versions (a local git repository stands in for GitHub)"
+SEED="$WORK/seed"
+cp -r "$ROOT" "$SEED" && rm -rf "$SEED/.git"
+gitc() { git -C "$SEED" -c user.name=Test -c user.email=user@example.com "$@"; }
+setver() { sed -i "s/\"version\": *\"[^\"]*\"/\"version\": \"$1\"/" "$SEED/app/version.json"; gitc add -A; gitc commit -q -m "version $1"; }
+installed() { sed -n 's/.*"version": *"\([^"]*\)".*/\1/p' /opt/dji-flightmap/app/version.json | head -1; }
+git init -q -b main "$SEED"
+setver 9.0.0; gitc tag v9.0.0          # released
+setver 9.1.0                           # newer work, not released yet
+git clone -q --bare "$SEED" "$WORK/origin.git"
+git clone -q "$WORK/origin.git" "$WORK/host"
+HOSTUP="$WORK/host/deploy/update-ct.sh"
+
+CTID=999 bash "$HOSTUP" >"$LOGS/r1.log" 2>&1
+check "normal update installs the newest RELEASE (9.0.0), not the test version" [ "$(installed)" = 9.0.0 ]
+CTID=999 bash "$HOSTUP" --test >"$LOGS/r2.log" 2>&1
+check "--test installs the unreleased version (9.1.0)" [ "$(installed)" = 9.1.0 ]
+check "--test says it is not released" grep -q "NOT been released" "$LOGS/r2.log"
+check "settings survive switching versions" nickname_kept
+
+gitc tag v9.1.0; setver 9.2.0          # 9.1.0 is now released; 9.2.0 is new test work
+gitc push -q "$WORK/origin.git" main --tags
+CTID=999 bash "$HOSTUP" >"$LOGS/r3.log" 2>&1
+check "after a release, a normal update installs it (9.1.0)" [ "$(installed)" = 9.1.0 ]
+CTID=999 bash "$HOSTUP" --version 9.0.0 >"$LOGS/r4.log" 2>&1
+check "--version goes back to an older release (9.0.0)" [ "$(installed)" = 9.0.0 ]
+check "going back keeps the newest update scripts on the host" [ "$(git -C "$WORK/host" describe --tags)" = v9.1.0 ]
+CTID=999 bash "$HOSTUP" >"$LOGS/r5.log" 2>&1
+check "a normal update still works after going back (9.1.0)" [ "$(installed)" = 9.1.0 ]
+CTID=999 bash "$HOSTUP" --version 7.7.7 >"$LOGS/r6.log" 2>&1; code=$?
+check "an unknown version is refused, with the list of releases" bash -c "[ $code -ne 0 ] && grep -q 'no released version' '$LOGS/r6.log' && grep -q '9.1.0' '$LOGS/r6.log'"
+check "  ...and nothing was changed" [ "$(installed)" = 9.1.0 ]
+
 echo
 echo "$PASSED passed, $FAILED failed"
 [ "$FAILED" -eq 0 ]

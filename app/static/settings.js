@@ -190,7 +190,7 @@ async function showUpdates(force = false) {
   const status = $('#upd-status');
   status.textContent = 'Checking…';
   status.className = 'upd-status';
-  const u = await Updates.check(info.version, info.updateUrl, { force });
+  const u = await Updates.check(info.version, info.repo, { force });
   const installed = `version ${esc(info.version)}${info.released ? ` (released ${esc(info.released)})` : ''}`;
   let notes = info.notes || [], title = 'In your version';
   if (u.error) {
@@ -201,8 +201,13 @@ async function showUpdates(force = false) {
     status.className = 'upd-status available';
     notes = u.notes || [];
     title = `What's new in ${u.latest}`;
+  } else if (u.testing) {
+    status.innerHTML = u.latest
+      ? `You have ${installed}, a test version that isn't released yet. The newest release is ${esc(u.latest)}.`
+      : `You have ${installed}. No version has been released yet.`;
+    status.className = 'upd-status';
   } else {
-    status.innerHTML = `You're up to date: ${installed}.`;
+    status.innerHTML = `You're up to date: ${installed} is the newest release.`;
     status.className = 'upd-status ok';
   }
   $('#upd-notes').innerHTML = notes.length

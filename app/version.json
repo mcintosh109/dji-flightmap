@@ -1,9 +1,11 @@
 {
-  "version": "2.2.2",
+  "version": "2.3.0",
   "released": "2026-11-14",
-  "updateUrl": "https://raw.githubusercontent.com/mcintosh109/dji-flightmap/main/app/version.json",
+  "repo": "mcintosh109/dji-flightmap",
   "notes": [
-    "Azure maps load faster: the server now reuses its connections to Azure instead of opening a new one for every picture",
-    "Areas you've already looked at load almost instantly (pictures are remembered for as long as Azure allows)"
+    "Updates are now only offered once a version has been tried on a real server and marked as released",
+    "New: go back to an earlier release with: bash deploy/update-ct.sh --version 2.3.0",
+    "New: try a version before it is released with: bash deploy/update-ct.sh --test",
+    "The Updates window tells you when you are running a test version"
   ]
 }

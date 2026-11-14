@@ -1,6 +1,6 @@
 ---
 name: release
-description: Ship a finished change to DJI Flight Map - raise the version and write plain-English notes, update the README, run every test (including the privacy check), commit, push, and tell the owner exactly how to update. Use after any change to app/ or deploy/, before saying the work is done.
+description: Ship a finished change to DJI Flight Map - raise the version and write plain-English notes, update the README, run every test (including the privacy check), commit, push it as a TEST version, tell the owner exactly how to try it, and only after they confirm it works mark it RELEASED with a git tag. Use after any change to app/ or deploy/, before saying the work is done.
 ---
 
 # Releasing a change to DJI Flight Map
@@ -43,24 +43,46 @@ part writes to `/opt` and `/etc`.)
 - If a test fails, find out whether the app or the test is wrong. Say which in
   your message to the owner.
 
-## 4. Commit and push
+## 4. Commit and push (this makes it a TEST version)
 
 - The owner works directly on `main`.
 - Commit message: a short title, then what changed and why.
 - Push with `git -c push.negotiate=true push origin main`.
+- **Do not tag yet.** A pushed commit on `main` is a *test version*: the
+  map's update notice does not offer it, and a normal update skips it.
 
-## 5. Tell the owner
+## 5. Tell the owner how to try it
 
 Keep it short and structured:
 
 1. What changed, in plain words (a small table works well).
 2. What was tested, and **what could not be tested** (real map pictures,
    real Proxmox, real Azure). Ask for a screenshot when it matters.
-3. How to update, each command in its own block:
+3. How to try the test version, each command in its own block:
 
 ```bash
-cd /root/dji-flightmap && bash deploy/update-ct.sh
+cd /root/dji-flightmap && bash deploy/update-ct.sh --test
 ```
 
-Then: press **Ctrl+Shift+R** on the map page, and check the version number
-next to "Flight Map" shows the new version.
+Then: press **Ctrl+Shift+R** on the map page, check the version number next
+to "Flight Map" shows the new version, and tell you whether it works.
+
+## 6. Release it, only after the owner says it works
+
+Claude's sandbox can't prove a change works on the real server, so the owner's
+confirmation is the gate.
+
+```bash
+git tag -a v2.3.0 -m "Version 2.3.0" <commit>
+git push origin v2.3.0
+```
+
+- Use the exact version from `app/version.json` at that commit, with a `v`.
+- Tags must go up: never tag a version lower than an existing tag, never move
+  or delete a pushed tag (make a new patch version instead).
+- From this moment the update notice offers it to everyone. Tell the owner it
+  is released; they are already on it, so they need to do nothing.
+- If the owner reports a problem instead: fix it, raise the patch number,
+  and go back to step 3. To get them working again meanwhile:
+  `bash deploy/update-ct.sh --version <last good release>`.
+- Docs-only changes (README, CLAUDE.md, tests) need no version bump or tag.

@@ -118,10 +118,17 @@ function fakeInternet(ctx, { github = null } = {}) {
       return route.continue();
     }
     if (u.hostname === 'atlas.microsoft.com') seen.keyLeaks++;   // the browser must not call Azure directly
-    if (u.hostname === 'raw.githubusercontent.com') {
+    // GitHub: the list of released versions (tags), then one release's notes.
+    const cors = { 'Access-Control-Allow-Origin': '*' };
+    if (u.hostname === 'api.github.com') {
       seen.github++;
-      return github ? route.fulfill({ contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' }, body: JSON.stringify(github) })
-        : route.abort();
+      if (!github) return route.abort();
+      const tags = [{ name: 'v0.0.1' }, { name: `v${github.version}` }, { name: 'nightly' }, { name: 'v999' }];
+      return route.fulfill({ contentType: 'application/json', headers: cors, body: JSON.stringify(tags) });
+    }
+    if (u.hostname === 'raw.githubusercontent.com') {
+      seen.notesFrom = u.pathname;
+      return github ? route.fulfill({ contentType: 'application/json', headers: cors, body: JSON.stringify(github) }) : route.abort();
     }
     if (u.hostname === 'api.open-meteo.com') {
       seen.weather++;
@@ -368,9 +375,23 @@ function fakeInternet(ctx, { github = null } = {}) {
       if (wantBanner) {
         await page.click('#update-banner');
         check('update window shows the command', (await page.textContent('#upd-cmd')).includes('deploy/update-ct.sh'));
+        check('notes come from the released version (its tag), not from main', seen.notesFrom.includes('/v99.0.0/app/version.json'), seen.notesFrom);
+        check('update window shows what is new', (await page.textContent('#upd-notes')).includes('Test note'));
       }
       await ctx.close();
     }
+
+    // Installed version newer than the newest release = a test version.
+    await putSettings(app.base, { checkUpdates: true });
+    ctx = await browser.newContext();
+    await fakeInternet(ctx, { github: { version: '0.5.0', notes: [] } });
+    page = await ctx.newPage();
+    await page.goto(app.base, { waitUntil: 'networkidle' });
+    await page.waitForTimeout(500);
+    check('test version: no update notice', await page.isHidden('#update-banner'));
+    await page.click('#btn-version');
+    check('test version: the window says it is not released yet', /test version.*newest release is 0\.5\.0/.test(await page.textContent('#upd-status')), await page.textContent('#upd-status'));
+    await ctx.close();
 
     // ---- 6. phone layout ----
     console.log('Phone layout');

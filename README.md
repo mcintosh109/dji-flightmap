@@ -301,12 +301,16 @@ Tailscale or WireGuard.
 
 ## Updating later
 
-The map tells you when there's a new version: a green **Update available**
-notice appears in the sidebar. Click it, or the version number next to
-"Flight Map", to see what's new and the update command with a **Copy**
-button. (The map asks GitHub each time it opens, and every 6 hours while it
-stays open; it can be turned off
-in Settings → Updates.)
+The map tells you when there's a new **released** version: a green **Update
+available** notice appears in the sidebar. Click it, or the version number
+next to "Flight Map", to see what's new and the update command with a
+**Copy** button. (The map asks GitHub each time it opens, and every 6 hours
+while it stays open; it can be turned off in Settings → Updates.)
+
+**Released and test versions.** New work is first a *test version*. Once it
+has been tried on a real server, it is *released*: marked on GitHub with a
+tag such as `v2.3.0` (research: *"git tag"*). Only released versions are
+offered by the update notice and installed by a normal update.
 
 On the Proxmox host, one command does everything:
 
@@ -319,7 +323,7 @@ cd /root/dji-flightmap && bash deploy/update-ct.sh
 
 What it does:
 
-1. **Downloads** the newest version from GitHub.
+1. **Asks GitHub** which versions exist and picks the newest release.
 2. **Saves** your settings, map keys and login to the Proxmox host, in
    `/root/dji-flightmap-backups/` (root only; the newest 10 are kept).
 3. **Saves the current version**, so the update can be undone.
@@ -330,6 +334,25 @@ What it does:
    error so you can ask for help.
 
 Afterwards, press **Ctrl+Shift+R** in the browser to load the new version.
+
+### Test versions and going back
+
+Try the newest test version (not released yet). Only do this when you want
+to help test a change:
+
+```bash
+cd /root/dji-flightmap && bash deploy/update-ct.sh --test
+```
+
+Go back to an earlier release, for example if a new one misbehaves (your
+settings are kept):
+
+```bash
+cd /root/dji-flightmap && bash deploy/update-ct.sh --version 2.3.0
+```
+
+If you type a version that doesn't exist, it lists the released versions.
+A normal update afterwards brings you back to the newest release.
 
 ### Backups on TrueNAS (recommended)
 
