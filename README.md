@@ -166,12 +166,24 @@ Everything here is saved on the server, so it applies on every device.
 
 | Section | What you can change |
 |---|---|
-| **Map** | Default map style, with a live preview. Free styles: dark, light, street map, satellite (with optional road/place names). With a free key: **Mapbox** and **MapTiler** styles. Or any custom "XYZ" tile address. |
+| **Map** | Default map style, with a live preview. Free styles: dark, light, street map, satellite (with optional road/place names). With a key: **Azure Maps** (Microsoft's replacement for Bing Maps), **Mapbox** and **MapTiler** styles. Or any custom "XYZ" tile address. |
 | **Display** | Default units, flight path colour, replay speed, whether a flight opens at the landing or take-off spot, which app **Navigate** opens (Google Maps, Apple Maps, Waze), faint lines for all flights. |
 | **Flights** | Hide flights shorter than N seconds (quick tests), hide flights without GPS, **nicknames** for each drone. |
 | **Server** | How often to check for new files, how many days you stay signed in. |
 
 **Getting a map key** (optional; the free styles need none):
+
+- **Azure Maps** (road, dark grey, satellite, satellite + roads):
+  1. Sign in to the Azure portal (portal.azure.com).
+  2. Search for **Azure Maps Accounts**, then **Create**. Pick your
+     subscription, a resource group (or make one, e.g. `dji-flightmap`), a
+     name, and the **Gen2** pricing tier.
+  3. When it's created, open it and go to **Settings → Authentication**.
+     Copy the **Primary Key**.
+  4. Recommended: in **Cost Management → Budgets**, add a small monthly
+     budget with an email alert, so you hear about any unexpected use.
+     Azure Maps has a free monthly allowance that personal use normally
+     stays inside.
 
 - **Mapbox**: make a free account at mapbox.com, then go to
   *Account → Access tokens* and copy the **Default public token**
@@ -185,7 +197,11 @@ that the preview says **Preview loaded ✓** before pressing **Save**.
 The keys are saved in `/var/lib/dji-flightmap/settings.json` inside the
 container, a file only the map service can read. The browser still has to
 send the key to the map company to fetch the pictures; that's how these keys
-are designed to work, so use a *public* key (Mapbox `pk.`), never a secret one.
+are designed to work. So use a *public* key (Mapbox `pk.`), never a secret
+one. For Azure Maps, use a separate Azure Maps account just for this map,
+turn the login page on, and keep the budget alert, because anyone who can
+open the map can see the key. If a key ever leaks, make a new one (Azure:
+**Regenerate**) and paste it into the settings page.
 
 ---
 

@@ -10,7 +10,7 @@ const esc = (value) => String(value ?? '').replace(/[&<>"']/g,
 
 // These are kept when you press "Reset to defaults", because they are
 // things you typed in yourself and would be annoying to lose.
-const KEEP_ON_RESET = ['mapboxToken', 'maptilerKey', 'customTileUrl', 'customTileName', 'customAttribution', 'aircraftNames'];
+const KEEP_ON_RESET = ['mapboxToken', 'maptilerKey', 'azureMapsKey', 'customTileUrl', 'customTileName', 'customAttribution', 'aircraftNames'];
 
 let saved = null;      // the values as saved on the server
 let baseline = '';     // the form's contents right after loading/saving
@@ -191,7 +191,7 @@ async function start() {
 
   $('#form').addEventListener('input', (e) => {
     // Typing a key can make a style usable, so refresh the list's notes.
-    if (['mapboxToken', 'maptilerKey', 'customTileUrl', 'customTileName'].includes(e.target.dataset.key)) {
+    if (['mapboxToken', 'maptilerKey', 'azureMapsKey', 'customTileUrl', 'customTileName'].includes(e.target.dataset.key)) {
       fillStyleList(readForm());
     }
     if (e.target.closest('.card') === $('#mapStyle').closest('.card')) updatePreview();

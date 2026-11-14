@@ -140,7 +140,7 @@ function currentStyleId() {
 function applyMapStyle() {
   const s = state.settings;
   const id = currentStyleId();
-  const key = [id, s.mapboxToken, s.maptilerKey, s.customTileUrl, s.customAttribution, s.satelliteLabels].join('|');
+  const key = [id, s.mapboxToken, s.maptilerKey, s.azureMapsKey, s.customTileUrl, s.customAttribution, s.satelliteLabels].join('|');
   if (key !== state.layerKey) {
     if (baseLayer) map.removeLayer(baseLayer);
     baseLayer = MapStyles.build(id, s) || MapStyles.build('carto-dark', s);

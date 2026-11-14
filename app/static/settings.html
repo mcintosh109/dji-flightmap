@@ -62,6 +62,15 @@
           <p class="help">Free at <a href="https://cloud.maptiler.com/account/keys/" target="_blank" rel="noopener">cloud.maptiler.com → API keys</a>.</p>
         </div>
 
+        <div class="field">
+          <label for="azureMapsKey">Azure Maps key <span class="muted">(Microsoft's replacement for Bing Maps)</span></label>
+          <div class="secret">
+            <input id="azureMapsKey" data-key="azureMapsKey" type="password" spellcheck="false" placeholder="Primary key from your Azure Maps account">
+            <button type="button" class="chip show-btn" data-for="azureMapsKey">Show</button>
+          </div>
+          <p class="help">In the <a href="https://portal.azure.com/#create/Microsoft.Maps" target="_blank" rel="noopener">Azure portal</a>, create an <b>Azure Maps Account</b>, then open it and go to <b>Settings → Authentication</b> and copy the <b>Primary Key</b>.</p>
+        </div>
+
         <details class="advanced">
           <summary>Custom map address (advanced)</summary>
           <div class="field">

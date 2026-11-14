@@ -102,6 +102,7 @@ MAP_STYLES = {
     "carto-dark", "carto-light", "osm", "esri-satellite",
     "mapbox-satellite", "mapbox-dark", "mapbox-outdoors",
     "maptiler-hybrid", "maptiler-satellite", "maptiler-streets", "maptiler-outdoor",
+    "azure-road", "azure-dark", "azure-satellite", "azure-hybrid",
     "custom",
 }
 DEFAULT_SETTINGS = {
@@ -110,6 +111,7 @@ DEFAULT_SETTINGS = {
     "satelliteLabels": True,
     "mapboxToken": "",
     "maptilerKey": "",
+    "azureMapsKey": "",
     "customTileUrl": "",
     "customTileName": "Custom map",
     "customAttribution": "",
@@ -169,6 +171,8 @@ def clean_settings(incoming):
          "The Mapbox token can only contain letters, numbers, dots, dashes and underscores.")
     pick("maptilerKey", lambda v: isinstance(v, str) and KEY_RE.match(v.strip()),
          "The MapTiler key can only contain letters, numbers, dots, dashes and underscores.")
+    pick("azureMapsKey", lambda v: isinstance(v, str) and KEY_RE.match(v.strip()),
+         "The Azure Maps key can only contain letters, numbers, dots, dashes and underscores.")
     pick("customTileUrl", lambda v: isinstance(v, str) and (v == "" or (
         len(v) <= 500 and re.match(r"^https?://[^\s<>\"']+$", v)
         and all(part in v for part in ("{z}", "{x}", "{y}")))),
@@ -190,7 +194,7 @@ def clean_settings(incoming):
     pick("scanSeconds", whole(5, 3600), "Check for new files every 5 to 3600 seconds.")
     pick("sessionDays", whole(1, 365), "Stay signed in for 1 to 365 days.")
 
-    for key in ("mapboxToken", "maptilerKey", "customTileName", "customAttribution"):
+    for key in ("mapboxToken", "maptilerKey", "azureMapsKey", "customTileName", "customAttribution"):
         new[key] = new[key].strip()
     new["aircraftNames"] = {k: n.strip() for k, n in new["aircraftNames"].items() if n.strip()}
     return new, problems
