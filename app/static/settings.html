@@ -159,6 +159,29 @@
         </label>
       </section>
 
+      <!-- ================= FLIGHT PLANNER ================= -->
+      <section class="card">
+        <h2>Flight planner</h2>
+        <p class="help">The planner warns you when a route goes past these limits. Check the rules where you fly: in the US, most drone flights must stay at or below 400 ft and within sight.</p>
+        <div class="field inline">
+          <label for="plannerMaxHeight">Height limit</label>
+          <span class="with-unit"><input id="plannerMaxHeight" data-key="plannerMaxHeight" data-number type="number" min="10" max="500" step="1"> metres <span class="conv" data-conv="height" data-for="plannerMaxHeight"></span></span>
+        </div>
+        <div class="field inline">
+          <label for="plannerMaxDistance">Warn when farther from take-off than</label>
+          <span class="with-unit"><input id="plannerMaxDistance" data-key="plannerMaxDistance" data-number type="number" min="50" max="20000" step="10"> metres <span class="conv" data-conv="distance" data-for="plannerMaxDistance"></span></span>
+        </div>
+        <div class="field inline">
+          <label for="plannerReserve">Battery to keep for landing</label>
+          <span class="with-unit"><input id="plannerReserve" data-key="plannerReserve" data-number type="number" min="5" max="60" step="1"> %</span>
+        </div>
+        <div class="field inline">
+          <label for="plannerWindLimit">Wind limit</label>
+          <span class="with-unit"><input id="plannerWindLimit" data-key="plannerWindLimit" data-number type="number" min="3" max="25" step="1"> m/s <span class="conv" data-conv="speed" data-for="plannerWindLimit"></span></span>
+        </div>
+        <p class="help">The Mini 4 Pro is rated for wind up to about 10.7 m/s (24 mph). Weather comes from Open-Meteo (free, no key): the map asks it for the forecast at your take-off point.</p>
+      </section>
+
       <!-- ================= FLIGHTS ================= -->
       <section class="card">
         <h2>Flights</h2>

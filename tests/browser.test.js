@@ -58,9 +58,30 @@ const putSettings = (base, values) => fetch(`${base}/api/settings`, {
   method: 'PUT', headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'flightmap' }, body: JSON.stringify(values),
 });
 
-// Fake internet: coloured squares for map pictures, Azure credits, GitHub version file.
+// A made-up 16-day forecast in Open-Meteo's format: cold (3 °C), strong wind
+// up high (12 m/s at 120 m), sunrise 06:45, sunset 17:15 every day.
+function fakeForecast() {
+  const pad = (n) => String(n).padStart(2, '0');
+  const day = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  const start = new Date(); start.setHours(0, 0, 0, 0);
+  const time = [], days = [];
+  for (let h = 0; h < 16 * 24; h++) { const t = new Date(start.getTime() + h * 3600e3); time.push(`${day(t)}T${pad(t.getHours())}:00`); }
+  for (let d = 0; d < 16; d++) days.push(day(new Date(start.getTime() + d * 86400e3)));
+  const fill = (v) => Array(time.length).fill(v);
+  return {
+    hourly: { time, temperature_2m: fill(3), precipitation_probability: fill(10), weather_code: fill(2),
+      wind_speed_10m: fill(4), wind_direction_10m: fill(315), wind_gusts_10m: fill(8), wind_speed_80m: fill(7), wind_speed_120m: fill(12) },
+    daily: { time: days, sunrise: days.map((d) => `${d}T06:45`), sunset: days.map((d) => `${d}T17:15`) },
+  };
+}
+const localDay = (offsetDays) => {
+  const d = new Date(Date.now() + offsetDays * 86400e3);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+
+// Fake internet: coloured squares for map pictures, Azure credits, GitHub version file, weather.
 function fakeInternet(ctx, { github = null } = {}) {
-  const seen = { tiles: [], github: 0 };
+  const seen = { tiles: [], github: 0, weather: 0 };
   const svg = (c) => `<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256"><rect width="256" height="256" fill="${c}"/></svg>`;
   return ctx.route(/^https?:\/\//, (route) => {
     const u = new URL(route.request().url());
@@ -69,6 +90,10 @@ function fakeInternet(ctx, { github = null } = {}) {
       seen.github++;
       return github ? route.fulfill({ contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' }, body: JSON.stringify(github) })
         : route.abort();
+    }
+    if (u.hostname === 'api.open-meteo.com') {
+      seen.weather++;
+      return route.fulfill({ contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' }, body: JSON.stringify(fakeForecast()) });
     }
     if (u.pathname === '/map/attribution') {
       // Azure really sends HTML like this; the page must show only the text.
@@ -179,6 +204,72 @@ function fakeInternet(ctx, { github = null } = {}) {
     await page.waitForTimeout(300);
     check('closing the flight brings the other paths back', (await visibleLines()) > 0);
     check('no errors on the map page', errors.length === 0, errors.join(' | '));
+    await ctx.close();
+
+    // ---- 3b. flight planner ----
+    console.log('Flight planner');
+    ctx = await browser.newContext({ viewport: { width: 1400, height: 900 } });
+    seen = await fakeInternet(ctx);
+    page = await ctx.newPage();
+    const plannerErrors = [];
+    page.on('pageerror', (e) => plannerErrors.push(e.message));
+    await page.goto(app.base, { waitUntil: 'networkidle' });
+    await page.click('[data-tab=plans]');
+    check('Plans tab is empty at first', (await page.textContent('#plan-list')).includes('No saved plans'));
+    await page.click('#btn-new-plan');
+    check('new plan asks for the take-off point', (await page.textContent('#pl-hint')).includes('take-off'));
+    await page.click('#pl-last-home');
+    await page.waitForTimeout(300);
+    const hBox = await page.locator('.plan-home').boundingBox();
+    const plannerTop = (await page.locator('#planner').boundingBox()).y;
+    check('take-off point is visible above the planner panel', hBox && hBox.y + hBox.height < plannerTop, JSON.stringify({ hBox, plannerTop }));
+    for (const [x, y] of [[650, 120], [1100, 120], [1150, 300], [650, 300]]) { await page.mouse.click(x, y); await page.waitForTimeout(120); }
+    check('clicking the map adds waypoints (4)', (await page.locator('#pl-wps tbody tr').count()) === 4);
+    check('new waypoints start at 200 ft and 18 mph',
+      (await page.inputValue('#pl-wps tr[data-i="0"] input[data-f=alt]')) === '200' && (await page.inputValue('#pl-wps tr[data-i="0"] input[data-f=speed]')) === '18');
+    check('distance and time are worked out', !(await page.textContent('#pl-stats')).includes('–'));
+    const altBox = '#pl-wps tr[data-i="1"] input[data-f=alt]';
+    await page.fill(altBox, '500');
+    await page.press(altBox, 'Tab');
+    await page.waitForTimeout(200);
+    const warns = () => page.$$eval('#pl-warnings li', (els) => els.map((e) => e.innerText).join(' | '));
+    check('warns about 500 ft over the 400 ft limit', /500 ft.*400 ft/.test(await warns()), await warns());
+    const setWhen = async (v) => {
+      await page.fill('#pl-when', v);
+      await page.$eval('#pl-when', (el) => el.dispatchEvent(new Event('change', { bubbles: true })));
+      await page.waitForTimeout(1200);
+    };
+    await setWhen(`${localDay(1)}T15:00`);
+    check('weather is fetched for the planned time', seen.weather === 1 && (await page.locator('#pl-weather .live div').count()) >= 8, `${seen.weather} requests`);
+    check('warns about strong wind up high', (await warns()).includes('Wind up high'), await warns());
+    check('warns about the cold', (await warns()).includes('Cold'), await warns());
+    await setWhen(`${localDay(1)}T21:00`);
+    check('warns about flying after sunset', (await warns()).includes('after sunset'), await warns());
+    await page.fill('#pl-name', 'Test loop');
+    await page.click('#pl-save');
+    await page.waitForTimeout(500);
+    check('plan saves', (await page.textContent('#pl-save-msg')).includes('Saved'));
+    check('plan appears in the Plans tab', (await page.locator('.plan-card').count()) === 1);
+    // Unsaved changes: opening a flight asks first; saying "no" keeps the plan open.
+    await page.mouse.click(900, 330);
+    await page.click('[data-tab=flights]');
+    page.once('dialog', (d) => d.dismiss());
+    await page.locator('.flight').first().click();
+    await page.waitForTimeout(400);
+    check('unsaved plan: asks before closing, and stays open on "no"', await page.isVisible('#planner'));
+    // Reload: the plan is still there, with exact values.
+    page.once('dialog', (d) => d.accept());
+    await page.reload({ waitUntil: 'networkidle' });
+    await page.click('[data-tab=plans]');
+    await page.click('.plan-card');
+    await page.waitForTimeout(400);
+    check('saved plan opens again with its 4 waypoints', (await page.locator('#pl-wps tbody tr').count()) === 4);
+    check('500 ft is still exactly 500 ft', (await page.inputValue(altBox)) === '500');
+    page.once('dialog', (d) => d.accept());
+    await page.click('#pl-delete');
+    await page.waitForTimeout(400);
+    check('plan can be deleted', (await page.locator('.plan-card').count()) === 0 && await page.isHidden('#planner'));
+    check('no errors in the planner', plannerErrors.length === 0, plannerErrors.join(' | '));
     await ctx.close();
 
     // ---- 4. settings page ----

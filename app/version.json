@@ -1,9 +1,13 @@
 {
-  "version": "1.6.1",
+  "version": "1.7.0",
   "released": "2026-11-14",
   "updateUrl": "https://raw.githubusercontent.com/mcintosh109/dji-flightmap/main/app/version.json",
   "notes": [
-    "The map checks for updates every time it opens or is reloaded, so new versions show up straight away",
-    "Turning update checks off in Settings still stops them completely"
+    "New Plans tab: plan a flight by clicking the map (take-off point, then waypoints with height, speed and pause)",
+    "Shows distance, flight time and battery use, based on your own past flights",
+    "Safety warnings: height limit (400 ft), too far to see, low battery at landing, strong wind, rain, cold, after sunset",
+    "Weather for the planned time at the take-off point (free, from Open-Meteo)",
+    "Save plans, open them again, and compare with a past flight",
+    "Planner limits can be changed in Settings \u2192 Flight planner"
   ]
 }

@@ -247,7 +247,8 @@ function rotateMarker(marker, yaw) {
 function fitOptions() {
   const narrow = window.innerWidth <= 760;
   const panel = $('#panel').getBoundingClientRect();
-  const detail = $('#detail');
+  // The bottom panel: flight details or the planner, whichever is open.
+  const detail = [$('#detail'), $('#planner')].find((el) => el && !el.classList.contains('hidden')) || $('#detail');
   const detailH = detail.classList.contains('hidden') ? 0 : detail.getBoundingClientRect().height;
   if (narrow) {
     const bottom = Math.max(detailH, detail.classList.contains('hidden') ? panel.height : 0);
@@ -457,6 +458,7 @@ function applySettings() {
   $('#p-speed').value = String(state.settings.playbackSpeed);
   if (state.detail) { drawSelected(); renderDetail(); setIndex(state.idx); }
   updateOverviewVisibility();
+  if (typeof Planner !== 'undefined') Planner.refresh();
 }
 
 async function refresh({ force = false, rescan = false } = {}) {
@@ -510,6 +512,7 @@ async function refresh({ force = false, rescan = false } = {}) {
 
 // ---------- one flight ----------
 async function selectFlight(id, { fit = true } = {}) {
+  if (state.planning && !Planner.close()) return;   // asks first if the plan isn't saved
   stopPlayback();
   let data;
   try {
@@ -539,7 +542,7 @@ async function selectFlight(id, { fit = true } = {}) {
 // While a flight is open, hide the other aircraft markers and (if the
 // settings page says so) the other flights' paths, so only it is on the map.
 function updateOverviewVisibility() {
-  const open = !!state.detail;
+  const open = !!state.detail || !!state.planning;
   if (open) map.removeLayer(overviewDrones); else overviewDrones.addTo(map);
   if (open && state.settings.focusSelected) map.removeLayer(overviewLines); else overviewLines.addTo(map);
 }
@@ -782,8 +785,7 @@ function tick(now) {
 document.querySelectorAll('.tabs button').forEach((btn) => btn.addEventListener('click', () => {
   state.tab = btn.dataset.tab;
   document.querySelectorAll('.tabs button').forEach((b) => b.classList.toggle('active', b === btn));
-  $('#tab-aircraft').classList.toggle('hidden', state.tab !== 'aircraft');
-  $('#tab-flights').classList.toggle('hidden', state.tab !== 'flights');
+  document.querySelectorAll('#panel .tab-body').forEach((el) => el.classList.toggle('hidden', el.id !== `tab-${state.tab}`));
 }));
 
 $('#search').addEventListener('input', (e) => { state.filter = e.target.value; renderFlights(state.lastData); });

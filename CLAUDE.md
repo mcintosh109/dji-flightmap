@@ -101,5 +101,10 @@ cd /root/dji-flightmap && bash deploy/update-ct.sh
   fake them. Anything about how real maps *look* needs a screenshot from the owner.
 - **Very long heredoc commands can be blocked** by a safety check. Write the
   script to a file in the scratchpad first, then run it.
+- **Flight planner** (`planner.js`, `/api/plans`): heights are metres above
+  take-off, speeds m/s; the page converts to ft/mph. Values are saved with two
+  decimals so 400 ft (121.92 m) round-trips exactly. Weather is Open-Meteo,
+  called from the browser (free, no key); its hourly times are the location's
+  local time, matched against the planned time as text.
 - Old installs had an `update-ct.sh` that could not download its own
   replacement; the current one does `git pull` and restarts itself.

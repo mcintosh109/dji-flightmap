@@ -248,6 +248,79 @@ class LiveFlights(unittest.TestCase):
         self.assertIn(b'colour', body)
 
 
+class LivePlans(unittest.TestCase):
+    """Saved flight plans: /api/plans."""
+
+    PLAN = {
+        'name': 'Park loop', 'home': {'lat': 40.7812, 'lon': -73.9665},
+        'waypoints': [{'lat': 40.782, 'lon': -73.966, 'alt': 121.92, 'speed': 8.05, 'hold': 0},
+                      {'lat': 40.783, 'lon': -73.965, 'alt': 60, 'speed': 6, 'hold': 10}],
+        'defaults': {'alt': 60.96, 'speed': 8.05}, 'plannedFor': '2026-11-20T15:30',
+        'batteryStart': 100, 'returnHome': True, 'notes': 'Check the wind\nfirst',
+    }
+
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = tempfile.mkdtemp(prefix='flightmap-test-')
+        os.makedirs(os.path.join(cls.tmp, 'state'))
+        make_archive(os.path.join(cls.tmp, 'archive'))
+        cls.srv = LiveServer(os.path.join(cls.tmp, 'archive'), os.path.join(cls.tmp, 'state'))
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.srv.stop()
+        shutil.rmtree(cls.tmp, ignore_errors=True)
+
+    def put(self, plan_id, plan, header=True):
+        headers = {'Content-Type': 'application/json'}
+        if header:
+            headers['X-Requested-With'] = 'flightmap'
+        status, _, body = self.srv.request(f'/api/plans/{plan_id}', 'PUT', json.dumps(plan).encode(), headers)
+        return status, json.loads(body or b'{}')
+
+    def test_save_list_change_delete(self):
+        status, saved = self.put('new', self.PLAN)
+        self.assertEqual(status, 200, saved)
+        pid = saved['id']
+        # 400 ft and 18 mph must come back exactly (no rounding drift).
+        self.assertEqual(saved['waypoints'][0]['alt'], 121.92)
+        self.assertEqual(saved['waypoints'][0]['speed'], 8.05)
+        self.assertEqual(saved['notes'], 'Check the wind\nfirst')
+        names = [p['name'] for p in self.srv.json('/api/plans')['plans']]
+        self.assertIn('Park loop', names)
+
+        status, changed = self.put(pid, dict(self.PLAN, name='Park loop v2'))
+        self.assertEqual((status, changed['id'], changed['created']), (200, pid, saved['created']))
+
+        path = os.path.join(self.tmp, 'state', 'plans.json')
+        self.assertEqual(oct(os.stat(path).st_mode & 0o777), '0o600')
+
+        headers = {'X-Requested-With': 'flightmap'}
+        self.assertEqual(self.srv.request(f'/api/plans/{pid}', 'DELETE', headers=headers)[0], 200)
+        self.assertEqual(self.srv.request(f'/api/plans/{pid}', 'DELETE', headers=headers)[0], 404)
+
+    def test_bad_plans_refused(self):
+        bad = dict(self.PLAN, name='<script>', waypoints=[{'lat': 40.78, 'lon': -73.96, 'alt': 900, 'speed': 0, 'hold': 0}],
+                   plannedFor='tomorrow')
+        status, body = self.put('new', bad)
+        self.assertEqual(status, 400)
+        self.assertGreaterEqual(len(body['problems']), 4, body)
+        status, _ = self.put('new', dict(self.PLAN, home=None))   # waypoints but no take-off point
+        self.assertEqual(status, 400)
+
+    def test_plans_need_our_header_and_good_ids(self):
+        self.assertEqual(self.put('new', self.PLAN, header=False)[0], 403)
+        self.assertEqual(self.put('..%2F..%2Fetc', self.PLAN)[0], 400)
+        status, _, _ = self.srv.request('/api/plans/new', 'DELETE')
+        self.assertEqual(status, 403)
+
+    def test_planner_settings(self):
+        s = self.srv.json('/api/settings')['settings']
+        self.assertEqual(s['plannerMaxHeight'], 122)            # 400 ft
+        status, _, _ = self.srv.put_settings({'plannerMaxHeight': 5})
+        self.assertEqual(status, 400)
+
+
 class LiveMigration(unittest.TestCase):
     """Settings saved by versions before 1.5.0 used one 'mapStyle'."""
 

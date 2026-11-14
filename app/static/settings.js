@@ -64,6 +64,16 @@ function showProviderFields(provider) {
   for (const box of $$('.provider-key')) box.classList.toggle('hidden', box.dataset.provider !== provider);
 }
 
+// "= 400 ft" next to the planner boxes, which are in metres.
+function updateConversions() {
+  for (const el of $$('.conv')) {
+    const v = Number(document.getElementById(el.dataset.for).value) || 0;
+    if (el.dataset.conv === 'height') el.textContent = `= ${Math.round(v * 3.28084)} ft`;
+    if (el.dataset.conv === 'distance') el.textContent = v * 3.28084 < 5280 ? `= ${Math.round(v * 3.28084)} ft` : `= ${(v / 1609.344).toFixed(2)} mi`;
+    if (el.dataset.conv === 'speed') el.textContent = `= ${Math.round(v * 2.23694)} mph`;
+  }
+}
+
 function renderAircraft() {
   const box = $('#aircraft-names');
   if (!info.aircraft.length) {
@@ -219,6 +229,8 @@ async function start() {
   updatePreview();
   updateSaveBar();
 
+  updateConversions();
+  $('#form').addEventListener('input', updateConversions);
   $('#form').addEventListener('input', (e) => {
     // Typing a key can make a style usable, so refresh the list's notes.
     if (['cartoKey', 'mapboxToken', 'maptilerKey', 'azureMapsKey', 'customTileUrl'].includes(e.target.dataset.key)) {

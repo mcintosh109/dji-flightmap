@@ -98,7 +98,12 @@ curl -s -b "$JAR" -X PUT -H X-Requested-With:flightmap -H Content-Type:applicati
   -d '{"aircraftNames":{"TEST0000SERIAL01":"Scout"},"azureMapsKey":"KEY123","mapProvider":"azure"}' \
   -o /dev/null "http://127.0.0.1:$PORT/api/settings"
 
+curl -s -b "$JAR" -X PUT -H X-Requested-With:flightmap -H Content-Type:application/json \
+  -d '{"name":"Backup test plan","home":{"lat":40.78,"lon":-73.96},"waypoints":[]}' \
+  -o /dev/null "http://127.0.0.1:$PORT/api/plans/new"
+
 nickname_kept() { grep -q '"Scout"' /var/lib/dji-flightmap/settings.json; }
+plan_kept()     { grep -q 'Backup test plan' /var/lib/dji-flightmap/plans.json; }
 login_kept()    { grep -q '^AUTH_USER=tester' /etc/default/dji-flightmap; }
 still_signed_in() { [ "$(curl -s -b "$JAR" -o /dev/null -w '%{http_code}' "http://127.0.0.1:$PORT/api/flights")" = 200 ]; }
 map_answers()   { curl -sf "http://127.0.0.1:$PORT/api/health" >/dev/null; }
@@ -110,16 +115,19 @@ echo "Normal update"
 CTID=999 bash "$ROOT/deploy/update-ct.sh" --no-pull >"$LOGS/a.log" 2>&1
 check "update finishes" grep -q "Update finished" "$LOGS/a.log"
 check "nickname and key kept" nickname_kept
+check "saved flight plan kept" plan_kept
 check "login kept" login_kept
 check "still signed in" still_signed_in
 check "backup made on the host" ls /root/dji-flightmap-backups/ct999_*/settings.json
+check "flight plans are in the backup" ls /root/dji-flightmap-backups/ct999_*/plans.json
 
 echo "Update whose installer wipes the settings"
 cp -r "$ROOT" "$WORK/repo-wipe"
-sed -i 's#^echo "==> Installing and starting the service"#rm -f /var/lib/dji-flightmap/settings.json\necho "==> Installing and starting the service"#' "$WORK/repo-wipe/deploy/install.sh"
+sed -i 's#^echo "==> Installing and starting the service"#rm -f /var/lib/dji-flightmap/settings.json /var/lib/dji-flightmap/plans.json\necho "==> Installing and starting the service"#' "$WORK/repo-wipe/deploy/install.sh"
 CTID=999 bash "$WORK/repo-wipe/deploy/update-ct.sh" --no-pull >"$LOGS/b.log" 2>&1
 check "settings put back" grep -q "settings.json put back" "$LOGS/b.log"
 check "nickname back" nickname_kept
+check "flight plans back" plan_kept
 
 echo "Broken new version"
 cp -r "$ROOT" "$WORK/repo-broken"

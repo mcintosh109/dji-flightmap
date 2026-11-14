@@ -162,6 +162,36 @@ When the dock adds new flights, they show up within about a minute.
 
 ---
 
+## Planning a flight
+
+Open the **Plans** tab in the sidebar and press **New plan**.
+
+1. **Take-off point:** click the map where you'll take off, or press
+   *Use the take-off point of my last flight*. It shows as **H**.
+2. **Waypoints:** click the map to add them in order. Drag a number to move
+   it. In the table, change each waypoint's **height** (above take-off),
+   **speed** and **pause**, or delete it with ✕. *Apply to all* gives every
+   waypoint the "New waypoints" height and speed.
+3. **The numbers:** distance, estimated flight time, battery used and battery
+   left at landing. The battery estimate is based on **your own past flights**
+   (how many % per minute they used). Wind can change it a lot.
+4. **Warnings** appear when a waypoint is above your height limit, too far to
+   keep in sight, the battery would land below your reserve, or the weather is
+   a problem (strong wind up high, gusts, rain, cold, after sunset).
+5. **When:** pick a date and time (up to 16 days ahead) to see the forecast at
+   the take-off point: wind at ground level and at 80 m / 120 m, gusts, rain
+   chance, temperature, sunrise and sunset. It comes from
+   [Open-Meteo](https://open-meteo.com), free with no key.
+6. **Compare with a past flight** draws one of your flights in grey dashes.
+7. **Save plan**. Saved plans are listed in the Plans tab and kept on the server
+   (`/var/lib/dji-flightmap/plans.json`, included in the update backups).
+
+Limits are in **⚙ Settings → Flight planner**. The planner helps you think a
+flight through; it doesn't replace checking the rules and airspace where you
+fly (for example with the FAA's B4UFLY app in the US).
+
+---
+
 ## The settings page (⚙)
 
 Everything here is saved on the server, so it applies on every device.
@@ -171,6 +201,7 @@ Everything here is saved on the server, so it applies on every device.
 | **Map** | **Map provider**: who draws the map. *Free* (OpenStreetMap + Esri, no key), **CARTO**, **Azure Maps** (Microsoft's replacement for Bing Maps), **Mapbox**, **MapTiler**, or a custom "XYZ" tile address. Only the chosen provider's key box is shown. **Default layer** (Road, Satellite, Dark, Terrain), **Details** on satellite, and a live preview. A layer a provider doesn't have (e.g. Terrain on Azure Maps) uses the free one. |
 | **Display** | Default units, flight path colour, replay speed, whether a flight opens at the landing or take-off spot, which app **Navigate** opens (Google Maps, Apple Maps, Waze), lines for all flights, and whether an open flight is shown on its own (on by default). |
 | **Flights** | Hide flights shorter than N seconds (quick tests), hide flights without GPS, **nicknames** for each drone. |
+| **Flight planner** | Height limit (400 ft by default), distance warning, battery to keep for landing, wind limit. |
 | **Server** | How often to check for new files, how many days you stay signed in. |
 
 **Getting a map key** (optional; the free styles need none):
@@ -392,6 +423,7 @@ pct exec 105 -- systemctl restart dji-flightmap
 | `app/static/app.js` | Fetches the data and draws the map with Leaflet | *"javascript fetch"*, *"leaflet polyline"* |
 | `app/version.json` | The version number and "what's new" list, compared with the copy on GitHub to spot updates | *"semantic versioning"* |
 | `app/static/updates.js` | Checks GitHub for a newer version; the Copy button | *"fetch JSON"*, *"clipboard copy javascript"* |
+| `app/static/planner.js` | The flight planner: waypoints, estimates, safety checks, weather | *"leaflet draggable marker"*, *"Open-Meteo API"* |
 | `app/static/maps.js` | Every map style, which style each provider uses for each layer, and the layer-button pictures | *"leaflet tileLayer"*, *"XYZ tiles"* |
 | `app/static/settings.html`, `settings.js` | The settings page | *"HTML forms"*, *"fetch PUT JSON"* |
 | `app/static/vendor/leaflet/` | A copy of the Leaflet 1.9.4 map library (BSD-2 licence) | *"leafletjs"* |

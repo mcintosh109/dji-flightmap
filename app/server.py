@@ -32,6 +32,8 @@ Web addresses it answers:
   /api/health           {"ok": true} - handy for checking the service is up
   /api/settings         GET: the settings page's values, PUT: save them
   /api/rescan           POST: look for new log files right now
+  /api/plans            GET: saved flight plans
+  /api/plans/<id>       PUT: save a plan (id "new" makes one), DELETE: remove it
   /login.html           the login page (only used when a login is set)
   /logout               signs you out
   /settings.html        the settings page
@@ -77,6 +79,7 @@ AUTH_ENABLED = bool(AUTH_USER and AUTH_PASSWORD_HASH)
 SESSION_DAYS = int(os.environ.get("SESSION_DAYS", "30"))   # stay signed in this long
 SECRET_FILE = os.path.join(os.path.dirname(CACHE_FILE), "session-secret")
 SETTINGS_FILE = os.path.join(os.path.dirname(CACHE_FILE), "settings.json")
+PLANS_FILE = os.path.join(os.path.dirname(CACHE_FILE), "plans.json")
 # The version number and "what's new" list live in app/version.json, so the
 # web page can compare them with the newest copy on GitHub.
 try:
@@ -141,6 +144,11 @@ DEFAULT_SETTINGS = {
     "navApp": "google",
     "showAllPaths": True,
     "focusSelected": True,
+    # Flight planner limits (metres, metres, percent, metres per second)
+    "plannerMaxHeight": 122,      # 400 ft
+    "plannerMaxDistance": 500,    # beyond this it's hard to keep the drone in sight
+    "plannerReserve": 25,         # land with at least this much battery
+    "plannerWindLimit": 10,       # Mini 4 Pro handles about 10.7 m/s (level 5)
     # Flights
     "minFlightSeconds": 0,
     "hideNoGps": False,
@@ -210,6 +218,10 @@ def clean_settings(incoming):
     pick("navApp", lambda v: v in ("google", "apple", "waze"), "Unknown navigation app.")
     pick("showAllPaths", is_bool, "Show all paths must be on or off.")
     pick("focusSelected", is_bool, "Hide other flights must be on or off.")
+    pick("plannerMaxHeight", whole(10, 500), "Height limit must be 10 to 500 metres.")
+    pick("plannerMaxDistance", whole(50, 20000), "Distance warning must be 50 to 20000 metres.")
+    pick("plannerReserve", whole(5, 60), "Battery reserve must be 5 to 60 percent.")
+    pick("plannerWindLimit", whole(3, 25), "Wind limit must be 3 to 25 m/s.")
     pick("minFlightSeconds", whole(0, 3600), "Shortest flight must be 0 to 3600 seconds.")
     pick("hideNoGps", is_bool, "Hide flights without GPS must be on or off.")
     pick("aircraftNames", lambda v: isinstance(v, dict) and len(v) <= 50 and all(
@@ -266,6 +278,122 @@ def save_settings(new):
     with SETTINGS_LOCK:
         SETTINGS.clear()
         SETTINGS.update(new)
+
+
+# --------------------------------------------------------------------------
+# Saved flight plans (plans.json, next to settings.json)
+# --------------------------------------------------------------------------
+PLANS_LOCK = threading.Lock()
+PLAN_ID_RE = re.compile(r"^[0-9a-f]{12}$")
+MAX_PLANS = 500
+MAX_WAYPOINTS = 200
+
+
+def load_plans():
+    try:
+        with open(PLANS_FILE, encoding="utf-8") as fh:
+            data = json.load(fh)
+        plans = data.get("plans", {}) if isinstance(data, dict) else {}
+        return {k: v for k, v in plans.items() if PLAN_ID_RE.match(k) and isinstance(v, dict)}
+    except FileNotFoundError:
+        return {}
+    except (OSError, ValueError) as exc:
+        log(f"Ignoring broken plans file {PLANS_FILE}: {exc}")
+        return {}
+
+
+def save_plans(plans):
+    os.makedirs(os.path.dirname(PLANS_FILE), exist_ok=True)
+    tmp = PLANS_FILE + ".tmp"
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as fh:
+        json.dump({"version": 1, "plans": plans}, fh, indent=1)
+    os.replace(tmp, PLANS_FILE)
+
+
+def clean_plan(incoming):
+    """Check a plan sent by the page. Returns (plan, list of problems)."""
+    problems = []
+
+    def number(value, lo, hi):
+        return isinstance(value, (int, float)) and not isinstance(value, bool) and lo <= value <= hi
+
+    def point(p, what):
+        if not (isinstance(p, dict) and number(p.get("lat"), -90, 90) and number(p.get("lon"), -180, 180)):
+            problems.append(f"{what} needs a valid position.")
+            return None
+        return {"lat": round(float(p["lat"]), 7), "lon": round(float(p["lon"]), 7)}
+
+    text_ok = lambda v, n: isinstance(v, str) and len(v) <= n and not re.search(r"[<>\x00-\x09\x0b-\x1f]", v)
+
+    name = incoming.get("name", "")
+    if not text_ok(name, 60):
+        problems.append("The plan name can be up to 60 characters, without < or >.")
+        name = ""
+    notes = incoming.get("notes", "")
+    if not text_ok(notes, 1000):
+        problems.append("Notes can be up to 1000 characters, without < or >.")
+        notes = ""
+
+    home = incoming.get("home")
+    home = point(home, "The take-off point") if home is not None else None
+
+    waypoints = []
+    raw = incoming.get("waypoints", [])
+    if not isinstance(raw, list) or len(raw) > MAX_WAYPOINTS:
+        problems.append(f"A plan can have up to {MAX_WAYPOINTS} waypoints.")
+        raw = []
+    for i, w in enumerate(raw, 1):
+        pos = point(w, f"Waypoint {i}")
+        if pos is None:
+            continue
+        alt, speed, hold = w.get("alt"), w.get("speed"), w.get("hold", 0)
+        if not number(alt, 0, 500):
+            problems.append(f"Waypoint {i}: height must be 0 to 500 metres.")
+        if not number(speed, 0.5, 15):
+            problems.append(f"Waypoint {i}: speed must be 0.5 to 15 m/s.")
+        if not number(hold, 0, 300):
+            problems.append(f"Waypoint {i}: pause must be 0 to 300 seconds.")
+        # Two decimals, so 400 ft (121.92 m) or 18 mph (8.05 m/s) come back exactly.
+        waypoints.append({**pos, "alt": round(float(alt or 0), 2), "speed": round(float(speed or 1), 2),
+                          "hold": round(float(hold or 0))})
+    if waypoints and home is None:
+        problems.append("Set a take-off point before adding waypoints.")
+
+    defaults = incoming.get("defaults", {"alt": 60, "speed": 8})
+    if not (isinstance(defaults, dict) and number(defaults.get("alt"), 0, 500) and number(defaults.get("speed"), 0.5, 15)):
+        problems.append("Default height must be 0-500 m and default speed 0.5-15 m/s.")
+        defaults = {"alt": 60, "speed": 8}
+
+    planned = incoming.get("plannedFor", "")
+    if not (isinstance(planned, str) and (planned == "" or re.fullmatch(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}", planned))):
+        problems.append("The planned time must look like 2026-11-20T15:30.")
+        planned = ""
+    compare = incoming.get("compareFlight", "")
+    if not (isinstance(compare, str) and re.fullmatch(r"[0-9a-f]{0,40}", compare)):
+        problems.append("Unknown flight to compare with.")
+        compare = ""
+    battery = incoming.get("batteryStart", 100)
+    if not number(battery, 10, 100):
+        problems.append("Battery at take-off must be 10 to 100 percent.")
+        battery = 100
+    return_home = incoming.get("returnHome", True)
+    if not isinstance(return_home, bool):
+        problems.append("Return to take-off must be on or off.")
+        return_home = True
+
+    plan = {
+        "name": name.strip() or "Untitled plan",
+        "notes": notes.strip(),
+        "home": home,
+        "waypoints": waypoints,
+        "defaults": {"alt": round(float(defaults["alt"]), 2), "speed": round(float(defaults["speed"]), 2)},
+        "plannedFor": planned,
+        "compareFlight": compare,
+        "batteryStart": int(battery),
+        "returnHome": return_home,
+    }
+    return plan, problems
 
 
 def current_settings():
@@ -908,6 +1036,11 @@ class Handler(SimpleHTTPRequestHandler):
             return self.send_json(LIBRARY.listing())
         if path == "/api/settings":
             return self.send_json(self.settings_payload())
+        if path == "/api/plans":
+            with PLANS_LOCK:
+                plans = [dict(p, id=k) for k, p in load_plans().items()]
+            plans.sort(key=lambda p: p.get("updated", ""), reverse=True)
+            return self.send_json({"plans": plans})
         if path.startswith("/api/flights/"):
             flight_id = unquote(path[len("/api/flights/"):])
             try:
@@ -953,21 +1086,54 @@ class Handler(SimpleHTTPRequestHandler):
             },
         }
 
-    def do_PUT(self):
-        path = urlparse(self.path).path
-        if path != "/api/settings":
-            return self.send_json({"error": "unknown address"}, 404)
-        if not self.allowed(path) or not self.from_our_page():
-            return
+    def read_json_body(self, limit=65536):
+        """Read a JSON object sent by the page. Returns None after answering an error."""
         length = int(self.headers.get("Content-Length") or 0)
-        if length > 65536:
-            return self.send_json({"error": "too much data"}, 413)
+        if length > limit:
+            self.send_json({"error": "too much data"}, 413)
+            return None
         try:
             incoming = json.loads(self.rfile.read(length) or b"{}")
             if not isinstance(incoming, dict):
                 raise ValueError
         except ValueError:
-            return self.send_json({"error": "not valid JSON"}, 400)
+            self.send_json({"error": "not valid JSON"}, 400)
+            return None
+        return incoming
+
+    def plan_id_from(self, path):
+        plan_id = unquote(path[len("/api/plans/"):])
+        if plan_id == "new":
+            return secrets.token_hex(6)
+        return plan_id if PLAN_ID_RE.match(plan_id) else None
+
+    def do_DELETE(self):
+        path = urlparse(self.path).path
+        if not path.startswith("/api/plans/"):
+            return self.send_json({"error": "unknown address"}, 404)
+        if not self.allowed(path) or not self.from_our_page():
+            return
+        plan_id = self.plan_id_from(path)
+        with PLANS_LOCK:
+            plans = load_plans()
+            if plan_id not in plans:
+                return self.send_json({"error": "plan not found"}, 404)
+            del plans[plan_id]
+            save_plans(plans)
+        log(f"{self.client_address[0]} deleted plan {plan_id}")
+        return self.send_json({"ok": True})
+
+    def do_PUT(self):
+        path = urlparse(self.path).path
+        if path.startswith("/api/plans/"):
+            return self.put_plan(path)
+        if path != "/api/settings":
+            return self.send_json({"error": "unknown address"}, 404)
+        if not self.allowed(path) or not self.from_our_page():
+            return
+        incoming = self.read_json_body()
+        if incoming is None:
+            return
         new, problems = clean_settings(incoming)
         if problems:
             return self.send_json({"error": " ".join(problems), "problems": problems}, 400)
@@ -977,6 +1143,33 @@ class Handler(SimpleHTTPRequestHandler):
             return self.send_json({"error": f"could not save: {exc}"}, 500)
         log(f"{self.client_address[0]} saved settings")
         return self.send_json(self.settings_payload())
+
+    def put_plan(self, path):
+        if not self.allowed(path) or not self.from_our_page():
+            return
+        plan_id = self.plan_id_from(path)
+        if plan_id is None:
+            return self.send_json({"error": "bad plan id"}, 400)
+        incoming = self.read_json_body(limit=262144)
+        if incoming is None:
+            return
+        plan, problems = clean_plan(incoming)
+        if problems:
+            return self.send_json({"error": " ".join(problems[:5]), "problems": problems}, 400)
+        now = datetime.now(timezone.utc).isoformat(timespec="seconds")
+        with PLANS_LOCK:
+            plans = load_plans()
+            if plan_id not in plans and len(plans) >= MAX_PLANS:
+                return self.send_json({"error": f"You can save up to {MAX_PLANS} plans."}, 400)
+            plan["created"] = plans.get(plan_id, {}).get("created", now)
+            plan["updated"] = now
+            plans[plan_id] = plan
+            try:
+                save_plans(plans)
+            except OSError as exc:
+                return self.send_json({"error": f"could not save: {exc}"}, 500)
+        log(f"{self.client_address[0]} saved plan {plan_id}")
+        return self.send_json(dict(plan, id=plan_id))
 
     def do_POST(self):
         path = urlparse(self.path).path

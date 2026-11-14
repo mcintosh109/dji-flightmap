@@ -14,6 +14,7 @@ CONFIG_FILES=(
   "/etc/default/dji-flightmap|root|0600|login-and-server.env"           # login, port, data folder
   "/var/lib/dji-flightmap/settings.json|flightmap|0600|settings.json"   # settings page (map keys, nicknames, ...)
   "/var/lib/dji-flightmap/session-secret|flightmap|0600|session-secret" # keeps you signed in
+  "/var/lib/dji-flightmap/plans.json|flightmap|0600|plans.json"         # saved flight plans
 )
 
 # Backups are kept on the Proxmox host, readable by root only.

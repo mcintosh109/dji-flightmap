@@ -310,6 +310,66 @@ a.icon-btn { color: var(--text); }
 #d-events li time { color: var(--muted); font-variant-numeric: tabular-nums; flex: none; }
 #d-events li.warn { color: var(--warn); }
 
+/* ---------- Flight planner ---------- */
+#planner {
+  position: fixed; z-index: 1000;
+  left: calc(var(--panel-w) + 32px); right: 16px; bottom: 16px;
+  max-height: min(58vh, calc(100% - 90px)); overflow-y: auto;
+  background: var(--panel); backdrop-filter: blur(14px);
+  border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow);
+  padding: 14px 16px;
+}
+#planner h3 { font-size: 13px; margin: 12px 0 6px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }
+.pl-title { flex: 1; }
+.pl-name {
+  width: 100%; max-width: 380px; font-size: 16px; font-weight: 650; padding: 6px 10px;
+  background: var(--card); border: 1px solid var(--line); border-radius: 8px; outline: none;
+}
+.pl-name:focus { border-color: var(--accent); }
+.pl-hint { margin: 4px 0 0; color: var(--accent); font-size: 13px; }
+.pl-save-msg { font-size: 13px; color: var(--muted); }
+.pl-save-msg.warn { color: var(--warn); } .pl-save-msg.ok { color: var(--home); } .pl-save-msg.error { color: #ff6b6b; }
+#pl-last-home { margin-top: 10px; }
+.pl-warnings { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.pl-warnings li { padding: 6px 10px; border-radius: 8px; font-size: 13px; }
+.pl-warnings li.warn { background: rgba(255, 176, 32, 0.12); color: var(--warn); }
+.pl-warnings li.danger { background: rgba(255, 107, 107, 0.14); color: #ff8c8c; }
+.pl-warnings li.ok { background: rgba(61, 220, 132, 0.12); color: var(--home); }
+.pl-columns { display: grid; grid-template-columns: 1.2fr 1fr; gap: 18px; }
+.pl-defaults { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; font-size: 13px; color: var(--muted); margin-bottom: 8px; }
+#planner input[type=number], #planner input[type=datetime-local], #planner select, #planner textarea {
+  background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 5px 8px; outline: none; font-size: 13px;
+}
+#planner input:focus, #planner select:focus, #planner textarea:focus { border-color: var(--accent); }
+.pl-defaults input { width: 70px; }
+#planner select, #planner textarea, #pl-when { width: 100%; }
+#planner textarea { resize: vertical; font: inherit; font-size: 13px; }
+.pl-wps { max-height: 200px; overflow-y: auto; margin-bottom: 8px; }
+.wp-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.wp-table th { text-align: left; color: var(--muted); font-weight: 500; font-size: 11px; padding: 2px 4px; position: sticky; top: 0; background: var(--panel-solid); }
+.wp-table td { padding: 2px 4px; }
+.wp-table input { width: 72px; }
+.wp-table tr.selected td { background: var(--accent-dim); }
+.wp-num {
+  width: 24px; height: 24px; border-radius: 50%; border: 0; cursor: pointer;
+  background: var(--accent); color: #04121a; font-weight: 700; font-size: 12px;
+}
+.icon-btn.small { width: 26px; height: 26px; font-size: 12px; }
+.pl-inline { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); }
+.pl-inline input { width: 70px; }
+#pl-weather .live { margin-top: 8px; }
+.new-plan { width: 100%; justify-content: center; margin-bottom: 10px; padding: 9px; }
+.plan-card .time { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wp-icon {
+  display: grid !important; place-items: center; border-radius: 50%;
+  background: var(--accent); color: #04121a; font-weight: 800; font-size: 12px;
+  border: 2px solid #fff; box-shadow: 0 2px 6px rgba(0,0,0,0.5);
+}
+.wp-icon.active { background: #fff; color: #04121a; border-color: var(--accent); box-shadow: 0 0 0 4px var(--accent-dim); }
+.plan-home { background: var(--accent) !important; }
+#map.planning { cursor: crosshair; }
+#map.planning .leaflet-marker-icon { cursor: grab; }
+
 /* ---------- Phones and narrow screens ---------- */
 @media (max-width: 760px) {
   #panel {
@@ -317,6 +377,8 @@ a.icon-btn { color: var(--text); }
     max-height: 46%; border-radius: var(--radius) var(--radius) 0 0;
   }
   .leaflet-control-attribution { max-width: 100vw; }
+  #planner { left: 0; right: 0; bottom: 0; border-radius: var(--radius) var(--radius) 0 0; max-height: 62%; }
+  .pl-columns { grid-template-columns: 1fr; }
   #detail {
     left: 0; right: 0; bottom: 0; border-radius: var(--radius) var(--radius) 0 0;
     max-height: 62%;
@@ -358,6 +420,7 @@ body.page-settings { overflow: auto; }
 .settings input[type=color] { width: 54px; height: 34px; padding: 2px; border-radius: 8px; border: 1px solid var(--line); background: var(--card); cursor: pointer; }
 .with-unit { display: inline-flex; align-items: center; gap: 8px; color: var(--muted); }
 .with-unit input { min-width: 0 !important; width: 90px !important; color: var(--text); }
+.conv { color: var(--accent); font-size: 13px; min-width: 70px; }
 .check { display: flex; align-items: flex-start; gap: 10px; margin: 0 0 12px; cursor: pointer; }
 .check input { margin-top: 3px; accent-color: var(--accent); width: 16px; height: 16px; flex: none; }
 .help { color: var(--muted); font-size: 13px; margin: 6px 0 12px; }

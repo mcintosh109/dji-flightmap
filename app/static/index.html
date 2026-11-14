@@ -41,11 +41,16 @@
     <nav class="tabs" role="tablist">
       <button role="tab" data-tab="aircraft" class="active">Aircraft</button>
       <button role="tab" data-tab="flights">Flights <span id="flight-count" class="count"></span></button>
+      <button role="tab" data-tab="plans">Plans <span id="plan-count" class="count"></span></button>
     </nav>
     <section id="tab-aircraft" class="tab-body"></section>
     <section id="tab-flights" class="tab-body hidden">
       <input id="search" type="search" placeholder="Filter: date, aircraft or file name" autocomplete="off">
       <div id="flight-list"></div>
+    </section>
+    <section id="tab-plans" class="tab-body hidden">
+      <button id="btn-new-plan" class="chip accent new-plan" type="button">＋ New plan</button>
+      <div id="plan-list"></div>
     </section>
   </aside>
 
@@ -110,6 +115,49 @@
     </details>
   </section>
 
+  <!-- Flight planner panel (bottom of the screen, like the flight details) -->
+  <section id="planner" class="hidden" aria-label="Flight planner">
+    <div class="detail-head">
+      <div class="detail-title pl-title">
+        <input id="pl-name" class="pl-name" maxlength="60" placeholder="Name this plan" aria-label="Plan name">
+        <p id="pl-hint" class="pl-hint"></p>
+      </div>
+      <div class="detail-actions">
+        <span id="pl-save-msg" class="pl-save-msg" role="status"></span>
+        <button id="pl-delete" class="chip hidden" type="button">Delete</button>
+        <button id="pl-save" class="chip accent" type="button">Save plan</button>
+        <button id="pl-close" class="icon-btn" type="button" aria-label="Close planner">✕</button>
+      </div>
+    </div>
+    <button id="pl-last-home" class="chip hidden" type="button">Use the take-off point of my last flight</button>
+    <div id="pl-stats" class="stats"></div>
+    <ul id="pl-warnings" class="pl-warnings"></ul>
+    <p id="pl-battery-note" class="help"></p>
+
+    <div class="pl-columns">
+      <div>
+        <h3>Waypoints</h3>
+        <div class="pl-defaults">
+          <label>New waypoints: <input id="pl-def-alt" type="number" min="0" step="5"> <span id="pl-def-alt-unit"></span></label>
+          <label>at <input id="pl-def-speed" type="number" min="1" step="1"> <span id="pl-def-speed-unit"></span></label>
+          <button id="pl-apply-all" class="chip" type="button" title="Give every waypoint this height and speed">Apply to all</button>
+        </div>
+        <div id="pl-wps" class="pl-wps"></div>
+        <label class="check"><input id="pl-return" type="checkbox"> <span>Fly back to take-off at the end (counted in the estimate)</span></label>
+        <label class="pl-inline">Battery at take-off <input id="pl-battery" type="number" min="10" max="100" step="5"> %</label>
+      </div>
+      <div>
+        <h3>When</h3>
+        <input id="pl-when" type="datetime-local" aria-label="Planned date and time">
+        <div id="pl-weather"></div>
+        <h3>Compare with a past flight</h3>
+        <select id="pl-compare" aria-label="Past flight to show"></select>
+        <h3>Notes</h3>
+        <textarea id="pl-notes" rows="3" maxlength="1000" placeholder="Anything to remember for this flight"></textarea>
+      </div>
+    </div>
+  </section>
+
   <!-- "Updates" window (opened from the version number or the update notice) -->
   <dialog id="update-dialog" class="dialog" aria-labelledby="upd-title">
     <form method="dialog" class="dialog-close"><button class="icon-btn" aria-label="Close">✕</button></form>
@@ -136,5 +184,6 @@
   <script src="updates.js"></script>
   <script src="maps.js"></script>
   <script src="app.js"></script>
+  <script src="planner.js"></script>
 </body>
 </html>
