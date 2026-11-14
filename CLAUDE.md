@@ -59,9 +59,11 @@ committed by mistake and the history had to be rewritten; don't repeat that.
 ## Licence
 
 Apache 2.0, copyright "mcintosh109" (the owner chose the GitHub username, not
-a real name: don't add one). `LICENSE` is the official text, unchanged.
-`NOTICE` credits the owner as the creator and must stay accurate: if another
-third-party library is ever bundled, add its notice there.
+a real name: don't add one). `LICENSE` is the official text; the owner filled
+in the copyright line in its appendix themselves. `NOTICE` credits the owner
+as the creator, and its last lines are the owner's own words (written on
+GitHub): don't reword either without asking. Keep `NOTICE` accurate: if
+another third-party library is ever bundled, add its notice there.
 
 ## How the project is built
 
@@ -156,5 +158,9 @@ owner confirms it works**, release it with a tag (`git tag -a vX.Y.Z` +
   chosen ref with `git archive` (INSTALL), so `--version` can go back without
   leaving old scripts on the host. First tag is v2.3.0: never tag anything
   older, its `update-ct.sh` can't run from a detached checkout.
+- **The owner sometimes edits files on GitHub's website** (they did for
+  `LICENSE` and `NOTICE`). Before every push: `git fetch origin`, look at
+  `git log HEAD..origin/main`, and `git rebase origin/main`. Never force-push
+  over their commits, and keep their wording.
 - Old installs had an `update-ct.sh` that could not download its own
   replacement; the current one does `git pull` and restarts itself.
