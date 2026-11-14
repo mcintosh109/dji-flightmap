@@ -37,6 +37,7 @@ const state = {
   },
   settingsKey: '',
   layerKey: '',
+  follow: loadSetting('follow', '0') === '1',   // "Follow" button on/off
   tab: 'aircraft',
   filter: '',
   firstLoad: true,
@@ -177,9 +178,15 @@ function droneIcon(kind) {
 }
 const homeIcon = L.divIcon({ className: 'home-icon', html: 'H', iconSize: [24, 24], iconAnchor: [12, 12] });
 
+// Turn the drone icon to face its heading. It always turns the short way
+// (179° to -179° is a 2° turn, not a 358° spin).
 function rotateMarker(marker, yaw) {
   const el = marker.getElement()?.querySelector('.rot');
-  if (el) el.style.transform = `rotate(${yaw || 0}deg)`;
+  if (!el) return;
+  const prev = marker._angle ?? (yaw || 0);
+  const turn = ((((yaw || 0) - prev) % 360) + 540) % 360 - 180;
+  marker._angle = prev + turn;
+  el.style.transform = `rotate(${marker._angle}deg)`;
 }
 
 // Leave room for the panels when zooming to something.
@@ -428,8 +435,12 @@ function drawSelected() {
   const { track, events } = state.detail;
   if (!track.length) return;
   const latlngs = track.map((p) => [p.lat, p.lon]);
+  state.latlngs = latlngs;
   L.polyline(latlngs, { color: '#000', weight: 8, opacity: 0.45 }).addTo(selectedLayer);
-  L.polyline(latlngs, { color: pathColor(), weight: 4 }).addTo(selectedLayer);
+  // The whole path, faint: the part still to come.
+  L.polyline(latlngs, { color: pathColor(), weight: 4, opacity: 0.3 }).addTo(selectedLayer);
+  // The part already flown, bright. It grows as the drone moves.
+  state.trail = L.polyline(latlngs, { color: pathColor(), weight: 4 }).addTo(selectedLayer);
   L.marker(latlngs[0], { icon: homeIcon }).bindTooltip('Take-off point').addTo(selectedLayer);
   for (const e of events) {
     if (e.kind !== 'warn' || e.lat == null) continue;
@@ -502,24 +513,38 @@ function drawProfile() {
   $('#d-profile-label').textContent = `Height · max ${fmt.height(realMax)}`;
 }
 
+// Put the drone between track point i and i+1. frac 0 = exactly at
+// point i, 0.5 = halfway to the next one. This is what makes it glide
+// smoothly instead of hopping from point to point.
+function placeDrone(i, frac = 0) {
+  const track = state.detail.track;
+  const a = track[i];
+  const b = track[Math.min(i + 1, track.length - 1)];
+  const lat = a.lat + (b.lat - a.lat) * frac;
+  const lon = a.lon + (b.lon - a.lon) * frac;
+  const turn = ((((b.yaw || 0) - (a.yaw || 0)) % 360) + 540) % 360 - 180;
+  if (state.droneMarker) {
+    state.droneMarker.setLatLng([lat, lon]);
+    rotateMarker(state.droneMarker, (a.yaw || 0) + turn * frac);
+  }
+  // Trail: everything flown so far, ending exactly at the drone.
+  if (state.trail) state.trail.setLatLngs([...state.latlngs.slice(0, i + 1), [lat, lon]]);
+  if (state.profile) {
+    const cx = state.profile.x(a.t + (b.t - a.t) * frac).toFixed(1);
+    const cursor = $('#d-cursor');
+    cursor.setAttribute('x1', cx); cursor.setAttribute('x2', cx);
+  }
+}
+
 // Move the drone marker to track point i and update the numbers.
 function setIndex(i) {
   const track = state.detail?.track;
   if (!track?.length) return;
   i = Math.max(0, Math.min(track.length - 1, i));
   state.idx = i;
-  const p = track[i];
-  if (state.droneMarker) {
-    state.droneMarker.setLatLng([p.lat, p.lon]);
-    rotateMarker(state.droneMarker, p.yaw);
-  }
+  placeDrone(i, 0);
   $('#p-scrub').value = i;
-  if (state.profile) {
-    const cx = state.profile.x(p.t).toFixed(1);
-    const cursor = $('#d-cursor');
-    cursor.setAttribute('x1', cx); cursor.setAttribute('x2', cx);
-  }
-  renderLive(p);
+  renderLive(track[i]);
 }
 
 function renderLive(p) {
@@ -539,6 +564,35 @@ function renderLive(p) {
   $('#d-live').innerHTML = items.map(([k, v]) => `<div><span>${esc(k)}</span><b>${esc(v)}</b></div>`).join('');
 }
 
+// "Follow": keep the drone in the middle of the part of the map you can
+// see (not hidden behind the panels).
+function centreOnDrone() {
+  const ll = state.droneMarker?.getLatLng();
+  if (!ll) return;
+  const o = fitOptions();
+  const size = map.getSize();
+  const target = L.point(
+    (o.paddingTopLeft[0] + size.x - o.paddingBottomRight[0]) / 2,
+    (o.paddingTopLeft[1] + size.y - o.paddingBottomRight[1]) / 2);
+  const offset = map.latLngToContainerPoint(ll).subtract(target);
+  if (Math.abs(offset.x) > 0.5 || Math.abs(offset.y) > 0.5) map.panBy(offset, { animate: false });
+}
+
+function setFollow(on) {
+  state.follow = on;
+  saveSetting('follow', on ? '1' : '0');
+  const btn = $('#p-follow');
+  btn.setAttribute('aria-pressed', String(on));
+  btn.title = on ? 'Following the drone (drag the map to stop)' : 'Keep the map centred on the drone';
+  if (on) centreOnDrone();
+}
+
+// Move the map so the drone can be seen: centre it when following,
+// otherwise only pan if it is hidden behind a panel or off screen.
+function showDrone() {
+  if (state.follow) centreOnDrone(); else keepDroneVisible();
+}
+
 // Pan only if the drone is hidden behind a panel or off screen.
 function keepDroneVisible() {
   const ll = state.droneMarker?.getLatLng();
@@ -553,7 +607,7 @@ function seekTime(t) {
   let i = 0;
   while (i < track.length - 1 && track[i + 1].t <= t) i++;
   setIndex(i);
-  keepDroneVisible();
+  showDrone();
 }
 
 // ---------- playback ----------
@@ -583,11 +637,19 @@ function tick(now) {
   state.lastFrame = now;
   let i = state.idx;
   while (i < track.length - 1 && track[i + 1].t <= state.playT) i++;
+  if (i >= track.length - 1) { setIndex(track.length - 1); stopPlayback(); return; }
   if (i !== state.idx) {
-    setIndex(i);
-    keepDroneVisible();   // keep the drone on screen while it plays
+    // New track point reached: update the slider and the numbers.
+    state.idx = i;
+    $('#p-scrub').value = i;
+    renderLive(track[i]);
   }
-  if (i >= track.length - 1) { stopPlayback(); return; }
+  // Every frame: glide the drone between this point and the next.
+  const gap = track[i + 1].t - track[i].t;
+  const frac = gap > 0 ? Math.min(1, Math.max(0, (state.playT - track[i].t) / gap)) : 0;
+  placeDrone(i, frac);
+  if (state.follow) centreOnDrone();
+  else if (frac < 0.05) keepDroneVisible();
   requestAnimationFrame(tick);
 }
 
@@ -618,7 +680,10 @@ function updateUnitsButton() { $('#btn-units').textContent = units() === 'imperi
 
 $('#d-close').addEventListener('click', closeFlight);
 $('#p-play').addEventListener('click', () => (state.playing ? stopPlayback() : startPlayback()));
-$('#p-scrub').addEventListener('input', (e) => { stopPlayback(); setIndex(Number(e.target.value)); });
+$('#p-scrub').addEventListener('input', (e) => { stopPlayback(); setIndex(Number(e.target.value)); if (state.follow) centreOnDrone(); });
+$('#p-follow').addEventListener('click', () => setFollow(!state.follow));
+// Dragging the map yourself turns "Follow" off, so the map doesn't fight you.
+map.on('dragstart', () => { if (state.follow) setFollow(false); });
 $('#d-profile').addEventListener('click', (e) => {
   if (!state.profile) return;
   const box = e.currentTarget.getBoundingClientRect();
@@ -629,12 +694,14 @@ document.addEventListener('keydown', (e) => {
   if (!state.detail || e.target.matches('input, select, textarea')) return;
   if (e.key === ' ') { e.preventDefault(); state.playing ? stopPlayback() : startPlayback(); }
   if (e.key === 'Escape') closeFlight();
-  if (e.key === 'ArrowRight') { stopPlayback(); setIndex(state.idx + 10); }
-  if (e.key === 'ArrowLeft') { stopPlayback(); setIndex(state.idx - 10); }
+  if (e.key === 'ArrowRight') { stopPlayback(); setIndex(state.idx + 10); showDrone(); }
+  if (e.key === 'ArrowLeft') { stopPlayback(); setIndex(state.idx - 10); showDrone(); }
+  if (e.key === 'f' || e.key === 'F') setFollow(!state.follow);
 });
 
 // ---------- start ----------
 applyMapStyle();
+setFollow(state.follow);
 updateUnitsButton();
 refresh();
 setInterval(refresh, REFRESH_MS);

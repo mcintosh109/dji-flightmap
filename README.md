@@ -148,7 +148,10 @@ Open the address the script printed, for example `http://192.168.1.50:8080`.
 - **Flights** tab: every flight, newest first, grouped by day. Type in the
   box to filter.
 - Click a flight to see its path, statistics and a height chart. Press ▶ to
-  replay it (keyboard: **Space** = play/pause, **← →** = skip, **Esc** = close).
+  replay it: the drone glides along the path, the part already flown is drawn
+  bright and the rest faint. **Follow** keeps the map centred on the drone;
+  dragging the map turns it off.
+  Keyboard: **Space** = play/pause, **← →** = skip, **F** = follow, **Esc** = close.
 - Top-right: a map style drop-down, ft/mph ↔ m/km/h, and show everything.
 - Top of the left panel: ⚙ opens **Settings**, ↻ checks TrueNAS for new
   flights right away, and the door icon signs you out (when the login is on).

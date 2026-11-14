@@ -212,6 +212,9 @@ a.icon-btn { color: var(--text); }
 .player { display: flex; align-items: center; gap: 10px; margin-top: 10px; }
 .player .play { border-radius: 50%; background: var(--accent); color: #04121a; border: 0; font-size: 13px; }
 .player input[type=range] { flex: 1; accent-color: var(--accent); min-width: 0; }
+.chip.follow { padding: 6px 10px; font-size: 12px; }
+.chip.follow[aria-pressed="true"] { background: var(--accent-dim); color: var(--accent); border-color: var(--accent); }
+.drone-icon.active .rot { transition: none; }   /* replay moves it every frame already */
 .speed { color: var(--muted); font-size: 12px; display: flex; align-items: center; gap: 6px; }
 .speed select { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 4px 6px; }
 
