@@ -187,6 +187,31 @@
         <p class="help">To turn the login on or off, or change the password, run this in the Proxmox Shell (replace <code>105</code> with your container's number):</p>
         <pre class="cmd">pct exec 105 -- bash /opt/dji-flightmap/deploy/set-login.sh</pre>
       </section>
+
+      <!-- ================= UPDATES ================= -->
+      <section class="card" id="updates">
+        <h2>Updates</h2>
+        <p id="upd-status" class="upd-status">Checking…</p>
+        <div class="dialog-actions">
+          <button type="button" class="chip" id="upd-check">Check now</button>
+        </div>
+        <div id="upd-notes"></div>
+
+        <h3>How to update</h3>
+        <ol class="steps">
+          <li>Open the Proxmox web page, click your server name on the left, then <b>&gt;_ Shell</b>.</li>
+          <li>Paste this and press <b>Enter</b> (in the Shell, paste with <b>Ctrl+Shift+V</b>):
+            <div class="cmd-row"><code id="upd-cmd"></code><button type="button" class="chip" id="upd-copy">Copy</button></div>
+          </li>
+          <li>Wait until it says <b>"Update finished. The map is working"</b>, then press <b>Ctrl+Shift+R</b> here.</li>
+        </ol>
+        <p class="help">Settings, map keys and login are saved first and put back afterwards. If the new version doesn't start, the update undoes itself.</p>
+
+        <label class="check">
+          <input type="checkbox" data-key="checkUpdates">
+          <span>Check GitHub for new versions (at most every 6 hours) and show a notice in the sidebar</span>
+        </label>
+      </section>
     </form>
   </main>
 
@@ -198,6 +223,7 @@
   </div>
 
   <script src="vendor/leaflet/leaflet.js"></script>
+  <script src="updates.js"></script>
   <script src="maps.js"></script>
   <script src="settings.js"></script>
 </body>

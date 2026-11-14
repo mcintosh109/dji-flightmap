@@ -164,6 +164,30 @@ async function save() {
   }
 }
 
+// ---------- updates ----------
+async function showUpdates(force = false) {
+  const status = $('#upd-status');
+  status.textContent = 'Checking…';
+  status.className = 'upd-status';
+  const u = await Updates.check(info.version, info.updateUrl, { force });
+  const installed = `version ${esc(info.version)}${info.released ? ` (released ${esc(info.released)})` : ''}`;
+  let notes = info.notes || [], title = 'In your version';
+  if (u.error) {
+    status.innerHTML = `You have ${installed}. Couldn't reach GitHub to check for a newer one (${esc(u.error)}).`;
+    status.className = 'upd-status warn';
+  } else if (u.available) {
+    status.innerHTML = `<b>Version ${esc(u.latest)}</b> is available. You have ${installed}.`;
+    status.className = 'upd-status available';
+    notes = u.notes || [];
+    title = `What's new in ${u.latest}`;
+  } else {
+    status.innerHTML = `You're up to date: ${installed}.`;
+    status.className = 'upd-status ok';
+  }
+  $('#upd-notes').innerHTML = notes.length
+    ? `<h3>${esc(title)}</h3><ul class="notes">${notes.map((n) => `<li>${esc(n)}</li>`).join('')}</ul>` : '';
+}
+
 // ---------- start ----------
 async function start() {
   try {
@@ -185,6 +209,11 @@ async function start() {
   baseline = JSON.stringify(readForm());
   $('#form').classList.remove('hidden');
   $('#savebar').classList.remove('hidden');
+  $('#upd-cmd').textContent = Updates.COMMAND;
+  Updates.wireCopyButton($('#upd-copy'));
+  $('#upd-check').addEventListener('click', () => showUpdates(true));
+  showUpdates();
+  if (location.hash === '#updates') $('#updates').scrollIntoView();
   await centrePreview();
   updatePreview();
   updateSaveBar();

@@ -18,7 +18,7 @@
       <div class="brand">
         <span class="brand-mark" aria-hidden="true"></span>
         <div>
-          <h1>Flight Map</h1>
+          <h1>Flight Map <button id="btn-version" class="version-chip" type="button" title="Version and updates">v…</button></h1>
           <p id="status">Loading…</p>
         </div>
       </div>
@@ -34,6 +34,10 @@
       </button>
       </div>
     </header>
+    <button id="update-banner" class="update-banner hidden" type="button">
+      <span aria-hidden="true">⬆</span>
+      <span>Update available: <b id="upd-banner-version"></b><br><small>Click to see what's new and how to update</small></span>
+    </button>
     <nav class="tabs" role="tablist">
       <button role="tab" data-tab="aircraft" class="active">Aircraft</button>
       <button role="tab" data-tab="flights">Flights <span id="flight-count" class="count"></span></button>
@@ -95,7 +99,30 @@
     </details>
   </section>
 
+  <!-- "Updates" window (opened from the version number or the update notice) -->
+  <dialog id="update-dialog" class="dialog" aria-labelledby="upd-title">
+    <form method="dialog" class="dialog-close"><button class="icon-btn" aria-label="Close">✕</button></form>
+    <h2 id="upd-title">Updates</h2>
+    <p id="upd-status" class="upd-status">Checking…</p>
+    <div id="upd-notes"></div>
+    <h3>How to update</h3>
+    <ol class="steps">
+      <li>Open the Proxmox web page, click your server name on the left, then <b>&gt;_ Shell</b>.</li>
+      <li>Paste this and press <b>Enter</b> (in the Shell, paste with <b>Ctrl+Shift+V</b>):
+        <div class="cmd-row"><code id="upd-cmd"></code><button type="button" class="chip" id="upd-copy">Copy</button></div>
+      </li>
+      <li>Wait until it says <b>"Update finished. The map is working"</b>.</li>
+      <li>Come back to this page and press <b>Ctrl+Shift+R</b>.</li>
+    </ol>
+    <p class="help">Your settings, map keys and login are saved before the update and put back afterwards. If the new version doesn't start, the update undoes itself.</p>
+    <div class="dialog-actions">
+      <button type="button" class="chip" id="upd-check">Check again</button>
+      <a class="chip" href="settings.html#updates">Update settings</a>
+    </div>
+  </dialog>
+
   <script src="vendor/leaflet/leaflet.js"></script>
+  <script src="updates.js"></script>
   <script src="maps.js"></script>
   <script src="app.js"></script>
 </body>

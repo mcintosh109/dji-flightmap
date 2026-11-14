@@ -55,7 +55,46 @@ button, input, select { font: inherit; color: inherit; }
   width: 34px; height: 34px; border-radius: 10px; flex: none;
   background: var(--accent-dim) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 48'%3E%3Cg fill='%2336c2ff'%3E%3Ccircle cx='12' cy='12' r='6'/%3E%3Ccircle cx='36' cy='12' r='6'/%3E%3Ccircle cx='12' cy='36' r='6'/%3E%3Ccircle cx='36' cy='36' r='6'/%3E%3Crect x='18' y='18' width='12' height='12' rx='3'/%3E%3C/g%3E%3C/svg%3E") center/22px no-repeat;
 }
-.brand h1 { font-size: 16px; margin: 0; font-weight: 650; }
+.brand h1 { font-size: 16px; margin: 0; font-weight: 650; display: flex; align-items: center; gap: 6px; }
+.version-chip {
+  font-size: 11px; font-weight: 500; color: var(--muted); cursor: pointer;
+  background: var(--card); border: 1px solid var(--line); border-radius: 999px; padding: 1px 7px;
+}
+.version-chip:hover { color: var(--text); }
+.version-chip.has-update { color: #04121a; background: var(--home); border-color: transparent; }
+.update-banner {
+  display: flex; align-items: center; gap: 10px; text-align: left; cursor: pointer;
+  margin: 0 16px 10px; padding: 9px 12px; border-radius: 10px;
+  background: rgba(61, 220, 132, 0.12); border: 1px solid rgba(61, 220, 132, 0.45); color: var(--text);
+}
+.update-banner:hover { background: rgba(61, 220, 132, 0.2); }
+.update-banner > span:first-child { color: var(--home); font-size: 18px; }
+.update-banner small { color: var(--muted); }
+
+/* "Updates" window */
+.dialog {
+  width: min(560px, calc(100vw - 32px)); max-height: calc(100vh - 32px); overflow-y: auto;
+  background: var(--panel-solid); color: var(--text);
+  border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow);
+  padding: 20px 22px;
+}
+.dialog::backdrop { background: rgba(0, 0, 0, 0.55); }
+.dialog h2 { margin: 0 0 10px; font-size: 18px; }
+.dialog h3 { margin: 18px 0 6px; font-size: 14px; }
+.dialog ul, .dialog ol { margin: 0; padding-left: 20px; }
+.dialog li { margin: 6px 0; }
+.dialog-close { position: absolute; top: 14px; right: 14px; margin: 0; }
+.dialog-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 14px; }
+.upd-status { margin: 0; padding: 10px 12px; border-radius: 10px; background: var(--card); }
+.upd-status.available { background: rgba(61, 220, 132, 0.12); }
+.upd-status.ok { color: var(--home); }
+.upd-status.warn { color: var(--warn); }
+.cmd-row { display: flex; gap: 8px; align-items: center; margin-top: 6px; flex-wrap: wrap; }
+.cmd-row code {
+  flex: 1; min-width: 0; padding: 8px 10px; border-radius: 8px; background: var(--card);
+  border: 1px solid var(--line); overflow-wrap: anywhere; user-select: all;
+  font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12.5px;
+}
 .brand p { margin: 0; color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 .icon-btn {
@@ -307,6 +346,9 @@ code, .cmd { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 1
 .banner { padding: 12px 14px; border-radius: 10px; background: rgba(255,107,107,0.12); }
 
 .preview-wrap { margin: 0 0 14px; }
+.settings .steps, .settings .notes { margin: 0 0 12px; padding-left: 20px; }
+.settings .steps li, .settings .notes li { margin: 6px 0; }
+.settings .dialog-actions { margin: 10px 0 0; }
 #preview { height: 240px; border-radius: 12px; border: 1px solid var(--line); background: #1a1d22; }
 
 .savebar {

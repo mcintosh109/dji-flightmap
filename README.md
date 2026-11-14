@@ -244,6 +244,12 @@ Tailscale or WireGuard.
 
 ## Updating later
 
+The map tells you when there's a new version: a green **Update available**
+notice appears in the sidebar. Click it, or the version number next to
+"Flight Map", to see what's new and the update command with a **Copy**
+button. (The check asks GitHub at most every 6 hours; it can be turned off
+in Settings → Updates.)
+
 On the Proxmox host, one command does everything:
 
 ```bash
@@ -381,6 +387,8 @@ pct exec 105 -- systemctl restart dji-flightmap
 | `app/static/login.html` | The login page (self-contained) | *"HTML form POST"* |
 | `app/static/style.css` | Colours and layout, including the phone layout | *"CSS flexbox"*, *"CSS media queries"* |
 | `app/static/app.js` | Fetches the data and draws the map with Leaflet | *"javascript fetch"*, *"leaflet polyline"* |
+| `app/version.json` | The version number and "what's new" list, compared with the copy on GitHub to spot updates | *"semantic versioning"* |
+| `app/static/updates.js` | Checks GitHub for a newer version; the Copy button | *"fetch JSON"*, *"clipboard copy javascript"* |
 | `app/static/maps.js` | The list of map styles and where their pictures come from | *"leaflet tileLayer"*, *"XYZ tiles"* |
 | `app/static/settings.html`, `settings.js` | The settings page | *"HTML forms"*, *"fetch PUT JSON"* |
 | `app/static/vendor/leaflet/` | A copy of the Leaflet 1.9.4 map library (BSD-2 licence) | *"leafletjs"* |

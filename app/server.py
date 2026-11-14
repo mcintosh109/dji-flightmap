@@ -77,7 +77,14 @@ AUTH_ENABLED = bool(AUTH_USER and AUTH_PASSWORD_HASH)
 SESSION_DAYS = int(os.environ.get("SESSION_DAYS", "30"))   # stay signed in this long
 SECRET_FILE = os.path.join(os.path.dirname(CACHE_FILE), "session-secret")
 SETTINGS_FILE = os.path.join(os.path.dirname(CACHE_FILE), "settings.json")
-APP_VERSION = "1.2.0"
+# The version number and "what's new" list live in app/version.json, so the
+# web page can compare them with the newest copy on GitHub.
+try:
+    with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "version.json"), encoding="utf-8") as _fh:
+        VERSION_INFO = json.load(_fh)
+except (OSError, ValueError):
+    VERSION_INFO = {"version": "0.0.0", "notes": []}
+APP_VERSION = VERSION_INFO.get("version", "0.0.0")
 
 STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
 MAX_TRACK_POINTS = 3000   # most points sent to the browser for one flight
@@ -130,6 +137,7 @@ DEFAULT_SETTINGS = {
     # Server
     "scanSeconds": SCAN_SECONDS,
     "sessionDays": SESSION_DAYS,
+    "checkUpdates": True,
 }
 SETTINGS = dict(DEFAULT_SETTINGS)
 SETTINGS_LOCK = threading.Lock()
@@ -196,6 +204,7 @@ def clean_settings(incoming):
          "Aircraft nicknames can be up to 40 characters.")
     pick("scanSeconds", whole(5, 3600), "Check for new files every 5 to 3600 seconds.")
     pick("sessionDays", whole(1, 365), "Stay signed in for 1 to 365 days.")
+    pick("checkUpdates", is_bool, "Check for updates must be on or off.")
 
     for key in ("cartoKey", "mapboxToken", "maptilerKey", "azureMapsKey", "customTileName", "customAttribution"):
         new[key] = new[key].strip()
@@ -645,6 +654,7 @@ class FlightLibrary:
             flights.sort(key=lambda s: s["sortKey"], reverse=True)
             return {
                 "auth": AUTH_ENABLED,
+                "app": {"version": APP_VERSION, "updateUrl": VERSION_INFO.get("updateUrl", "")},
                 "settings": current_settings(),
                 "files": len(self.entries),
                 "version": self.version,
@@ -906,6 +916,9 @@ class Handler(SimpleHTTPRequestHandler):
             "defaults": DEFAULT_SETTINGS,
             "info": {
                 "version": APP_VERSION,
+                "released": VERSION_INFO.get("released", ""),
+                "notes": VERSION_INFO.get("notes", []),
+                "updateUrl": VERSION_INFO.get("updateUrl", ""),
                 "auth": AUTH_ENABLED,
                 "user": AUTH_USER if AUTH_ENABLED else "",
                 "dataDir": DATA_DIR,
