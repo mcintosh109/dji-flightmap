@@ -1,0 +1,21 @@
+DJI Flight Map
+Copyright 2026 mcintosh109
+
+DJI Flight Map was created by mcintosh109.
+Original project: https://github.com/mcintosh109/dji-flightmap
+
+Licensed under the Apache License, Version 2.0 (see the LICENSE file).
+If you share this project or something built from it, the licence requires
+you to keep this NOTICE file with it.
+
+------------------------------------------------------------------------
+
+This project includes Leaflet 1.9.4 (https://leafletjs.com) in
+app/static/vendor/leaflet/:
+  Copyright (c) 2010-2023, Volodymyr Agafonkin
+  Copyright (c) 2010-2011, CloudMade
+  Licensed under the BSD 2-Clause License
+  (see app/static/vendor/leaflet/LICENSE).
+
+"DJI" is a trademark of SZ DJI Technology Co., Ltd. This project is not
+affiliated with, sponsored by, or endorsed by DJI.

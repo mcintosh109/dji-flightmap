@@ -552,3 +552,18 @@ DATA_DIR=/path/to/some/logs CACHE_FILE=./cache.json python3 app/server.py
 ```
 
 Then open <http://localhost:8080>.
+
+---
+
+## Licence
+
+Copyright 2026 mcintosh109. DJI Flight Map was created by mcintosh109.
+
+Licensed under the [Apache License, Version 2.0](LICENSE). In short: you may
+use, change and share this project, including in your own products, as long
+as you keep the copyright notice and the [NOTICE](NOTICE) file, which credits
+the original author, and say what you changed. It comes with no warranty.
+
+It includes the [Leaflet](https://leafletjs.com) map library (BSD 2-Clause
+licence). "DJI" is a trademark of SZ DJI Technology Co., Ltd.; this project
+is not affiliated with or endorsed by DJI.

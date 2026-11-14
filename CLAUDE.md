@@ -56,6 +56,13 @@ committed by mistake and the history had to be rewritten; don't repeat that.
 - Map provider in use: **Azure Maps** (key saved on the settings page).
 - Drone: DJI Mini 4 Pro.
 
+## Licence
+
+Apache 2.0, copyright "mcintosh109" (the owner chose the GitHub username, not
+a real name: don't add one). `LICENSE` is the official text, unchanged.
+`NOTICE` credits the owner as the creator and must stay accurate: if another
+third-party library is ever bundled, add its notice there.
+
 ## How the project is built
 
 | Path | What |
