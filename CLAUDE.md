@@ -117,6 +117,15 @@ cd /root/dji-flightmap && bash deploy/update-ct.sh
   not inside it, because the Pi dock has write access inside. `copy_offsite`
   refuses to write if the folder isn't a mount point (TrueNAS down). Daily
   `dji-flightmap-backup.timer` on the host runs `deploy/backup-ct.sh`.
+- **Speed of the Azure proxy** (2.2.2): `azure.py` keeps a pool of open
+  connections to Azure (a new TLS handshake per tile was the slow part) and
+  remembers answers in memory only as long as Azure's `Cache-Control` allows
+  (never for `private`/`no-store`; Microsoft's terms allow latency caching
+  within the header's validity). The web server speaks HTTP/1.1 keep-alive,
+  which has three traps: one Handler object serves many requests, so reset
+  per-request state (`cache_control`) in `end_headers`; set
+  `disable_nagle_algorithm` or every reply stalls ~40 ms; and requests with a
+  body get `Connection: close` so unread data can't be taken for the next request.
 - **Copy buttons:** `navigator.clipboard` needs https; the map is plain http,
   so `updates.js` falls back to `document.execCommand('copy')`.
 - **Claude's sandbox can't reach tile servers or most websites.** The tests

@@ -254,6 +254,10 @@ replace or remove it, but the page can't read it back.
 (The one time the key crosses your network is when you paste it into the
 settings page and press Save, until the map page itself uses HTTPS.)
 
+To keep this fast, the server reuses its connections to Azure, and remembers
+each picture in memory for as long as Azure's own response says it is valid
+(at most a day, about 64 MB). Restarting the service empties that memory.
+
 The CARTO, Mapbox and MapTiler keys still go to the browser, because their
 terms don't allow passing their maps through another server. Use a *public*
 key for them (Mapbox `pk.`), never a secret one.

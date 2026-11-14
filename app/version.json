@@ -1,9 +1,9 @@
 {
-  "version": "2.2.1",
+  "version": "2.2.2",
   "released": "2026-11-14",
   "updateUrl": "https://raw.githubusercontent.com/mcintosh109/dji-flightmap/main/app/version.json",
   "notes": [
-    "Behind the scenes: the code is reorganised into small files, one per job, so it's easier to read and review. Nothing changes in how the map works",
-    "Automatic code checks (linters) now run with the tests"
+    "Azure maps load faster: the server now reuses its connections to Azure instead of opening a new one for every picture",
+    "Areas you've already looked at load almost instantly (pictures are remembered for as long as Azure allows)"
   ]
 }

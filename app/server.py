@@ -100,22 +100,43 @@ def scan_forever():
 # The web server
 # --------------------------------------------------------------------------
 class Handler(SimpleHTTPRequestHandler):
+    # HTTP/1.1 lets the browser reuse a connection for many requests (a
+    # screen of map is 20-40 pictures) instead of reconnecting for each one.
+    # One Handler object then serves several requests, so anything set per
+    # request (like cache_control) must be reset after each answer.
+    protocol_version = "HTTP/1.1"
+    timeout = 65           # close a connection that has been idle this long (seconds)
+    # Send each reply straight away. Without this, a reply sent in two pieces
+    # (headers, then body) on a reused connection waits about 40 ms for the
+    # browser to acknowledge the first piece ("Nagle's algorithm").
+    disable_nagle_algorithm = True
+    cache_control = None   # set per request to override "no-cache"
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=STATIC_DIR, **kwargs)
-
-    cache_control = None   # set per request to override "no-cache"
 
     def end_headers(self):
         # Tell browsers to re-check files, so updates show up straight away
         # (map pictures are the exception: they set cache_control).
         self.send_header("Cache-Control", self.cache_control or "no-cache")
+        self.cache_control = None
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("X-Frame-Options", "DENY")
+        if self.command not in ("GET", "HEAD"):
+            # Requests that carry data (saving, signing in) get their own
+            # connection: if we answer without reading all of the data, the
+            # leftover would be mistaken for the next request.
+            self.send_header("Connection", "close")
         super().end_headers()
 
     def log_message(self, fmt, *args):
-        # Only log API calls and errors, not every image/script request.
-        if self.path.startswith("/api/") or (args and str(args[1])[:1] in "45"):
+        # Only log API calls and errors, not every picture/script request or
+        # idle connections timing out.
+        if fmt.startswith("Request timed out"):
+            return
+        is_api = getattr(self, "path", "").startswith("/api/")
+        is_error = len(args) > 1 and str(args[1])[:1] in "45"
+        if is_api or is_error:
             log(f"{self.address_string()} {fmt % args}")
 
     def send_json(self, obj, status=200):

@@ -340,18 +340,25 @@ class FakeAzure:
         import http.server
         import threading
         self.key, self.seen = key, []
+        self.connections = set()      # each connection our server opened to "Azure"
+        self.cache_control = None     # Cache-Control header to send with pictures
         outer = self
 
         class Handler(http.server.BaseHTTPRequestHandler):
+            protocol_version = 'HTTP/1.1'   # keeps connections open, like the real Azure
+
             def do_GET(self):
                 from urllib.parse import parse_qs, urlparse
                 u = urlparse(self.path)
                 q = parse_qs(u.query)
                 outer.seen.append((u.path, q.get('subscription-key', [''])[0]))
+                outer.connections.add(self.client_address)
                 if q.get('subscription-key', [''])[0] != outer.key:
+                    body = b'bad key ' + q.get('subscription-key', [''])[0].encode()
                     self.send_response(401)
+                    self.send_header('Content-Length', str(len(body)))
                     self.end_headers()
-                    self.wfile.write(b'bad key ' + q.get('subscription-key', [''])[0].encode())
+                    self.wfile.write(body)
                     return
                 if u.path == '/map/attribution':
                     body = json.dumps({'copyrights': ['<a x="1">&copy;2026 TomTom</a>', '<a>&copy;2026 TomTom</a>',
@@ -361,6 +368,9 @@ class FakeAzure:
                     body, ctype = b'\x89PNG fake tile', 'image/png'
                 self.send_response(200)
                 self.send_header('Content-Type', ctype)
+                self.send_header('Content-Length', str(len(body)))
+                if outer.cache_control and u.path == '/map/tile':
+                    self.send_header('Cache-Control', outer.cache_control)
                 self.end_headers()
                 self.wfile.write(body)
 
@@ -420,6 +430,67 @@ class LiveAzureKey(unittest.TestCase):
         self.srv.put_settings({'removeAzureMapsKey': True})
         self.assertFalse(self.srv.json('/api/settings')['settings']['azureMapsKeySet'])
         self.assertEqual(self.srv.request('/tiles/azure/microsoft.imagery/1/0/0.png')[0], 404)
+
+    def tile_count(self):
+        return sum(1 for path, _ in self.azure.seen if path == '/map/tile')
+
+    def test_connections_to_azure_are_reused(self):
+        self.srv.put_settings({'azureMapsKey': self.KEY})
+        self.azure.connections.clear()
+        for x in range(100, 108):                      # 8 different pictures, one after another
+            self.assertEqual(self.srv.request(f'/tiles/azure/microsoft.base.road/12/{x}/200.png')[0], 200)
+        self.assertEqual(len(self.azure.connections), 1, 'one connection to Azure should serve them all')
+
+    def test_pictures_remembered_only_as_azure_allows(self):
+        self.srv.put_settings({'azureMapsKey': self.KEY})
+        # Azure says "valid for an hour": the second request must not reach Azure.
+        self.azure.cache_control = 'max-age=3600'
+        before = self.tile_count()
+        first = self.srv.request('/tiles/azure/microsoft.imagery/12/300/300.png')
+        second = self.srv.request('/tiles/azure/microsoft.imagery/12/300/300.png')
+        self.assertEqual(self.tile_count(), before + 1)
+        self.assertEqual(first[2], second[2])
+        self.assertRegex(second[1].get('Cache-Control', ''), r'^max-age=\d+$')
+        # Azure says "private" (or nothing): ask Azure every time.
+        for header in ('private, max-age=3600', 'no-store', None):
+            self.azure.cache_control = header
+            before = self.tile_count()
+            self.srv.request('/tiles/azure/microsoft.imagery/12/301/301.png')
+            self.srv.request('/tiles/azure/microsoft.imagery/12/301/301.png')
+            self.assertEqual(self.tile_count(), before + 2, header)
+        self.azure.cache_control = None
+
+    def test_remembered_pictures_need_a_key(self):
+        self.srv.put_settings({'azureMapsKey': self.KEY})
+        self.azure.cache_control = 'max-age=3600'
+        self.assertEqual(self.srv.request('/tiles/azure/microsoft.imagery/12/302/302.png')[0], 200)
+        self.azure.cache_control = None
+        self.srv.put_settings({'removeAzureMapsKey': True})
+        self.assertEqual(self.srv.request('/tiles/azure/microsoft.imagery/12/302/302.png')[0], 404)
+
+    def test_browser_connection_reused_without_mixing_answers(self):
+        """Several requests on one connection: each gets its own Cache-Control."""
+        import http.client
+        self.srv.put_settings({'azureMapsKey': self.KEY})
+        conn = http.client.HTTPConnection('127.0.0.1', self.srv.port, timeout=10)
+        try:
+            conn.request('GET', '/tiles/azure/microsoft.base.road/12/400/400.png')
+            tile = conn.getresponse()
+            tile.read()
+            self.assertIn('max-age', tile.getheader('Cache-Control'))
+            sock = conn.sock
+            conn.request('GET', '/api/health')           # same connection
+            health = conn.getresponse()
+            health.read()
+            self.assertIs(conn.sock, sock, 'the connection should have been reused')
+            self.assertEqual(health.getheader('Cache-Control'), 'no-cache')
+            # A request that carries data is answered with "Connection: close".
+            conn.request('POST', '/api/rescan', body=b'x' * 10)
+            refused = conn.getresponse()
+            refused.read()
+            self.assertEqual((refused.status, refused.getheader('Connection')), (403, 'close'))
+        finally:
+            conn.close()
 
     def test_wrong_key_error_not_passed_on(self):
         self.srv.put_settings({'azureMapsKey': 'WRONG-KEY'})
