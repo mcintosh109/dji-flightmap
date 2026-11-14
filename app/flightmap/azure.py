@@ -13,69 +13,26 @@ Two things keep that fast:
 import http.client
 import json
 import os
-import queue
 import re
 import threading
 import time
 from collections import OrderedDict
 from html.parser import HTMLParser
-from urllib.parse import quote, urlencode, urlsplit
+from urllib.parse import quote, urlencode
 
 from .config import AZURE_MAPS_URL, log
 from .settings import current_settings
+from .upstream import Upstream
 
 AZURE_TILESETS = {"microsoft.base.road", "microsoft.base.darkgrey", "microsoft.imagery", "microsoft.base.hybrid.road"}
-AZURE_TIMEOUT = 10
-POOL_SIZE = 8                    # open connections to Azure kept for reuse
+AZURE = Upstream(AZURE_MAPS_URL, timeout=10)   # open connections to Azure, reused
 CACHE_BYTES = int(os.environ.get("AZURE_CACHE_MB", "64")) * 1024 * 1024
 CACHE_MAX_SECONDS = 24 * 3600    # never remember an answer longer than this
 
-_pool = queue.LifoQueue()        # idle connections, most recently used first
 _cache = OrderedDict()           # request -> (expires, content type, body); oldest first
 _cache_size = 0
 _cache_lock = threading.Lock()
 _logged_cache_header = False
-
-
-# ---- connections ---------------------------------------------------------------
-def _new_connection():
-    url = urlsplit(AZURE_MAPS_URL)
-    kind = http.client.HTTPSConnection if url.scheme == "https" else http.client.HTTPConnection
-    return kind(url.hostname, url.port, timeout=AZURE_TIMEOUT)
-
-
-def _get(target):
-    """One GET to Azure. Returns (status, content type, body, Cache-Control).
-
-    Uses an idle open connection if there is one. Azure closes connections
-    that sit idle, so if a reused one fails, try once more with a new one.
-    """
-    for must_be_new in (False, True):
-        conn = None
-        if not must_be_new:
-            try:
-                conn = _pool.get_nowait()
-            except queue.Empty:
-                pass
-        reused = conn is not None
-        if conn is None:
-            conn = _new_connection()
-        try:
-            conn.request("GET", target, headers={"User-Agent": "dji-flightmap"})
-            res = conn.getresponse()
-            body = res.read()
-        except (http.client.HTTPException, OSError):
-            conn.close()
-            if reused:
-                continue
-            raise
-        if res.will_close or _pool.qsize() >= POOL_SIZE:
-            conn.close()
-        else:
-            _pool.put(conn)
-        return (res.status, res.getheader("Content-Type", "application/octet-stream"), body,
-                res.getheader("Cache-Control", ""))
-    raise OSError("could not reach Azure Maps")   # not reached: the loop returns or raises
 
 
 # ---- remembering answers ----------------------------------------------------------
@@ -139,7 +96,7 @@ def azure_request(path, params):
 
     query = urlencode({"api-version": "2024-04-01", **params, "subscription-key": key}, quote_via=quote)
     try:
-        status, ctype, body, cache_control = _get(f"{urlsplit(AZURE_MAPS_URL).path}{path}?{query}")
+        status, ctype, body, cache_control = AZURE.request("GET", f"{path}?{query}")
     except (http.client.HTTPException, OSError) as err:
         log(f"Could not reach Azure Maps: {err}")
         return 502, "application/json", b'{"error":"could not reach Azure Maps"}', {}

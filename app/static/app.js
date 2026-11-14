@@ -171,6 +171,28 @@ function rotateMarker(marker, yaw) {
   el.style.transform = `rotate(${marker._angle}deg)`;
 }
 
+// Keep the map's credit line (and the Google logo) above the bottom panels:
+// map companies require them to stay visible. The panels change size, so
+// watch them (research: "ResizeObserver").
+function liftCredits() {
+  const corner = map.getContainer().querySelector('.leaflet-bottom.leaflet-right');
+  if (!corner) return;
+  let lift = 0;
+  for (const el of [$('#detail'), $('#planner'), $('#panel')]) {
+    if (!el || el.classList.contains('hidden')) continue;
+    const r = el.getBoundingClientRect();
+    // Only panels that reach the bottom right corner of the screen.
+    if (!r.height || r.bottom < window.innerHeight - 40 || r.right < window.innerWidth - 60) continue;
+    lift = Math.max(lift, window.innerHeight - r.top);
+  }
+  corner.style.bottom = `${Math.round(lift)}px`;
+}
+if (window.ResizeObserver) {
+  const watcher = new ResizeObserver(liftCredits);
+  for (const id of ['#detail', '#planner', '#panel']) if ($(id)) watcher.observe($(id));
+}
+window.addEventListener('resize', liftCredits);
+
 // Leave room for the panels when zooming to something.
 function fitOptions() {
   const narrow = window.innerWidth <= 760;

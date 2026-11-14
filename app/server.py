@@ -19,7 +19,9 @@ rest lives in the flightmap/ folder, one file per job:
   plans.py       saved flight plans
   auth.py        the optional login
   azure.py       Azure Maps through this server (keeps the key private)
+  google.py      Google Maps through this server (keeps the key private)
   places.py      shops, schools, parks... from OpenStreetMap
+  upstream.py    reused connections to Azure and Google
 
 Settings are read from environment variables (see deploy/dji-flightmap.env):
   DATA_DIR      folder that holds the flight logs     (default: /srv/dji-logs)
@@ -47,6 +49,10 @@ Web addresses it answers:
                         one Azure Maps picture, fetched by this server with
                         the saved key (the key never goes to the browser)
   /api/azure-credits    Azure's copyright line for the area on screen
+  /tiles/google/<set>/<z>/<x>/<y>.png
+                        one Google Maps picture (same idea as Azure; never
+                        stored on this server, as Google's rules say)
+  /api/google-credits   Google's copyright line for the area on screen
   /api/places?x0=&x1=&y0=&y1=
                         places (shops, schools, parks...) in those map
                         squares, from OpenStreetMap (see flightmap/places.py)
@@ -83,6 +89,7 @@ from flightmap.auth import (COOKIE_NAME, PUBLIC_PATHS, hash_password, make_sessi
 from flightmap.azure import AZURE_TILESETS, azure_request, html_to_text
 from flightmap.config import (APP_VERSION, AUTH_ENABLED, AUTH_PASSWORD_HASH, AUTH_USER, DATA_DIR, HOST, PORT,
                               STATIC_DIR, VERSION_INFO, log)
+from flightmap.google import GOOGLE_SETS, google_credits, google_tile
 from flightmap.library import FlightLibrary
 from flightmap.places import PlacesError, parse_range, places_in
 from flightmap.plans import MAX_PLANS, PLAN_ID_RE, PLANS_LOCK, clean_plan, load_plans, save_plans
@@ -204,6 +211,10 @@ class Handler(SimpleHTTPRequestHandler):
             return self.azure_tile(path)
         if path == "/api/azure-credits":
             return self.azure_credits()
+        if path.startswith("/tiles/google/"):
+            return self.google_tile(path)
+        if path == "/api/google-credits":
+            return self.google_credits()
         if path == "/api/places":
             return self.places()
         if path == "/api/plans":
@@ -261,6 +272,32 @@ class Handler(SimpleHTTPRequestHandler):
             if text and text not in credits:
                 credits.append(text[:200])
         return self.send_json({"copyrights": credits})
+
+    # ---- Google Maps through this server -----------------------------------
+    def google_tile(self, path):
+        m = re.fullmatch(r"/tiles/google/([a-z]+)/(\d{1,2})/(\d{1,7})/(\d{1,7})\.png", path)
+        if not m or m.group(1) not in GOOGLE_SETS:
+            return self.send_json({"error": "unknown map picture"}, 400)
+        tileset, z, x, y = m.group(1), int(m.group(2)), int(m.group(3)), int(m.group(4))
+        if z > 22 or x >= 2 ** z or y >= 2 ** z:
+            return self.send_json({"error": "map picture out of range"}, 400)
+        status, ctype, body, cache_control = google_tile(tileset, z, x, y)
+        if status == 200:
+            # Google's rules: the browser may keep it only as Google says.
+            self.cache_control = cache_control or "no-cache"
+        return self.send_raw(status, ctype, body)
+
+    def google_credits(self):
+        q = parse_qs(urlparse(self.path).query)
+        tileset = (q.get("set") or [""])[0]
+        zoom = (q.get("zoom") or [""])[0]
+        bounds = (q.get("bounds") or [""])[0]
+        if (tileset not in GOOGLE_SETS or not zoom.isdigit() or int(zoom) > 22
+                or not re.fullmatch(r"-?\d{1,3}(\.\d+)?(,-?\d{1,3}(\.\d+)?){3}", bounds)):
+            return self.send_json({"error": "bad request"}, 400)
+        west, south, east, north = bounds.split(",")
+        answer, status = google_credits(tileset, int(zoom), west, south, east, north)
+        return self.send_json(answer, 200 if status == 404 else status)
 
     # ---- places from OpenStreetMap ------------------------------------------
     def places(self):

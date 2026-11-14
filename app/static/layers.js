@@ -23,7 +23,7 @@ function applyMapStyle() {
   const layer = currentLayer();
   const details = currentDetails();
   const r = MapStyles.resolve(s, layer, details);
-  const key = [r.id, details, s.mapProvider, s.cartoKey, s.mapboxToken, s.maptilerKey, s.azureMapsKeySet,
+  const key = [r.id, details, s.mapProvider, s.cartoKey, s.mapboxToken, s.maptilerKey, s.azureMapsKeySet, s.googleMapsKeySet,
     s.customTileUrl, s.customAttribution].join('|');
   if (key !== state.layerKey) {
     if (baseLayer) map.removeLayer(baseLayer);

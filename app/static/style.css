@@ -505,3 +505,8 @@ code, .cmd { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 1
 .place-pop .muted { color: var(--muted); }
 .place-pop .links a { color: var(--accent); }
 .place-warn { margin-top: 4px; padding: 6px 8px; border-radius: 8px; background: rgba(255, 176, 32, 0.14); color: var(--warn); }
+
+/* ---------- Google Maps logo (Google's rules: always visible) ---------- */
+.google-logo { margin: 0 6px 2px 0 !important; pointer-events: none; }
+.google-logo img { display: block; height: 18px; width: auto; }
+.google-logo.text { font: 700 15px/1 Arial, sans-serif; color: #fff; text-shadow: 0 0 3px #000, 0 0 2px #000; }

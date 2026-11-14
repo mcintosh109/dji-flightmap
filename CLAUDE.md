@@ -70,7 +70,7 @@ another third-party library is ever bundled, add its notice there.
 | Path | What |
 |---|---|
 | `app/server.py` | Python, standard library only. Entry point: the `Handler` class (every web address) and start-up. |
-| `app/flightmap/` | One module per job: `config` (env + paths), `flightlogs` (read one log), `library` (all flights), `settings`, `plans`, `auth` (login), `azure` (key-hiding proxy), `places` (OpenStreetMap places). Modules read the environment at import, so tests set env vars first and re-import. |
+| `app/flightmap/` | One module per job: `config` (env + paths), `flightlogs` (read one log), `library` (all flights), `settings`, `plans`, `auth` (login), `azure` / `google` (key-hiding proxies), `upstream` (shared connection pool), `places` (OpenStreetMap places). Modules read the environment at import, so tests set env vars first and re-import. |
 | `app/version.json` | Version number + "what's new" notes. The page compares it with GitHub to show the update notice. |
 | `app/static/` | Classic scripts sharing globals, loaded in this order by `index.html`: `common.js` (helpers), `updates.js`, `maps.js` (providers/layers), `app.js` (state, formatting, map, icons), `layers.js`, `places.js` (shops/schools/parks layer), `overview.js` (sidebar + all flights), `flight.js` (open flight + replay), `update-notice.js`, `main.js` (refresh + start), `planner.js`. Each file wires its own buttons at the bottom. Also `settings.*`, `login.html` (self-contained), `style.css`, `vendor/leaflet` (1.9.4). |
 | `deploy/` | `setup-truenas-mount.sh`, `create-ct.sh` (host), `install.sh` (in container), `update-ct.sh` + `restore-ct.sh` + `ct-backup.sh` (host), `set-login.sh` (container). |
@@ -177,5 +177,20 @@ owner confirms it works**, release it with a tag (`git tag -a vX.Y.Z` +
   (`nwr["name"]->.named`) and filters that set; the browser says "still
   waiting" after 8 s and gives up at 70 s. overpass-api.de wants a custom
   User-Agent (a stock one gets 406). Claude's sandbox can't reach Overpass.
+- **Google Maps** (3.0.0): Map Tiles API 2D tiles through the server
+  (`/tiles/google/<set>/...`, `/api/google-credits`), sets roadmap,
+  satellite, hybrid (satellite + `layerRoadmap`), terrain (needs
+  `layerRoadmap`), dark (roadmap + `styles`). Sessions are made per set and
+  renewed on a 400/401/403. **Google's rules: never store tiles on the
+  server** (only pass Google's Cache-Control on), always show the Google
+  logo + the viewport `copyright` text. The viewport's `maxZoomRects` lowers
+  `maxNativeZoom` where imagery stops. `liftCredits()` in app.js keeps the
+  credit line above the bottom panels (they used to cover it). The Google
+  places data must not be put on a non-Google map, so Places stays
+  OpenStreetMap. Tests use `GOOGLE_TILES_URL`. developers.google.com is not
+  reachable from Claude's sandbox; rules came from search results.
+- **Release tags**: in Claude's sandbox, pushing a tag was blocked by the
+  safety check (a public action). The owner then makes the release on
+  GitHub: Releases → Draft a new release → new tag `vX.Y.Z` on `main`.
 - Old installs had an `update-ct.sh` that could not download its own
   replacement; the current one does `git pull` and restarts itself.

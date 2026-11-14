@@ -10,7 +10,7 @@ import threading
 from .config import SCAN_SECONDS, SESSION_DAYS, SETTINGS_FILE, log
 
 # Map providers and layers the page knows (see PROVIDERS in static/maps.js).
-MAP_PROVIDERS = {"free", "carto", "azure", "mapbox", "maptiler", "custom"}
+MAP_PROVIDERS = {"free", "carto", "azure", "google", "mapbox", "maptiler", "custom"}
 MAP_LAYERS = {"road", "satellite", "dark", "terrain"}
 # Older versions saved one "mapStyle"; this turns it into provider + layer
 # (+ whether "Details" was part of it).
@@ -35,6 +35,7 @@ DEFAULT_SETTINGS = {
     "mapboxToken": "",
     "maptilerKey": "",
     "azureMapsKey": "",
+    "googleMapsKey": "",
     "customTileUrl": "",
     "customTileName": "Custom map",
     "customAttribution": "",
@@ -106,6 +107,8 @@ def clean_settings(incoming):
          "The MapTiler key can only contain letters, numbers, dots, dashes and underscores.")
     pick("azureMapsKey", lambda v: isinstance(v, str) and KEY_RE.match(v.strip()),
          "The Azure Maps key can only contain letters, numbers, dots, dashes and underscores.")
+    pick("googleMapsKey", lambda v: isinstance(v, str) and KEY_RE.match(v.strip()),
+         "The Google Maps key can only contain letters, numbers, dots, dashes and underscores.")
     pick("customTileUrl", lambda v: isinstance(v, str) and (v == "" or (
         len(v) <= 500 and re.match(r"^https?://[^\s<>\"']+$", v)
         and all(part in v for part in ("{z}", "{x}", "{y}")))),
@@ -133,7 +136,8 @@ def clean_settings(incoming):
     pick("sessionDays", whole(1, 365), "Stay signed in for 1 to 365 days.")
     pick("checkUpdates", is_bool, "Check for updates must be on or off.")
 
-    for key in ("cartoKey", "mapboxToken", "maptilerKey", "azureMapsKey", "customTileName", "customAttribution"):
+    for key in ("cartoKey", "mapboxToken", "maptilerKey", "azureMapsKey", "googleMapsKey",
+                "customTileName", "customAttribution"):
         new[key] = new[key].strip()
     new["aircraftNames"] = {k: n.strip() for k, n in new["aircraftNames"].items() if n.strip()}
     return new, problems
@@ -188,7 +192,7 @@ def current_settings():
 
 
 # Keys that stay on the server: the page only learns whether one is saved.
-SERVER_ONLY_KEYS = ("azureMapsKey",)
+SERVER_ONLY_KEYS = ("azureMapsKey", "googleMapsKey")
 
 
 def public_settings():

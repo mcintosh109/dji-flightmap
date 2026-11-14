@@ -6,7 +6,15 @@
 
 // These are kept when you press "Reset to defaults", because they are
 // things you typed in yourself and would be annoying to lose.
-const KEEP_ON_RESET = ['cartoKey', 'mapboxToken', 'maptilerKey', 'azureMapsKey', 'customTileUrl', 'customTileName', 'customAttribution', 'aircraftNames'];
+const KEEP_ON_RESET = ['cartoKey', 'mapboxToken', 'maptilerKey', 'azureMapsKey', 'googleMapsKey', 'customTileUrl', 'customTileName', 'customAttribution', 'aircraftNames'];
+
+// Keys that stay on the server. The page only learns whether one is saved
+// ("<key>Set"); "remove<Key>" deletes it when you press Save.
+const SERVER_KEYS = [
+  { key: 'azureMapsKey', box: 'azure', placeholder: 'Primary key from your Azure Maps account' },
+  { key: 'googleMapsKey', box: 'google', placeholder: 'API key from Google Cloud (starts with AIza)' },
+];
+const removeFlag = (key) => `remove${key[0].toUpperCase()}${key.slice(1)}`;
 
 let saved = null;      // the values as saved on the server
 let baseline = '';     // the form's contents right after loading/saving
@@ -31,15 +39,16 @@ function fillForm(values) {
   showKeyStatus();
 }
 
-// "A key is saved (hidden)" / "will be removed" under the Azure key box.
+// "A key is saved (hidden)" / "will be removed" under the Azure and Google key boxes.
 function showKeyStatus() {
-  const box = $('#azureMapsKey');
-  const remove = $('#removeAzureMapsKey').checked;
-  const isSaved = !!saved?.azureMapsKeySet;
-  box.placeholder = isSaved && !remove ? 'A key is saved (hidden). Type a new one to replace it.' : 'Primary key from your Azure Maps account';
-  $('#azure-remove').classList.toggle('hidden', !isSaved || remove);
-  $('#azure-key-status').textContent = remove ? 'The saved key will be removed when you press Save.'
-    : isSaved ? '✓ A key is saved on the server.' : 'No key saved yet.';
+  for (const { key, box, placeholder } of SERVER_KEYS) {
+    const remove = document.getElementById(removeFlag(key)).checked;
+    const isSaved = !!saved?.[`${key}Set`];
+    document.getElementById(key).placeholder = isSaved && !remove ? 'A key is saved (hidden). Type a new one to replace it.' : placeholder;
+    $(`#${box}-remove`).classList.toggle('hidden', !isSaved || remove);
+    $(`#${box}-key-status`).textContent = remove ? 'The saved key will be removed when you press Save.'
+      : isSaved ? '✓ A key is saved on the server.' : 'No key saved yet.';
+  }
 }
 
 function readForm() {
@@ -51,8 +60,8 @@ function readForm() {
     else if ('number' in el.dataset) out[key] = el.value === '' ? NaN : Math.round(Number(el.value));
     else out[key] = el.value.trim();
   }
-  // The Azure key itself is never sent to this page; only whether one is saved.
-  out.azureMapsKeySet = !!saved?.azureMapsKeySet && !out.removeAzureMapsKey;
+  // Server-only keys are never sent to this page; only whether one is saved.
+  for (const { key } of SERVER_KEYS) out[`${key}Set`] = !!saved?.[`${key}Set`] && !out[removeFlag(key)];
   out.aircraftNames = {};
   for (const input of $$('[data-serial]')) {
     if (input.value.trim()) out.aircraftNames[input.dataset.serial] = input.value.trim();
@@ -64,7 +73,7 @@ function readForm() {
 function fillProviderList(values) {
   const select = $('#mapProvider');
   select.innerHTML = Object.entries(MapStyles.PROVIDERS).map(([id, p]) => {
-    const missing = p.needs && !String(values[p.needs] || '').trim();
+    const missing = p.needs && !String(values[p.needs] || '').trim() && values[`${p.needs}Set`] !== true;
     return `<option value="${id}"${id === values.mapProvider ? ' selected' : ''}>${esc(p.name)}${missing ? ' (add key below)' : ''}</option>`;
   }).join('');
 }
@@ -108,7 +117,9 @@ function updatePreview() {
   previewLayer = MapStyles.build(r.id, values, { details: values.satelliteLabels });
   // A note shown with the preview result, when free maps stand in.
   const note = r.noKey ? ` ${provider.name} needs a key (above), so this preview shows the free map.`
-    : r.fallback ? ` ${provider.name} has no ${layerName} layer, so the free one is used.` : '';
+    : r.fallback ? ` ${provider.name} has no ${layerName} layer, so the free one is used.`
+      // Google pictures come through the server, with the SAVED key.
+      : values.mapProvider === 'google' && values.googleMapsKey ? ' Press Save to preview Google Maps with the new key.' : '';
   let loaded = 0, failed = 0;
   const report = () => {
     if (failed && !loaded) {
@@ -248,7 +259,7 @@ async function start() {
   $('#form').addEventListener('input', updateConversions);
   $('#form').addEventListener('input', (e) => {
     // Typing a key can make a style usable, so refresh the list's notes.
-    if (['cartoKey', 'mapboxToken', 'maptilerKey', 'azureMapsKey', 'customTileUrl'].includes(e.target.dataset.key)) {
+    if (['cartoKey', 'mapboxToken', 'maptilerKey', 'azureMapsKey', 'googleMapsKey', 'customTileUrl'].includes(e.target.dataset.key)) {
       fillProviderList(readForm());
     }
     if (e.target.dataset.key === 'mapProvider') showProviderFields(e.target.value);
@@ -267,14 +278,16 @@ async function start() {
     updatePreview();
     updateSaveBar();
   });
-  $('#azure-remove').addEventListener('click', () => {
-    $('#removeAzureMapsKey').checked = true;
-    $('#azureMapsKey').value = '';
-    showKeyStatus();
-    fillProviderList(readForm());
-    updatePreview();
-    updateSaveBar();
-  });
+  for (const { key, box } of SERVER_KEYS) {
+    $(`#${box}-remove`).addEventListener('click', () => {
+      document.getElementById(removeFlag(key)).checked = true;
+      document.getElementById(key).value = '';
+      showKeyStatus();
+      fillProviderList(readForm());
+      updatePreview();
+      updateSaveBar();
+    });
+  }
   for (const btn of $$('.show-btn')) {
     btn.addEventListener('click', () => {
       const input = document.getElementById(btn.dataset.for);

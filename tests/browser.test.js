@@ -84,6 +84,36 @@ async function startFakeAzure() {
   return { base: `http://127.0.0.1:${port}`, got, close: () => server.close() };
 }
 
+// A fake Google Map Tiles API for OUR SERVER to talk to: sessions, pictures, credits.
+const GOOGLE_KEY = 'AIzaTEST-GOOGLE-KEY';
+async function startFakeGoogle() {
+  const http = require('http');
+  const port = await freePort();
+  const got = { sessions: [], tiles: 0, keys: new Set() };
+  const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYGD4DwABBAEAwS2OUAAAAABJRU5ErkJggg==', 'base64');
+  const server = http.createServer((req, res) => {
+    const u = new URL(req.url, 'http://x');
+    got.keys.add(u.searchParams.get('key'));
+    let body = '';
+    req.on('data', (c) => { body += c; });
+    req.on('end', () => {
+      if (u.pathname === '/v1/createSession') {
+        got.sessions.push(JSON.parse(body));
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ session: `S${got.sessions.length}`, expiry: String(Math.floor(Date.now() / 1000) + 1209600) }));
+      }
+      if (u.pathname === '/tile/v1/viewport') {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ copyright: 'Map data ©2026 Google', maxZoomRects: [{ maxzoom: 21 }] }));
+      }
+      got.tiles++;
+      res.writeHead(200, { 'Content-Type': 'image/png', 'Cache-Control': 'public, max-age=60' });
+      res.end(png);
+    });
+  }).listen(port, '127.0.0.1');
+  return { base: `http://127.0.0.1:${port}`, got, close: () => server.close() };
+}
+
 // A fake OpenStreetMap (Overpass API) for OUR SERVER to ask about places.
 // It puts a cafe, a school and a heliport in the middle of the box it is asked about.
 async function startFakeOverpass() {
@@ -180,7 +210,8 @@ function fakeInternet(ctx, { github = null } = {}) {
   const expect = JSON.parse(execFileSync(process.env.PYTHON || 'python3', [path.join(__dirname, 'fixtures.py'), archive]).toString());
   const azure = await startFakeAzure();
   const osm = await startFakeOverpass();
-  const app = await startServer(archive, { AZURE_MAPS_URL: azure.base, OVERPASS_URL: osm.url });
+  const google = await startFakeGoogle();
+  const app = await startServer(archive, { AZURE_MAPS_URL: azure.base, OVERPASS_URL: osm.url, GOOGLE_TILES_URL: google.base });
   const browser = await chromium.launch();
   const servers = [app];
   try {
@@ -256,6 +287,35 @@ function fakeInternet(ctx, { github = null } = {}) {
     check('...and on again', (await page.locator('.place-icon').count()) >= 4);
     await page.mouse.click(800, 600);
 
+    // ---- 2c. Google Maps ----
+    console.log('Google Maps');
+    await putSettings(app.base, { mapProvider: 'google', googleMapsKey: GOOGLE_KEY });
+    {
+      const gctx = await browser.newContext({ viewport: { width: 1400, height: 860 } });
+      const gseen = await fakeInternet(gctx);
+      const gpage = await gctx.newPage();
+      await gpage.goto(app.base, { waitUntil: 'networkidle' });
+      await gpage.evaluate(() => map.setView([40.7812, -73.9665], 15));
+      await gpage.waitForTimeout(1500);
+      check('Google pictures come through our server', google.got.tiles > 0 && google.got.keys.has(GOOGLE_KEY), `${google.got.tiles} tiles`);
+      check('the browser never sees the Google key', !gseen.tiles.some((t) => t.includes('googleapis'))
+        && !(await gpage.content()).includes(GOOGLE_KEY)
+        && !JSON.stringify(await (await fetch(`${app.base}/api/settings`)).json()).includes(GOOGLE_KEY));
+      const gcredit = await gpage.textContent('#map .leaflet-control-attribution');
+      check("Google's credit text is shown", gcredit.includes('Map data ©2026 Google'), gcredit);
+      check('the Google logo is shown', await gpage.isVisible('#map .google-logo'));
+      await gpage.click('#btn-layers');
+      await gpage.click('.layer-opt[data-layer=satellite]');
+      await gpage.waitForTimeout(800);
+      check('Satellite + Details = Google satellite with roads', google.got.sessions.some((b) => b.mapType === 'satellite' && (b.layerTypes || []).includes('layerRoadmap')));
+      await gpage.click('.layer-opt[data-layer=terrain]');
+      await gpage.waitForTimeout(800);
+      check('Google has its own Terrain (no free-map fallback)', google.got.sessions.some((b) => b.mapType === 'terrain')
+        && !(await gpage.textContent('.layer-opt[data-layer=terrain]')).includes('free map'));
+      await gctx.close();
+    }
+    await putSettings(app.base, { mapProvider: 'azure' });
+
     // ---- 3. replay ----
     console.log('Replay');
     // Pick flight A (the 2-minute loop) by its id, not by text on screen.
@@ -267,6 +327,10 @@ function fakeInternet(ctx, { github = null } = {}) {
     await page.click(`.flight[data-id="${flightA.id}"]`);
     await page.waitForTimeout(800);
     check('flight opens', await page.isVisible('#detail') && await page.isVisible('#p-speed'));
+    const creditBox = await page.locator('#map .leaflet-control-attribution').boundingBox();
+    const detailBox = await page.locator('#detail').boundingBox();
+    check('the map credit line stays visible above the flight panel', creditBox.y + creditBox.height <= detailBox.y + 1,
+      `credit bottom ${creditBox.y + creditBox.height}, panel top ${detailBox.y}`);
     check('only the open flight is shown (others hidden)', (await visibleLines()) === 0);
     await page.selectOption('#p-speed', '1');
     await page.evaluate(() => seekTime(30));
@@ -499,6 +563,7 @@ function fakeInternet(ctx, { github = null } = {}) {
     for (const s of servers) { s.proc.kill(); fs.rmSync(s.state, { recursive: true, force: true }); }
     azure.close();
     osm.close();
+    google.close();
     fs.rmSync(tmp, { recursive: true, force: true });
   }
   const failed = results.filter((r) => !r.ok).length;

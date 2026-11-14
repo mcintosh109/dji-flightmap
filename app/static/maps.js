@@ -12,6 +12,11 @@
       create an "Azure Maps Account", then Settings > Authentication > Primary Key.
       The Azure key stays on the server: the map asks OUR server for Azure
       pictures (tiles/azure/...), and the server asks Azure with the key.
+    Google Maps -> Google Cloud console: turn on the "Map Tiles API" and make
+      an API key. Same idea as Azure: pictures come through OUR server
+      (tiles/google/...), so the key stays there. Google's rules: the Google
+      logo and Google's credit text must be shown, and pictures are not
+      stored on the server.
   Used by both index.html (the map) and settings.html (the preview).
 
   How it fits together:
@@ -89,6 +94,19 @@ window.MapStyles = (() => {
     { id: 'azure-hybrid', name: 'Azure Maps satellite + roads', group: 'Azure Maps', needs: 'azureMapsKey',
       azure: 'microsoft.imagery', overlay: 'microsoft.base.hybrid.road', opts: { maxNativeZoom: 19 } },
 
+    // Google Map Tiles API, 2D tiles (see app/flightmap/google.py). maxNativeZoom
+    // is lowered automatically where Google has no closer pictures.
+    { id: 'google-road', name: 'Google Maps road', group: 'Google Maps', needs: 'googleMapsKey',
+      google: 'roadmap', opts: { maxNativeZoom: 22 } },
+    { id: 'google-dark', name: 'Google Maps dark', group: 'Google Maps', needs: 'googleMapsKey',
+      google: 'dark', opts: { maxNativeZoom: 22 } },
+    { id: 'google-satellite', name: 'Google Maps satellite', group: 'Google Maps', needs: 'googleMapsKey',
+      google: 'satellite', satellite: true, detailed: 'google-hybrid', opts: { maxNativeZoom: 21 } },
+    { id: 'google-hybrid', name: 'Google Maps satellite + roads', group: 'Google Maps', needs: 'googleMapsKey',
+      google: 'hybrid', opts: { maxNativeZoom: 21 } },
+    { id: 'google-terrain', name: 'Google Maps terrain', group: 'Google Maps', needs: 'googleMapsKey',
+      google: 'terrain', opts: { maxNativeZoom: 20 } },
+
     { id: 'custom', name: 'Custom map', group: 'Custom', needs: 'customTileUrl',
       url: (s) => s.customTileUrl,
       opts: { maxNativeZoom: 19 } },
@@ -109,6 +127,8 @@ window.MapStyles = (() => {
                 layers: { road: 'carto-light', dark: 'carto-dark' } },
     azure:    { name: 'Azure Maps', needs: 'azureMapsKey',
                 layers: { road: 'azure-road', satellite: 'azure-satellite', dark: 'azure-dark' } },
+    google:   { name: 'Google Maps', needs: 'googleMapsKey',
+                layers: { road: 'google-road', satellite: 'google-satellite', dark: 'google-dark', terrain: 'google-terrain' } },
     mapbox:   { name: 'Mapbox', needs: 'mapboxToken',
                 layers: { road: 'mapbox-streets', satellite: 'mapbox-satellite', dark: 'mapbox-dark', terrain: 'mapbox-outdoors' } },
     maptiler: { name: 'MapTiler', needs: 'maptilerKey',
@@ -145,7 +165,8 @@ window.MapStyles = (() => {
     const rad = (lat * Math.PI) / 180;
     const y = Math.floor(((1 - Math.log(Math.tan(rad) + 1 / Math.cos(rad)) / Math.PI) / 2) * n);
     const template = style.azure ? azureUrl(style.azure, settings)
-      : (typeof style.url === 'function' ? style.url(settings) : style.url);
+      : style.google ? googleUrl(style.google)
+        : (typeof style.url === 'function' ? style.url(settings) : style.url);
     const sub = (style.opts.subdomains || 'a')[0];
     return template.replace('{s}', sub).replace('{r}', '').replace('{z}', zoom).replace('{x}', x).replace('{y}', y);
   }
@@ -220,6 +241,78 @@ window.MapStyles = (() => {
     return layer;
   }
 
+  // ---- Google Maps ----
+  // Always through our server, which adds the saved key and a session.
+  const googleUrl = (set) => `tiles/google/${set}/{z}/{x}/{y}.png`;
+
+  // Google's rules: show the Google logo, and Google's credit text for the
+  // area on screen (asked again whenever the map stops moving). The logo
+  // sits just above the credit line, bottom right.
+  const GoogleLogo = L.Control.extend({
+    options: { position: 'bottomright' },
+    onAdd() {
+      const box = L.DomUtil.create('div', 'google-logo');
+      const img = L.DomUtil.create('img', '', box);
+      img.alt = 'Google';
+      img.src = 'https://maps.gstatic.com/mapfiles/api-3/images/google_white5_hdpi.png';
+      // If Google's logo picture can't be loaded, write "Google" instead.
+      img.addEventListener('error', () => { box.textContent = 'Google'; box.classList.add('text'); });
+      return box;
+    },
+  });
+
+  function googleCredits(layer, set) {
+    let map = null, shown = '', timer = null, logo = null;
+    const show = (text) => {
+      const ctrl = map?.attributionControl;
+      if (!ctrl) return;
+      if (shown) ctrl.removeAttribution(shown);
+      shown = text;
+      if (shown) ctrl.addAttribution(shown);
+    };
+    const update = () => {
+      clearTimeout(timer);
+      timer = setTimeout(async () => {
+        if (!map) return;
+        const b = map.getBounds();
+        const lon = (v) => Math.max(-180, Math.min(180, v)).toFixed(5);
+        const lat = (v) => Math.max(-85, Math.min(85, v)).toFixed(5);
+        const bounds = [lon(b.getWest()), lat(b.getSouth()), lon(b.getEast()), lat(b.getNorth())].join(',');
+        const zoom = Math.max(0, Math.min(22, Math.round(map.getZoom())));
+        try {
+          const res = await fetch(`api/google-credits?set=${set}&zoom=${zoom}&bounds=${bounds}`);
+          if (!res.ok || !map) return;
+          const data = await res.json();
+          show(esc(data.copyright || 'Map data ©Google'));
+          // Where Google has no closer pictures, enlarge the closest ones
+          // instead of showing grey squares.
+          if (Number.isInteger(data.maxZoom)) {
+            const native = Math.min(data.maxZoom, layer.options.googleMaxZoom);
+            if (native !== layer.options.maxNativeZoom) { layer.options.maxNativeZoom = native; layer.redraw(); }
+          }
+        } catch { /* keep the old credit line */ }
+      }, 800);   // wait until the map has stopped moving
+    };
+    layer.on('add', () => {
+      map = layer._map;
+      logo = new GoogleLogo().addTo(map);
+      map.on('moveend', update);
+      update();
+    });
+    layer.on('remove', () => {
+      clearTimeout(timer);
+      if (map) { map.off('moveend', update); show(''); logo?.remove(); }
+      map = null; logo = null;
+    });
+  }
+
+  function buildGoogle(style) {
+    const layer = L.tileLayer(googleUrl(style.google),
+      { maxZoom: 22, ...style.opts, googleMaxZoom: style.opts.maxNativeZoom });
+    googleCredits(layer, style.google);
+    return layer;
+  }
+
   function find(id) { return STYLES.find((st) => st.id === id); }
 
   function usable(style, settings) {
@@ -242,6 +335,7 @@ window.MapStyles = (() => {
     const style = find(id);
     if (!usable(style, settings)) return null;
     if (style.azure) return buildAzure(style, settings);
+    if (style.google) return buildGoogle(style);
     const url = typeof style.url === 'function' ? style.url(settings) : style.url;
     const opts = { maxZoom: 22, ...style.opts };
     if (style.id === 'custom') opts.attribution = esc(settings.customAttribution);

@@ -23,6 +23,8 @@ SECRET_FILE = os.path.join(STATE_DIR, "session-secret")
 SETTINGS_FILE = os.path.join(STATE_DIR, "settings.json")
 # Where Azure Maps is reached (only changed by the tests, to use a fake one).
 AZURE_MAPS_URL = os.environ.get("AZURE_MAPS_URL", "https://atlas.microsoft.com").rstrip("/")
+# Where Google's Map Tiles API is reached (only changed by the tests).
+GOOGLE_TILES_URL = os.environ.get("GOOGLE_TILES_URL", "https://tile.googleapis.com").rstrip("/")
 PLANS_FILE = os.path.join(STATE_DIR, "plans.json")
 # Where places (shops, schools, parks...) come from: the free OpenStreetMap
 # Overpass API. These are public servers shared by everyone and can be slow,

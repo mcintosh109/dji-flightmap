@@ -229,7 +229,7 @@ Everything here is saved on the server, so it applies on every device.
 
 | Section | What you can change |
 |---|---|
-| **Map** | **Map provider**: who draws the map. *Free* (OpenStreetMap + Esri, no key), **CARTO**, **Azure Maps** (Microsoft's replacement for Bing Maps), **Mapbox**, **MapTiler**, or a custom "XYZ" tile address. Only the chosen provider's key box is shown. **Default layer** (Road, Satellite, Dark, Terrain), **Details** on satellite, and a live preview. A layer a provider doesn't have (e.g. Terrain on Azure Maps) uses the free one. |
+| **Map** | **Map provider**: who draws the map. *Free* (OpenStreetMap + Esri, no key), **CARTO**, **Azure Maps** (Microsoft's replacement for Bing Maps), **Google Maps**, **Mapbox**, **MapTiler**, or a custom "XYZ" tile address. Only the chosen provider's key box is shown. **Default layer** (Road, Satellite, Dark, Terrain), **Details** on satellite, and a live preview. A layer a provider doesn't have (e.g. Terrain on Azure Maps) uses the free one. |
 | **Display** | Default units, flight path colour, replay speed, whether a flight opens at the landing or take-off spot, which app **Navigate** opens (Google Maps, Apple Maps, Waze), lines for all flights, and whether an open flight is shown on its own (on by default). |
 | **Flights** | Hide flights shorter than N seconds (quick tests), hide flights without GPS, **nicknames** for each drone. |
 | **Flight planner** | Height limit (400 ft by default), distance warning, battery to keep for landing, wind limit. |
@@ -254,6 +254,28 @@ Everything here is saved on the server, so it applies on every device.
      Azure Maps has a free monthly allowance that personal use normally
      stays inside.
 
+- **Google Maps** (road, dark, satellite, satellite + roads, terrain).
+  Google's road map shows businesses, petrol stations, doctors and so on,
+  like the Google Maps app.
+  1. Sign in to the Google Cloud console (console.cloud.google.com) and
+     pick (or create) the project your key belongs to.
+  2. Go to **APIs & Services → Library**, search for **Map Tiles API**, and
+     press **Enable**. (Research: *"Google Map Tiles API enable"*.)
+  3. Go to **APIs & Services → Credentials** and copy your API key (it
+     starts with `AIza`). Recommended: under **API restrictions**, limit the
+     key to the Map Tiles API.
+  4. **Strongly recommended:** in **Billing → Budgets & alerts**, add a small
+     monthly budget with an email alert. Google gives a free monthly amount
+     of map pictures (100,000 at the time of writing) and charges after
+     that. A screen of map is about 20–40 pictures.
+  5. Paste the key on the settings page, choose **Google Maps**, and press
+     **Save**. (The preview uses the saved key, so it shows Google maps
+     after saving.)
+
+  Google's rules, which the map follows: the **Google logo** and Google's
+  credit text are always shown (bottom right, above any open panel), and
+  map pictures are **not stored** on your server.
+
 - **Mapbox**: make a free account at mapbox.com, then go to
   *Account → Access tokens* and copy the **Default public token**
   (it starts with `pk.`).
@@ -266,9 +288,9 @@ that the preview says **Preview loaded ✓** before pressing **Save**.
 The keys are saved in `/var/lib/dji-flightmap/settings.json` inside the
 container, a file only the map service can read.
 
-**The Azure Maps key never leaves the server.** The map asks *your server*
-for Azure pictures and copyright credits, and the server asks Azure over
-HTTPS with the key. The settings page only shows *"A key is saved"*: you can
+**The Azure Maps and Google Maps keys never leave the server.** The map asks
+*your server* for their pictures and copyright credits, and the server asks
+Azure or Google over HTTPS with the key. The settings page only shows *"A key is saved"*: you can
 replace or remove it, but the page can't read it back.
 
 ```
@@ -279,16 +301,20 @@ replace or remove it, but the page can't read it back.
 (The one time the key crosses your network is when you paste it into the
 settings page and press Save, until the map page itself uses HTTPS.)
 
-To keep this fast, the server reuses its connections to Azure, and remembers
-each picture in memory for as long as Azure's own response says it is valid
-(at most a day, about 64 MB). Restarting the service empties that memory.
+To keep this fast, the server reuses its connections to Azure and Google.
+Azure pictures are also remembered in memory for as long as Azure's own
+response says they are valid (at most a day, about 64 MB; restarting the
+service empties that memory). Google pictures are never remembered on the
+server, because Google's rules don't allow it; your browser keeps them only
+as long as Google says it may.
 
 The CARTO, Mapbox and MapTiler keys still go to the browser, because their
 terms don't allow passing their maps through another server. Use a *public*
 key for them (Mapbox `pk.`), never a secret one.
 
-For Azure Maps, keep the budget alert anyway. If a key ever leaks, make a new
-one (Azure: **Regenerate**) and paste it into the settings page.
+For Azure Maps and Google Maps, keep the budget alert anyway. If a key ever
+leaks, make a new one (Azure: **Regenerate**; Google: **Credentials → your
+key → Regenerate key**) and paste it into the settings page.
 
 ---
 
@@ -432,6 +458,22 @@ It shows what it found and asks before changing anything.
 
 ## Troubleshooting
 
+**Google Maps shows grey squares or the free map**
+
+- Check the line under the preview on the settings page, and that the key
+  is saved (*"✓ A key is saved on the server"*).
+- The **Map Tiles API** must be enabled in Google Cloud (see *Getting a map
+  key*), and billing must be set up for the project.
+- The server's log says what Google answered (run on the Proxmox host):
+
+```bash
+pct exec $(pct list | awk '/dji-flightmap/{print $1; exit}') -- journalctl -u dji-flightmap -n 40 --no-pager
+```
+
+  Look for lines starting with `Google Maps`. For example *"Map Tiles API
+  has not been used in project … or it is disabled"* means step 2 above.
+  The key itself is never written to the log.
+
 **Places don't show up**
 
 - Zoom in further: places only appear at about street level.
@@ -549,6 +591,8 @@ pct exec 105 -- systemctl restart dji-flightmap
 | `app/flightmap/plans.py` | Saved flight plans: checks, loading and saving | |
 | `app/flightmap/auth.py` | The optional login: password hashing, signed cookies, lock-out | *"password hashing pbkdf2"*, *"HMAC signed cookie"* |
 | `app/flightmap/azure.py` | Fetches Azure Maps pictures and credits for the browser, so the key stays on the server | *"reverse proxy"* |
+| `app/flightmap/google.py` | The same for Google Maps: makes a "session", fetches pictures and credits, stores nothing | *"Google Map Tiles API"* |
+| `app/flightmap/upstream.py` | Keeps connections to Azure and Google open and reuses them | *"HTTP keep-alive"*, *"connection pool"* |
 | `app/static/index.html` | The map page layout | *"HTML basics"* |
 | `app/static/login.html` | The login page (self-contained) | *"HTML form POST"* |
 | `app/static/style.css` | Colours and layout, including the phone layout | *"CSS flexbox"*, *"CSS media queries"* |

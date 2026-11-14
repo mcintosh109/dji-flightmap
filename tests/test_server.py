@@ -191,7 +191,7 @@ class SettingsRules(unittest.TestCase):
 
     def test_bad_values_rejected(self):
         _, problems = self.server.clean_settings({
-            'mapProvider': 'google', 'pathColor': 'red', 'scanSeconds': 1,
+            'mapProvider': 'not-a-provider', 'pathColor': 'red', 'scanSeconds': 1,
             'customTileUrl': 'javascript:alert(1)', 'mapboxToken': 'pk.<script>', 'aircraftNames': {'X': '<b>'}})
         self.assertEqual(len(problems), 6, problems)
 
@@ -689,6 +689,158 @@ class LivePlaces(unittest.TestCase):
             self.assertEqual(len(self.osm.queries), before + 1, 'a cut-off answer must be asked again')
         finally:
             self.osm.extra = self.spare.extra = 0
+
+
+class FakeGoogle:
+    """A pretend Google Map Tiles API: sessions, pictures and credits."""
+
+    def __init__(self, key):
+        import http.server
+        import threading
+        self.key = key
+        self.sessions = []      # the body of each createSession request
+        self.tiles = []         # (path, session) of each picture request
+        self.expired = set()    # session codes to refuse ("ran out")
+        self.cache_control = 'public, max-age=3600'
+        outer = self
+
+        class Handler(http.server.BaseHTTPRequestHandler):
+            protocol_version = 'HTTP/1.1'
+
+            def reply(self, status, body, ctype='application/json', extra=None):
+                self.send_response(status)
+                self.send_header('Content-Type', ctype)
+                self.send_header('Content-Length', str(len(body)))
+                for k, v in (extra or {}).items():
+                    self.send_header(k, v)
+                self.end_headers()
+                self.wfile.write(body)
+
+            def bad_key(self, q):
+                if q.get('key', [''])[0] == outer.key:
+                    return False
+                msg = 'API key not valid: ' + q.get('key', [''])[0]
+                self.reply(400, json.dumps({'error': {'message': msg}}).encode())
+                return True
+
+            def do_POST(self):
+                from urllib.parse import parse_qs, urlparse
+                u = urlparse(self.path)
+                q = parse_qs(u.query)
+                body = json.loads(self.rfile.read(int(self.headers.get('Content-Length') or 0)))
+                if self.bad_key(q):
+                    return
+                outer.sessions.append(body)
+                code = f'S{len(outer.sessions)}'
+                self.reply(200, json.dumps({'session': code, 'expiry': str(int(time.time()) + 1209600),
+                                            'tileWidth': 256, 'tileHeight': 256, 'imageFormat': 'png'}).encode())
+
+            def do_GET(self):
+                from urllib.parse import parse_qs, urlparse
+                u = urlparse(self.path)
+                q = parse_qs(u.query)
+                if self.bad_key(q):
+                    return
+                session = q.get('session', [''])[0]
+                if session in outer.expired:
+                    return self.reply(400, b'{"error":{"message":"session expired"}}')
+                if u.path == '/tile/v1/viewport':
+                    return self.reply(200, json.dumps({'copyright': 'Map data \u00a92026 Google <b>x</b>',
+                                                       'maxZoomRects': [{'maxzoom': 21}, {'maxzoom': 19}]}).encode())
+                outer.tiles.append((u.path, session))
+                self.reply(200, b'\x89PNG google tile', 'image/png',
+                           {'Cache-Control': outer.cache_control} if outer.cache_control else None)
+
+            def log_message(self, *args):
+                pass
+
+        self.server = http.server.ThreadingHTTPServer(('127.0.0.1', 0), Handler)
+        self.url = f'http://127.0.0.1:{self.server.server_address[1]}'
+        threading.Thread(target=self.server.serve_forever, daemon=True).start()
+
+    def stop(self):
+        self.server.shutdown()
+
+
+class LiveGoogleKey(unittest.TestCase):
+    """The Google key stays on the server; pictures are never stored there."""
+    KEY = 'AIzaFAKE-google-key_123'
+
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = tempfile.mkdtemp(prefix='flightmap-test-')
+        os.makedirs(os.path.join(cls.tmp, 'state'))
+        os.makedirs(os.path.join(cls.tmp, 'archive'))
+        cls.google = FakeGoogle(cls.KEY)
+        cls.srv = LiveServer(os.path.join(cls.tmp, 'archive'), os.path.join(cls.tmp, 'state'),
+                             GOOGLE_TILES_URL=cls.google.url)
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.srv.stop()
+        cls.google.stop()
+        shutil.rmtree(cls.tmp, ignore_errors=True)
+
+    def setUp(self):
+        self.srv.put_settings({'mapProvider': 'google', 'googleMapsKey': self.KEY})
+
+    def test_key_never_sent_to_the_browser(self):
+        for path in ('/api/settings', '/api/flights'):
+            self.assertNotIn(self.KEY.encode(), self.srv.request(path)[2])
+        self.assertTrue(self.srv.json('/api/settings')['settings']['googleMapsKeySet'])
+
+    def test_one_session_per_kind_of_map(self):
+        before = len(self.google.sessions)
+        for x in range(3):
+            status, headers, body = self.srv.request(f'/tiles/google/roadmap/15/{9650 + x}/12318.png')
+            self.assertEqual((status, body), (200, b'\x89PNG google tile'))
+        self.assertEqual(headers.get('Cache-Control'), 'public, max-age=3600', "Google's own instruction is passed on")
+        self.srv.request('/tiles/google/hybrid/15/9650/12318.png')
+        made = self.google.sessions[before:]
+        self.assertLessEqual(len(made), 2)
+        kinds = {(b['mapType'], tuple(b.get('layerTypes', []))) for b in self.google.sessions}
+        self.assertIn(('roadmap', ()), kinds)
+        self.assertIn(('satellite', ('layerRoadmap',)), kinds)
+
+    def test_pictures_are_not_stored_on_the_server(self):
+        before = len(self.google.tiles)
+        self.srv.request('/tiles/google/satellite/12/300/300.png')
+        self.srv.request('/tiles/google/satellite/12/300/300.png')
+        self.assertEqual(len(self.google.tiles), before + 2, 'both requests must go to Google')
+
+    def test_expired_session_is_renewed(self):
+        self.srv.request('/tiles/google/terrain/10/100/100.png')
+        old = self.google.tiles[-1][1]
+        self.google.expired.add(old)
+        status, _, _ = self.srv.request('/tiles/google/terrain/10/101/100.png')
+        self.assertEqual(status, 200)
+        self.assertNotEqual(self.google.tiles[-1][1], old)
+
+    def test_credits_text_and_closest_zoom(self):
+        got = self.srv.json('/api/google-credits?set=roadmap&zoom=17&bounds=-74.0,40.7,-73.9,40.8')
+        self.assertEqual(got, {'copyright': 'Map data \u00a92026 Google x', 'maxZoom': 19})
+
+    def test_bad_requests_refused(self):
+        for path in ('/tiles/google/evil/1/0/0.png', '/tiles/google/roadmap/2/9/0.png',
+                     '/tiles/google/roadmap/1/0/0.jpg', '/api/google-credits?set=roadmap&zoom=3&bounds=x',
+                     '/api/google-credits?set=nope&zoom=3&bounds=1,2,3,4'):
+            self.assertEqual(self.srv.request(path)[0], 400, path)
+
+    def test_wrong_key_error_not_passed_on(self):
+        self.srv.put_settings({'googleMapsKey': 'WRONG-KEY'})
+        status, _, body = self.srv.request('/tiles/google/dark/3/1/1.png')
+        self.assertEqual(status, 502)
+        self.assertNotIn(b'WRONG-KEY', body)
+        with open(os.path.join(self.tmp, 'state', 'server.log')) as fh:
+            log = fh.read()
+        self.assertNotIn('WRONG-KEY', log, 'the key must not be written to the log')
+
+    def test_remove_key(self):
+        self.srv.put_settings({'units': 'metric', 'googleMapsKey': ''})
+        self.assertTrue(self.srv.json('/api/settings')['settings']['googleMapsKeySet'])
+        self.srv.put_settings({'removeGoogleMapsKey': True})
+        self.assertFalse(self.srv.json('/api/settings')['settings']['googleMapsKeySet'])
+        self.assertEqual(self.srv.request('/tiles/google/roadmap/1/0/0.png')[0], 404)
 
 
 class LiveMigration(unittest.TestCase):

@@ -71,6 +71,20 @@
           <p class="help">In the <a href="https://portal.azure.com/#create/Microsoft.Maps" target="_blank" rel="noopener">Azure portal</a>, create an <b>Azure Maps Account</b>, then open it and go to <b>Settings → Authentication</b> and copy the <b>Primary Key</b>.</p>
         </div>
 
+        <div class="field provider-key" data-provider="google">
+          <label for="googleMapsKey">Google Maps API key</label>
+          <div class="secret">
+            <input id="googleMapsKey" data-key="googleMapsKey" type="password" spellcheck="false" placeholder="API key from Google Cloud (starts with AIza)">
+            <button type="button" class="chip show-btn" data-for="googleMapsKey">Show</button>
+            <button type="button" class="chip hidden" id="google-remove">Remove saved key</button>
+            <input type="checkbox" class="hidden" data-key="removeGoogleMapsKey" id="removeGoogleMapsKey">
+          </div>
+          <p class="help key-status" id="google-key-status"></p>
+          <p class="help">🔒 This key stays on your server: the map fetches Google pictures through the server, so the key is never sent to your browser.</p>
+          <p class="help">In the <a href="https://console.cloud.google.com/google/maps-apis/" target="_blank" rel="noopener">Google Cloud console</a>, turn on the <b>Map Tiles API</b> for your project, then copy your API key from <b>Keys &amp; Credentials</b>. Google charges after a free monthly amount: set a <b>budget alert</b> in Google Cloud Billing so a mistake can never cost you money.</p>
+          <p class="help">Google's road maps show businesses, petrol stations, doctors and so on, the same as the Google Maps app.</p>
+        </div>
+
         <div class="provider-key" data-provider="custom">
           <div class="field">
             <label for="customTileUrl">Custom tile address</label>
