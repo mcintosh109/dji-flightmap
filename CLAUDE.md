@@ -17,6 +17,13 @@ this project, their setup, and lessons learned the hard way.
 - **Never ask them to paste passwords or API keys into the chat.** Keys go into
   the settings page; passwords go into the Proxmox Shell prompts.
 - Ask before anything hard to undo or public (force-push, deleting a container).
+- **Disagree when there's a reason to.** The owner asked for this: if an idea
+  is risky, there's a better way, or one of your own earlier choices was wrong,
+  say so plainly and explain why. Then the owner decides.
+- **Safety comes first** for anything about flying: never let the app suggest a
+  flight is "safe". The planner checks height, distance, battery and weather
+  only, and must always say that airspace, obstacles and local rules are not
+  checked, and that the pilot must check local laws and regulations.
 
 ## Privacy: this repository is PUBLIC
 

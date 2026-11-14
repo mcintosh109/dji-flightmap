@@ -186,9 +186,15 @@ Open the **Plans** tab in the sidebar and press **New plan**.
 7. **Save plan**. Saved plans are listed in the Plans tab and kept on the server
    (`/var/lib/dji-flightmap/plans.json`, included in the update backups).
 
-Limits are in **⚙ Settings → Flight planner**. The planner helps you think a
-flight through; it doesn't replace checking the rules and airspace where you
-fly (for example with the FAA's B4UFLY app in the US).
+Limits are in **⚙ Settings → Flight planner**.
+
+> ⚠ **The planner is a planning aid only.** It checks height, distance,
+> battery and weather. It does **not** check airspace, obstacles (trees,
+> towers, power lines) or local rules. **Always check your local laws and
+> regulations before flying**: airspace (in the US: the FAA's
+> [B4UFLY](https://www.faa.gov/uas/getting_started/b4ufly) app or Aloft), any
+> permission you need, and the weather where you are. You are responsible for
+> every flight.
 
 ---
 

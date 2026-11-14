@@ -216,6 +216,7 @@ function fakeInternet(ctx, { github = null } = {}) {
     await page.goto(app.base, { waitUntil: 'networkidle' });
     await page.click('[data-tab=plans]');
     check('Plans tab is empty at first', (await page.textContent('#plan-list')).includes('No saved plans'));
+    check('Plans tab shows the local-laws reminder', (await page.textContent('#tab-plans')).includes('local laws and regulations'));
     await page.click('#btn-new-plan');
     check('new plan asks for the take-off point', (await page.textContent('#pl-hint')).includes('take-off'));
     await page.click('#pl-last-home');
@@ -228,6 +229,10 @@ function fakeInternet(ctx, { github = null } = {}) {
     check('new waypoints start at 200 ft and 18 mph',
       (await page.inputValue('#pl-wps tr[data-i="0"] input[data-f=alt]')) === '200' && (await page.inputValue('#pl-wps tr[data-i="0"] input[data-f=speed]')) === '18');
     check('distance and time are worked out', !(await page.textContent('#pl-stats')).includes('–'));
+    const okText = await page.textContent('#pl-warnings');
+    check('"OK" says airspace, obstacles and local rules are not checked', /Airspace, obstacles and local rules are not checked/.test(okText), okText);
+    check('local-laws disclaimer is always shown in the planner', await page.isVisible('#pl-disclaimer')
+      && (await page.textContent('#pl-disclaimer')).includes('Always check your local laws and regulations'));
     const altBox = '#pl-wps tr[data-i="1"] input[data-f=alt]';
     await page.fill(altBox, '500');
     await page.press(altBox, 'Tab');

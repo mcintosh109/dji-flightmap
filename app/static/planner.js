@@ -285,7 +285,9 @@ const Planner = (() => {
     const list = warnings(plan, m);
     $('#pl-warnings').innerHTML = !plan.waypoints.length ? ''
       : list.length ? list.map((w) => `<li class="${w.level}">${w.level === 'danger' ? '⛔' : '⚠'} ${esc(w.text)}</li>`).join('')
-        : '<li class="ok">✓ No problems found with this route.</li>';
+        // Say exactly what was checked, so "OK" is never read as "safe to fly".
+        : '<li class="ok">✓ Height, distance, battery and weather look OK. '
+          + '<b>Airspace, obstacles and local rules are not checked.</b></li>';
     $('#pl-hint').textContent = !plan.home ? 'Click the map to set the take-off point (H).'
       : 'Click the map to add waypoints. Drag the numbers to move them.';
   }
