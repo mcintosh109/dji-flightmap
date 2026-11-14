@@ -1,10 +1,9 @@
 {
-  "version": "2.2.0",
+  "version": "2.2.1",
   "released": "2026-11-14",
   "updateUrl": "https://raw.githubusercontent.com/mcintosh109/dji-flightmap/main/app/version.json",
   "notes": [
-    "Backups can now also go to TrueNAS, with an automatic backup every day (run deploy/setup-backup-share.sh once to set it up)",
-    "Restoring can use the TrueNAS copies, so settings and plans survive even if the Proxmox server's disk fails",
-    "Fewer confusing warnings while updating (language and folder messages from inside the container)"
+    "Behind the scenes: the code is reorganised into small files, one per job, so it's easier to read and review. Nothing changes in how the map works",
+    "Automatic code checks (linters) now run with the tests"
   ]
 }

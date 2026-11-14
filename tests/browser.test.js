@@ -387,7 +387,7 @@ function fakeInternet(ctx, { github = null } = {}) {
     // ---- 7. login ----
     console.log('Login page');
     const hash = execFileSync(process.env.PYTHON || 'python3', ['-c',
-      `import sys; sys.path.insert(0, ${JSON.stringify(path.join(ROOT, 'app'))}); import server; print(server.hash_password('testpass123', rounds=1000))`],
+      `import sys; sys.path.insert(0, ${JSON.stringify(path.join(ROOT, 'app'))}); from flightmap.auth import hash_password; print(hash_password('testpass123', rounds=1000))`],
       { env: { ...process.env, PYTHONDONTWRITEBYTECODE: '1' } }).toString().trim();
     const locked = await startServer(archive, { AUTH_USER: 'tester', AUTH_PASSWORD_HASH: hash });
     servers.push(locked);

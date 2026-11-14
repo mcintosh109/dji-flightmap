@@ -1,12 +1,8 @@
 'use strict';
 /*
   Settings page. Reads the current values from GET api/settings,
-  and saves them with PUT api/settings.
+  and saves them with PUT api/settings. ($, $$ and esc come from common.js.)
 */
-const $ = (selector) => document.querySelector(selector);
-const $$ = (selector) => [...document.querySelectorAll(selector)];
-const esc = (value) => String(value ?? '').replace(/[&<>"']/g,
-  (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
 // These are kept when you press "Reset to defaults", because they are
 // things you typed in yourself and would be annoying to lose.

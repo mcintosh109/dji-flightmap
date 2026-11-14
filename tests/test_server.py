@@ -20,6 +20,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import types
 import unittest
 import urllib.error
 import urllib.request
@@ -31,6 +32,11 @@ sys.path.insert(0, HERE)
 from fixtures import make_archive  # noqa: E402
 
 
+def read_json(path):
+    with open(path, encoding='utf-8') as fh:
+        return json.load(fh)
+
+
 def free_port():
     with socket.socket() as s:
         s.bind(('127.0.0.1', 0))
@@ -38,14 +44,20 @@ def free_port():
 
 
 def load_server(tmp):
-    """Import server.py fresh, with its files pointed at a temp folder."""
+    """Import the server's modules fresh, with their files pointed at a temp
+    folder. Returns the functions the unit tests call."""
     os.environ['CACHE_FILE'] = os.path.join(tmp, 'state', 'summaries.json')
     os.environ.pop('AUTH_USER', None)
     os.environ.pop('AUTH_PASSWORD_HASH', None)
-    sys.path.insert(0, APP)
-    if 'server' in sys.modules:
-        del sys.modules['server']
-    return importlib.import_module('server')
+    if APP not in sys.path:
+        sys.path.insert(0, APP)
+    for name in [m for m in sys.modules if m == 'flightmap' or m.startswith('flightmap.')]:
+        del sys.modules[name]
+    flightlogs = importlib.import_module('flightmap.flightlogs')
+    settings = importlib.import_module('flightmap.settings')
+    auth = importlib.import_module('flightmap.auth')
+    return types.SimpleNamespace(build_flight=flightlogs.build_flight, clean_settings=settings.clean_settings,
+                                 hash_password=auth.hash_password, verify_password=auth.verify_password)
 
 
 class NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -241,7 +253,7 @@ class LiveFlights(unittest.TestCase):
         status, _, _ = self.srv.put_settings({'mapProvider': 'free', 'mapLayer': 'satellite', 'units': 'metric'})
         self.assertEqual(status, 200)
         path = os.path.join(self.tmp, 'state', 'settings.json')
-        self.assertEqual(json.load(open(path))['mapLayer'], 'satellite')
+        self.assertEqual(read_json(path)['mapLayer'], 'satellite')
         self.assertEqual(oct(os.stat(path).st_mode & 0o777), '0o600')   # may hold map keys
         status, _, body = self.srv.put_settings({'pathColor': 'red'})
         self.assertEqual(status, 400)
@@ -431,7 +443,7 @@ class LiveMigration(unittest.TestCase):
             try:
                 s = srv.json('/api/settings')['settings']
                 self.assertEqual((s['mapProvider'], s['mapLayer'], s['satelliteLabels']), ('azure', 'satellite', True))
-                saved = json.load(open(os.path.join(state, 'settings.json')))
+                saved = read_json(os.path.join(state, 'settings.json'))
                 self.assertNotIn('mapStyle', saved)
             finally:
                 srv.stop()

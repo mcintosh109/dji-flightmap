@@ -131,7 +131,7 @@ check "flight plans back" plan_kept
 
 echo "Broken new version"
 cp -r "$ROOT" "$WORK/repo-broken"
-sed -i 's/^APP_VERSION = .*/&\nraise SystemExit("simulated bug")/' "$WORK/repo-broken/app/server.py"
+sed -i '1a raise SystemExit("simulated bug")' "$WORK/repo-broken/app/server.py"   # crash on start
 CTID=999 bash "$WORK/repo-broken/deploy/update-ct.sh" --no-pull >"$LOGS/c.log" 2>&1
 check "update reports failure" grep -q "Undoing the update" "$LOGS/c.log"
 check "old version back and working" grep -q "previous version is back and working" "$LOGS/c.log"

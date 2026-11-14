@@ -60,11 +60,12 @@ committed by mistake and the history had to be rewritten; don't repeat that.
 
 | Path | What |
 |---|---|
-| `app/server.py` | Python, standard library only. Scans the logs, serves the API and the pages, login, settings. |
+| `app/server.py` | Python, standard library only. Entry point: the `Handler` class (every web address) and start-up. |
+| `app/flightmap/` | One module per job: `config` (env + paths), `flightlogs` (read one log), `library` (all flights), `settings`, `plans`, `auth` (login), `azure` (key-hiding proxy). Modules read the environment at import, so tests set env vars first and re-import. |
 | `app/version.json` | Version number + "what's new" notes. The page compares it with GitHub to show the update notice. |
-| `app/static/` | `index.html` + `app.js` (map), `settings.*`, `login.html`, `maps.js` (providers/layers), `updates.js`, `style.css`, `vendor/leaflet` (Leaflet 1.9.4). |
+| `app/static/` | Classic scripts sharing globals, loaded in this order by `index.html`: `common.js` (helpers), `updates.js`, `maps.js` (providers/layers), `app.js` (state, formatting, map, icons), `layers.js`, `overview.js` (sidebar + all flights), `flight.js` (open flight + replay), `update-notice.js`, `main.js` (refresh + start), `planner.js`. Each file wires its own buttons at the bottom. Also `settings.*`, `login.html` (self-contained), `style.css`, `vendor/leaflet` (1.9.4). |
 | `deploy/` | `setup-truenas-mount.sh`, `create-ct.sh` (host), `install.sh` (in container), `update-ct.sh` + `restore-ct.sh` + `ct-backup.sh` (host), `set-login.sh` (container). |
-| `tests/` | `run-all.sh` runs everything. See `tests/README.md`. |
+| `tests/` | `run-all.sh` runs everything (privacy, syntax + ruff/shellcheck when installed, server, browser, update scripts). See `tests/README.md`. |
 
 Inside the container: settings in `/var/lib/dji-flightmap/settings.json`
 (0600), login in `/etc/default/dji-flightmap` (0600), service `dji-flightmap`.

@@ -6,13 +6,15 @@
 #
 # Parts:
 #   1. privacy   nothing personal is about to be published
-#   2. syntax    every Python, JavaScript and shell file can be read
+#   2. syntax    every Python, JavaScript and shell file can be read; if the
+#                linters "ruff" (Python) and "shellcheck" (shell) are installed,
+#                they also look for undefined or unused names and risky shell
 #   3. server    tests/test_server.py   (Python, no extra installs)
 #   4. browser   tests/browser.test.js  (needs Node.js + Playwright; skipped if missing)
 #   5. deploy    tests/deploy.test.sh   (only on a throw-away machine; see that file)
 # ---------------------------------------------------------------------------
 set -uo pipefail
-cd "$(dirname "${BASH_SOURCE[0]}")/.."
+cd "$(dirname "${BASH_SOURCE[0]}")/.." || exit 1
 export PYTHONDONTWRITEBYTECODE=1
 
 part() { echo; echo "==> $1"; }
@@ -23,12 +25,23 @@ bash tests/privacy_check.sh || fail "the privacy check"
 
 part "2/5 Syntax"
 ok=1
-python3 -m py_compile app/server.py tests/*.py || ok=0
+python3 -m py_compile app/server.py app/flightmap/*.py tests/*.py || ok=0
 for f in app/static/*.js tests/*.js; do node --check "$f" || { echo "  bad: $f"; ok=0; }; done
 for f in deploy/*.sh tests/*.sh; do bash -n "$f" || { echo "  bad: $f"; ok=0; }; done
 python3 -c "import json; json.load(open('app/version.json'))" || ok=0
-rm -rf app/__pycache__ tests/__pycache__
+rm -rf app/__pycache__ app/flightmap/__pycache__ tests/__pycache__
 [[ $ok == 1 ]] && echo "  PASS  all files read cleanly" || fail "the syntax check"
+# Linters, when installed: undefined/unused names in Python, risky shell.
+if python3 -m ruff --version >/dev/null 2>&1; then
+  python3 -m ruff check app tests --select F,E9 --quiet && echo "  PASS  ruff: no undefined or unused names" || fail "the Python linter (ruff)"
+else
+  echo "  SKIP  ruff isn't installed (pip install ruff)"
+fi
+if command -v shellcheck >/dev/null 2>&1; then
+  shellcheck -S warning deploy/*.sh tests/*.sh && echo "  PASS  shellcheck: no warnings" || fail "the shell linter (shellcheck)"
+else
+  echo "  SKIP  shellcheck isn't installed (apt install shellcheck)"
+fi
 
 part "3/5 Server"
 python3 -m unittest discover -s tests -p 'test_*.py' 2>&1 | tail -4

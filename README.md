@@ -469,11 +469,24 @@ pct exec 105 -- systemctl restart dji-flightmap
 
 | File | What it is | Research keywords |
 |---|---|---|
-| `app/server.py` | The server, in Python with no add-ons. Scans the folder, reads each CSV, handles the login, and answers `/api/flights` with JSON | *"python http.server"*, *"python csv DictReader"*, *"haversine formula"* |
+| `app/server.py` | The server's entry point, in Python with no add-ons: every web address it answers (the `Handler` class) and start-up | *"python http.server"* |
+| `app/flightmap/config.py` | Settings from environment variables, and where files live | *"python os.environ"* |
+| `app/flightmap/flightlogs.py` | Reads one flight log (CSV or GeoJSON) into a summary and a track | *"python csv DictReader"*, *"haversine formula"* |
+| `app/flightmap/library.py` | The list of all flights: scanning the folder, remembering what was read, showing duplicates once | *"python threading Lock"* |
+| `app/flightmap/settings.py` | The settings page's values: defaults, checks, loading and saving | *"input validation"* |
+| `app/flightmap/plans.py` | Saved flight plans: checks, loading and saving | |
+| `app/flightmap/auth.py` | The optional login: password hashing, signed cookies, lock-out | *"password hashing pbkdf2"*, *"HMAC signed cookie"* |
+| `app/flightmap/azure.py` | Fetches Azure Maps pictures and credits for the browser, so the key stays on the server | *"reverse proxy"* |
 | `app/static/index.html` | The map page layout | *"HTML basics"* |
 | `app/static/login.html` | The login page (self-contained) | *"HTML form POST"* |
 | `app/static/style.css` | Colours and layout, including the phone layout | *"CSS flexbox"*, *"CSS media queries"* |
-| `app/static/app.js` | Fetches the data and draws the map with Leaflet | *"javascript fetch"*, *"leaflet polyline"* |
+| `app/static/common.js` | Tiny helpers every page shares | |
+| `app/static/app.js` | What the map scripts share: the page's state, number formatting, the map and its icons | *"leafletjs"* |
+| `app/static/layers.js` | The layers button (Road / Satellite / Dark / Terrain) | |
+| `app/static/overview.js` | The sidebar lists and the overview of all flights | *"leaflet polyline"* |
+| `app/static/flight.js` | One open flight: its path, the details panel, the replay | *"requestAnimationFrame"* |
+| `app/static/update-notice.js` | The version number, update notice and Updates window | |
+| `app/static/main.js` | Loads data from the server, applies settings, starts the page | *"javascript fetch"* |
 | `app/version.json` | The version number and "what's new" list, compared with the copy on GitHub to spot updates | *"semantic versioning"* |
 | `app/static/updates.js` | Checks GitHub for a newer version; the Copy button | *"fetch JSON"*, *"clipboard copy javascript"* |
 | `app/static/planner.js` | The flight planner: waypoints, estimates, safety checks, weather | *"leaflet draggable marker"*, *"Open-Meteo API"* |
@@ -518,7 +531,8 @@ number and start time. The CSV is preferred over the GeoJSON.
 ### Tests
 
 `bash tests/run-all.sh` checks everything: privacy (nothing personal in the
-repository), the server, the pages in a hidden browser, and the update scripts.
+repository), syntax and linters, the server, the pages in a hidden browser,
+and the update scripts.
 See [tests/README.md](tests/README.md). The tests use made-up flights only.
 
 `CLAUDE.md` and `.claude/skills/release/` are notes for Claude (the AI that

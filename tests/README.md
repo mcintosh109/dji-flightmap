@@ -9,7 +9,7 @@ bash tests/run-all.sh
 | Part | File | What it checks | Needs |
 |---|---|---|---|
 | 1. Privacy | `privacy_check.sh` | Nothing personal is about to be published: no flight logs, private network addresses, email addresses or map keys | git |
-| 2. Syntax | (in `run-all.sh`) | Every Python, JavaScript and shell file can be read | Python 3, Node.js |
+| 2. Syntax | (in `run-all.sh`) | Every Python, JavaScript and shell file can be read. If the linters are installed: `ruff` finds undefined or unused names in Python, `shellcheck` finds risky shell | Python 3, Node.js; optional `pip install ruff`, `apt install shellcheck` |
 | 3. Server | `test_server.py` | Reading logs (normal flight, flight clock that doesn't start at 0, no GPS, GeoJSON only, junk CSV), duplicates shown once, settings rules, old settings converted, login, the web addresses | Python 3 only |
 | 4. Browser | `browser.test.js` | Opens the real pages in a hidden browser: flight list, layers panel, Azure credit line, replay (gliding, trail, Follow), only the open flight shown, settings page, update notice, phone layout, login | Node.js + [Playwright](https://playwright.dev) |
 | 5. Update scripts | `deploy.test.sh` | `update-ct.sh` keeps settings, puts back wiped settings, undoes a broken version; `restore-ct.sh` works | A **throw-away** Linux machine, as root |

@@ -24,8 +24,6 @@ window.MapStyles = (() => {
   const OSM = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
   const MAPBOX = '&copy; <a href="https://www.mapbox.com/about/maps/">Mapbox</a> ' + OSM;
   const MAPTILER = '&copy; <a href="https://www.maptiler.com/copyright/">MapTiler</a> ' + OSM;
-  const esc = (v) => String(v ?? '').replace(/[&<>"']/g,
-    (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
   // needs: which setting must be filled in for the style to work.
   const STYLES = [

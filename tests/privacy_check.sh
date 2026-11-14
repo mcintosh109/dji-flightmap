@@ -10,7 +10,7 @@
 #   bash tests/privacy_check.sh
 # ---------------------------------------------------------------------------
 set -uo pipefail
-cd "$(dirname "${BASH_SOURCE[0]}")/.."
+cd "$(dirname "${BASH_SOURCE[0]}")/.." || exit 1
 PROBLEMS=0
 problem() { echo "  FAIL  $1"; PROBLEMS=$((PROBLEMS + 1)); }
 

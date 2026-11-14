@@ -1,0 +1,44 @@
+"""Settings from environment variables, where files live, and the log helper.
+
+See deploy/dji-flightmap.env for what each environment variable means.
+"""
+import json
+import os
+import sys
+
+APP_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))   # the "app" folder
+
+DATA_DIR = os.environ.get("DATA_DIR", "/srv/dji-logs")
+PORT = int(os.environ.get("PORT", "8080"))
+HOST = os.environ.get("HOST", "0.0.0.0")
+SCAN_SECONDS = max(5, int(os.environ.get("SCAN_SECONDS", "30")))
+CACHE_FILE = os.environ.get("CACHE_FILE", "/var/lib/dji-flightmap/summaries.json")
+# Folder for everything the server saves (settings, plans, login secret).
+STATE_DIR = os.path.dirname(CACHE_FILE)
+AUTH_USER = os.environ.get("AUTH_USER", "").strip()
+AUTH_PASSWORD_HASH = os.environ.get("AUTH_PASSWORD_HASH", "").strip()
+AUTH_ENABLED = bool(AUTH_USER and AUTH_PASSWORD_HASH)
+SESSION_DAYS = int(os.environ.get("SESSION_DAYS", "30"))   # stay signed in this long
+SECRET_FILE = os.path.join(STATE_DIR, "session-secret")
+SETTINGS_FILE = os.path.join(STATE_DIR, "settings.json")
+# Where Azure Maps is reached (only changed by the tests, to use a fake one).
+AZURE_MAPS_URL = os.environ.get("AZURE_MAPS_URL", "https://atlas.microsoft.com").rstrip("/")
+PLANS_FILE = os.path.join(STATE_DIR, "plans.json")
+# The version number and "what's new" list live in app/version.json, so the
+# web page can compare them with the newest copy on GitHub.
+try:
+    with open(os.path.join(APP_DIR, "version.json"), encoding="utf-8") as _fh:
+        VERSION_INFO = json.load(_fh)
+except (OSError, ValueError):
+    VERSION_INFO = {"version": "0.0.0", "notes": []}
+APP_VERSION = VERSION_INFO.get("version", "0.0.0")
+
+STATIC_DIR = os.path.join(APP_DIR, "static")
+MAX_TRACK_POINTS = 3000   # most points sent to the browser for one flight
+PREVIEW_POINTS = 80       # points in the small "overview" line of each flight
+DETAIL_CACHE_SIZE = 16    # how many full flights to keep in memory
+CACHE_VERSION = 3         # bump this when the summary format changes
+
+def log(message):
+    """Print a line to the log (systemd/journalctl picks this up)."""
+    print(message, file=sys.stderr, flush=True)
