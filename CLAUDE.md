@@ -110,6 +110,12 @@ cd /root/dji-flightmap && bash deploy/update-ct.sh
   `/api/azure-credits`; `public_settings()` replaces the key with
   `azureMapsKeySet`. On save, an empty key box means "keep", `removeAzureMapsKey`
   deletes it. Tests use `AZURE_MAPS_URL` to point the server at a fake Azure.
+- **Backups** (2.2.0): host `/root/dji-flightmap-backups` (10 kept) and, if
+  connected, TrueNAS `flightmap-backups` mounted read-write at
+  `/mnt/dji-flightmap-backups` (30 kept). It sits NEXT TO `DJI Flight logs`,
+  not inside it, because the Pi dock has write access inside. `copy_offsite`
+  refuses to write if the folder isn't a mount point (TrueNAS down). Daily
+  `dji-flightmap-backup.timer` on the host runs `deploy/backup-ct.sh`.
 - **Copy buttons:** `navigator.clipboard` needs https; the map is plain http,
   so `updates.js` falls back to `document.execCommand('copy')`.
 - **Claude's sandbox can't reach tile servers or most websites.** The tests

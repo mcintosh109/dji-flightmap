@@ -327,9 +327,42 @@ What it does:
 
 Afterwards, press **Ctrl+Shift+R** in the browser to load the new version.
 
+### Backups on TrueNAS (recommended)
+
+Every update saves your settings, login and flight plans on the Proxmox
+host. To also keep copies **on TrueNAS** (so they survive if the Proxmox
+server's disk fails), and to make a backup **every day**:
+
+1. On TrueNAS, create a folder named **`flightmap-backups`** **next to**
+   `DJI Flight logs`, *not inside it*. The Pi dock can write inside
+   `DJI Flight logs`; keeping the backups outside it means a dock problem
+   can never touch them. Your TrueNAS user must be able to **write** to it.
+   The backups contain your map keys and login hash, so only people you trust
+   should be able to open the folder.
+2. On the Proxmox host:
+
+   ```bash
+   cd /root/dji-flightmap && bash deploy/setup-backup-share.sh
+   ```
+
+   It suggests the folder (next to `DJI Flight logs`), reuses your TrueNAS
+   login, checks it can write there, offers the **daily backup** (about
+   3:30 AM), and makes the first backup straight away.
+
+Back up right now at any time:
+
+```bash
+cd /root/dji-flightmap && bash deploy/backup-ct.sh
+```
+
+If TrueNAS isn't connected when a backup runs, it says so and keeps the
+backup on the Proxmox host only (it never writes into the empty local folder).
+Up to 10 backups are kept on the host and 30 on TrueNAS.
+
 ### Restoring settings (for example after rebuilding the container)
 
-Put the newest backup into the container:
+Put the newest backup into the container (it looks on the Proxmox host and
+on TrueNAS):
 
 ```bash
 bash deploy/restore-ct.sh
@@ -451,7 +484,9 @@ pct exec 105 -- systemctl restart dji-flightmap
 | `deploy/create-ct.sh` | Proxmox host: creates the container | *"pct create"*, *"proxmox bind mount"* |
 | `deploy/update-ct.sh` | Proxmox host: backs up settings, installs a newer version, puts settings back, undoes it if the map doesn't start | *"pct push"*, *"pct pull"* |
 | `deploy/restore-ct.sh` | Proxmox host: puts saved settings back into a container | |
-| `deploy/ct-backup.sh` | Shared save/restore steps used by the two scripts above | *"bash source"* |
+| `deploy/ct-backup.sh` | Shared save/restore steps used by the scripts above and below | *"bash source"* |
+| `deploy/setup-backup-share.sh` | Proxmox host: connects the writable TrueNAS backup folder, turns on the daily backup | *"systemd timer"* |
+| `deploy/backup-ct.sh` | Proxmox host: makes a backup now (the daily timer runs it) | |
 | `deploy/install.sh` | Inside the container: installs the app | *"bash script basics"* |
 | `deploy/set-login.sh` | Inside the container: sets up the login | |
 | `deploy/dji-flightmap.service` | Runs the server at boot and restarts it if it crashes | *"systemd service file"* |

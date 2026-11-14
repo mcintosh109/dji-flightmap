@@ -40,6 +40,13 @@ CORES="${CORES:-1}"
 DATA_CT_PATH=/srv/dji-logs
 SRC_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
+# Run from "/" with a language setting every Linux system has. Otherwise
+# commands inside the container complain: the update replaces the folder the
+# Shell would be "standing in", and the container may not have the Shell's
+# language pack (e.g. en_US.UTF-8).
+cd /
+export LANG=C.UTF-8 LC_ALL=C.UTF-8
+
 DATA_HOST_PATH="${DATA_HOST_PATH:-/mnt/dji-archive}"
 if [[ ! -d "$DATA_HOST_PATH" ]]; then
   echo "Folder not found on this host: $DATA_HOST_PATH" >&2

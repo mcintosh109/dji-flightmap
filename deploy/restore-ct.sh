@@ -4,7 +4,7 @@
 # nicknames, login, ...) back into a container. Handy after rebuilding the
 # container, or to go back to an earlier backup.
 #
-#   bash deploy/restore-ct.sh                       # newest backup
+#   bash deploy/restore-ct.sh                       # newest backup (this server or TrueNAS)
 #   bash deploy/restore-ct.sh /root/dji-flightmap-backups/ct111_2026-11-14_10-00-00
 #
 # (Add CTID=112 in front to restore into a different container.)
@@ -13,17 +13,23 @@
 set -euo pipefail
 
 SRC_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+# Run from "/" with a language setting every Linux system has. Otherwise
+# commands inside the container complain: the update replaces the folder the
+# Shell would be "standing in", and the container may not have the Shell's
+# language pack (e.g. en_US.UTF-8).
+cd /
+export LANG=C.UTF-8 LC_ALL=C.UTF-8
 # shellcheck source=deploy/ct-backup.sh
 source "$SRC_DIR/deploy/ct-backup.sh"
 
 FROM="${1:-}"
 if [[ -z "$FROM" ]]; then
-  FROM=$(ls -1dt "$BACKUP_ROOT"/ct*_* 2>/dev/null | head -1 || true)
+  FROM=$(newest_backup || true)
 fi
 if [[ -z "$FROM" || ! -d "$FROM" ]]; then
-  echo "No backup found in $BACKUP_ROOT." >&2
-  echo "Backups are made by update-ct.sh. Saved backups:" >&2
-  ls -1 "$BACKUP_ROOT" 2>/dev/null >&2 || echo "  (none)" >&2
+  echo "No backup found in $BACKUP_ROOT or on TrueNAS ($OFFSITE_DIR)." >&2
+  echo "Backups are made by update-ct.sh and backup-ct.sh." >&2
   exit 1
 fi
 

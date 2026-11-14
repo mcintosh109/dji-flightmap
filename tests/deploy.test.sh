@@ -144,6 +144,25 @@ echo y | CTID=999 bash "$ROOT/deploy/restore-ct.sh" >"$LOGS/d.log" 2>&1
 check "restore works" grep -q "Done. The map is working" "$LOGS/d.log"
 check "nickname restored" nickname_kept
 
+echo "Backups on TrueNAS (a plain folder stands in for the TrueNAS share)"
+OFF="$WORK/truenas-backups"
+mkdir -p "$OFF"
+OFFSITE_DIR="$OFF" OFFSITE_NO_MOUNT_CHECK=1 CTID=999 bash "$ROOT/deploy/update-ct.sh" --no-pull >"$LOGS/e.log" 2>&1
+check "update copies the backup to TrueNAS" ls "$OFF"/ct999_*/settings.json
+check "the TrueNAS copy has the flight plans" ls "$OFF"/ct999_*/plans.json
+OFFSITE_DIR="$OFF" OFFSITE_NO_MOUNT_CHECK=1 CTID=999 bash "$ROOT/deploy/backup-ct.sh" >"$LOGS/f.log" 2>&1
+check "backup-ct.sh (the daily backup) works" grep -q "copied to TrueNAS" "$LOGS/f.log"
+# TrueNAS not connected: the folder exists but isn't a mount -> must NOT write into it
+mkdir -p "$WORK/not-mounted"
+OFFSITE_DIR="$WORK/not-mounted" CTID=999 bash "$ROOT/deploy/backup-ct.sh" >"$LOGS/g.log" 2>&1
+check "TrueNAS not connected: warns" grep -q "isn't connected" "$LOGS/g.log"
+check "TrueNAS not connected: nothing written to the empty folder" bash -c "[ -z \"\$(ls -A '$WORK/not-mounted')\" ]"
+cp /var/lib/dji-flightmap/plans.json "$WORK/plans-before.json"
+rm -rf /root/dji-flightmap-backups /var/lib/dji-flightmap/plans.json   # server disk "lost"
+echo y | OFFSITE_DIR="$OFF" OFFSITE_NO_MOUNT_CHECK=1 CTID=999 bash "$ROOT/deploy/restore-ct.sh" >"$LOGS/h.log" 2>&1
+check "restore from TrueNAS when this server's backups are gone" grep -q "Done. The map is working" "$LOGS/h.log"
+check "flight plans restored from TrueNAS" cmp -s "$WORK/plans-before.json" /var/lib/dji-flightmap/plans.json
+
 echo
 echo "$PASSED passed, $FAILED failed"
 [ "$FAILED" -eq 0 ]

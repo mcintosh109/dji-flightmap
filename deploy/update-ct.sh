@@ -20,6 +20,13 @@ set -euo pipefail
 
 SRC_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
+# Run from "/" with a language setting every Linux system has. Otherwise
+# commands inside the container complain: the update replaces the folder the
+# Shell would be "standing in", and the container may not have the Shell's
+# language pack (e.g. en_US.UTF-8).
+cd /
+export LANG=C.UTF-8 LC_ALL=C.UTF-8
+
 # ---- 1. Download the newest version --------------------------------------
 # After "git pull" the script starts itself again, so the NEW version of
 # this script is the one that runs the update.
@@ -41,6 +48,7 @@ PREVIOUS=/root/dji-flightmap-previous.tar.gz   # inside the container
 
 echo "==> 2/6 Saving your settings and login to $BACKUP"
 backup_config "$CTID" "$BACKUP"
+copy_offsite "$BACKUP"
 
 echo "==> 3/6 Saving the current version, so the update can be undone"
 HAVE_PREVIOUS=no

@@ -20,6 +20,46 @@ CONFIG_FILES=(
 # Backups are kept on the Proxmox host, readable by root only.
 BACKUP_ROOT="${BACKUP_ROOT:-/root/dji-flightmap-backups}"
 KEEP_BACKUPS="${KEEP_BACKUPS:-10}"
+# Copies on TrueNAS (connected by setup-backup-share.sh), the newest 30.
+OFFSITE_DIR="${OFFSITE_DIR:-/mnt/dji-flightmap-backups}"
+KEEP_OFFSITE="${KEEP_OFFSITE:-30}"
+
+# Is the TrueNAS backup folder connected and writable? If TrueNAS isn't
+# connected, the folder is just an empty local one: writing there would fill
+# this server's disk while looking like a TrueNAS backup, so don't.
+offsite_ready() {
+  [[ -d "$OFFSITE_DIR" && -w "$OFFSITE_DIR" ]] || return 1
+  mountpoint -q "$OFFSITE_DIR" || [[ "${OFFSITE_NO_MOUNT_CHECK:-}" == 1 ]]   # (the tests use a plain folder)
+}
+
+# Copy a backup folder ($1) to TrueNAS, if connected.
+copy_offsite() {
+  if ! offsite_ready; then
+    if [[ -d "$OFFSITE_DIR" ]]; then
+      echo "    WARNING: the TrueNAS backup folder isn't connected; this backup stays on this server only." >&2
+      echo "    (Reconnect with: mount $OFFSITE_DIR)" >&2
+    else
+      echo "    (kept on this server only; for a copy on TrueNAS, run deploy/setup-backup-share.sh)"
+    fi
+    return 0
+  fi
+  if cp -r "$1" "$OFFSITE_DIR/"; then
+    echo "    copied to TrueNAS: $OFFSITE_DIR/$(basename "$1")"
+    ls -1dt "$OFFSITE_DIR"/ct*_* 2>/dev/null | tail -n +"$((KEEP_OFFSITE + 1))" | xargs -r rm -rf
+  else
+    echo "    WARNING: could not copy the backup to TrueNAS; it is still on this server." >&2
+  fi
+}
+
+# The newest backup, looking on this server and on TrueNAS.
+newest_backup() {
+  local places=("$BACKUP_ROOT")
+  offsite_ready && places+=("$OFFSITE_DIR")
+  local p
+  for p in "${places[@]}"; do ls -1dt "$p"/ct*_* 2>/dev/null; done \
+    | while read -r d; do printf '%s %s\n' "$(basename "$d" | sed 's/^ct[0-9]*_//')" "$d"; done \
+    | sort -r | head -1 | cut -d' ' -f2-
+}
 
 # Find the container if CTID wasn't given: the one named "dji-flightmap".
 find_ctid() {

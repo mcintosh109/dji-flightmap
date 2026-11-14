@@ -9,6 +9,9 @@
 # ---------------------------------------------------------------------------
 set -euo pipefail
 
+# A language setting every system has (the container may lack the Shell's one).
+export LANG=C.UTF-8 LC_ALL=C.UTF-8
+
 APP_DIR=/opt/dji-flightmap
 SRC_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"   # the folder this script came from
 
