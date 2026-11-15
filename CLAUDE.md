@@ -184,7 +184,10 @@ owner confirms it works**, release it with a tag (`git tag -a vX.Y.Z` +
   renewed on a 400/401/403. **Google's rules: never store tiles on the
   server** (only pass Google's Cache-Control on), always show the Google
   logo + the viewport `copyright` text. The viewport's `maxZoomRects` lowers
-  `maxNativeZoom` where imagery stops. `liftCredits()` in app.js keeps the
+  `maxNativeZoom` where imagery stops: use the HIGHEST zoom among the rects
+  containing the view's centre (one rect is the whole world at zoom ~3;
+  taking the lowest stretched a world picture over the screen, 3.0.3).
+  `server.py --check-google` prints Google's answer per map kind. `liftCredits()` in app.js keeps the
   credit line above the bottom panels (they used to cover it). The Google
   places data must not be put on a non-Google map, so Places stays
   OpenStreetMap. Tests use `GOOGLE_TILES_URL`. developers.google.com is not
