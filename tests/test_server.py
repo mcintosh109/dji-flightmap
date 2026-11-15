@@ -750,8 +750,12 @@ class FakeGoogle:
                 if session in outer.expired:
                     return self.reply(400, b'{"error":{"message":"session expired"}}')
                 if u.path == '/tile/v1/viewport':
+                    # Like the real answer: the whole world at a low zoom, plus closer areas.
+                    rects = [{'maxzoom': 3, 'south': -85, 'north': 85, 'west': -180, 'east': 180},
+                             {'maxzoom': 19, 'south': 40, 'north': 41, 'west': -74.5, 'east': -73.5},
+                             {'maxzoom': 21, 'south': 10, 'north': 11, 'west': 10, 'east': 11}]
                     return self.reply(200, json.dumps({'copyright': 'Map data \u00a92026 Google <b>x</b>',
-                                                       'maxZoomRects': [{'maxzoom': 21}, {'maxzoom': 19}]}).encode())
+                                                       'maxZoomRects': rects}).encode())
                 outer.tiles.append((u.path, session))
                 self.reply(200, b'\x89PNG google tile', 'image/png',
                            {'Cache-Control': outer.cache_control} if outer.cache_control else None)
@@ -853,6 +857,17 @@ class LiveGoogleKey(unittest.TestCase):
             log = fh.read()
         self.assertIn('Requested entity was not found. / NOT_FOUND', log)
         self.assertIn('Map Tiles API is enabled', log)
+
+    def test_check_command(self):
+        """python3 server.py --check-google says what Google answered, never the key."""
+        out = subprocess.run([sys.executable, os.path.join(APP, 'server.py'), '--check-google'],
+                             env=dict(os.environ, GOOGLE_TILES_URL=self.google.url,
+                                      CACHE_FILE=os.path.join(self.tmp, 'state', 'summaries.json')),
+                             capture_output=True, text=True, timeout=30).stdout
+        self.assertIn('roadmap', out)
+        self.assertIn('session OK, picture OK', out)
+        self.assertIn('roads as a separate layer', out)
+        self.assertNotIn(self.KEY, out)
 
     def test_remove_key(self):
         self.srv.put_settings({'units': 'metric', 'googleMapsKey': ''})

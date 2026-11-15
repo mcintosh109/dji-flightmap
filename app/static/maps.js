@@ -255,8 +255,8 @@ window.MapStyles = (() => {
       const img = L.DomUtil.create('img', '', box);
       img.alt = 'Google';
       img.src = 'https://maps.gstatic.com/mapfiles/api-3/images/google_white5_hdpi.png';
-      // If Google's logo picture can't be loaded, write "Google" instead.
-      img.addEventListener('error', () => { box.textContent = 'Google'; box.classList.add('text'); });
+      // If Google's logo picture can't be loaded, write "Google Maps" instead.
+      img.addEventListener('error', () => { box.textContent = 'Google Maps'; box.classList.add('text'); });
       return box;
     },
   });

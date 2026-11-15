@@ -104,7 +104,10 @@ async function startFakeGoogle() {
       }
       if (u.pathname === '/tile/v1/viewport') {
         res.writeHead(200, { 'Content-Type': 'application/json' });
-        return res.end(JSON.stringify({ copyright: 'Map data ©2026 Google', maxZoomRects: [{ maxzoom: 21 }] }));
+        // Like the real answer: the whole world at a low zoom, plus a closer area.
+        return res.end(JSON.stringify({ copyright: 'Map data ©2026 Google', maxZoomRects: [
+          { maxzoom: 3, south: -85, north: 85, west: -180, east: 180 },
+          { maxzoom: 19, south: 40, north: 41.5, west: -74.5, east: -73.5 }] }));
       }
       got.tiles++;
       res.writeHead(200, { 'Content-Type': 'image/png', 'Cache-Control': 'public, max-age=60' });
@@ -304,6 +307,8 @@ function fakeInternet(ctx, { github = null } = {}) {
       const gcredit = await gpage.textContent('#map .leaflet-control-attribution');
       check("Google's credit text is shown", gcredit.includes('Map data ©2026 Google'), gcredit);
       check('the Google logo is shown', await gpage.isVisible('#map .google-logo'));
+      const nativeZoom = await gpage.evaluate(() => { let z = null; map.eachLayer((l) => { if (l.options.googleMaxZoom) z = l.options.maxNativeZoom; }); return z; });
+      check("pictures come from the closest zoom Google has here (19), not the world's (3)", nativeZoom === 19, `maxNativeZoom ${nativeZoom}`);
       await gpage.click('#btn-layers');
       await gpage.click('.layer-opt[data-layer=satellite]');
       await gpage.waitForTimeout(800);

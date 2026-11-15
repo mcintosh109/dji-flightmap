@@ -1,5 +1,5 @@
 {
-  "version": "3.0.1",
+  "version": "3.0.3",
   "released": "2026-11-14",
   "repo": "mcintosh109/dji-flightmap",
   "notes": [
@@ -7,6 +7,7 @@
     "Your Google key stays on the map server, like the Azure key. Add it in Settings \u2192 Map",
     "Needs one step in Google Cloud: turn on the Map Tiles API for your key (see the README)",
     "If Google refuses, the server waits a minute before asking again, and its log says what to check",
+    "New check for Google Maps problems: python3 /opt/dji-flightmap/app/server.py --check-google (see the README)",
     "The map's credit line now stays visible above the flight and planner panels"
   ]
 }

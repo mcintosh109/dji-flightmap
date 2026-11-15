@@ -89,6 +89,7 @@ from flightmap.auth import (COOKIE_NAME, PUBLIC_PATHS, hash_password, make_sessi
 from flightmap.azure import AZURE_TILESETS, azure_request, html_to_text
 from flightmap.config import (APP_VERSION, AUTH_ENABLED, AUTH_PASSWORD_HASH, AUTH_USER, DATA_DIR, HOST, PORT,
                               STATIC_DIR, VERSION_INFO, log)
+from flightmap import google
 from flightmap.google import GOOGLE_SETS, google_credits, google_tile
 from flightmap.library import FlightLibrary
 from flightmap.places import PlacesError, parse_range, places_in
@@ -487,6 +488,11 @@ class Handler(SimpleHTTPRequestHandler):
 
 def main():
     global LIBRARY
+    if "--check-google" in sys.argv:
+        # Tries each kind of Google map once and prints what Google said.
+        load_settings()
+        print("\n".join(google.check()))
+        return
     if "--hash-password" in sys.argv:
         # Used by deploy/set-login.sh: asks for a password, prints its hash.
         first = getpass.getpass("New password: ")

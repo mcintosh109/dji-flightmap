@@ -159,9 +159,71 @@ def google_credits(tileset, zoom, west, south, east, north):
     except ValueError:
         return {"copyright": ""}, 502
     answer = {"copyright": html_to_text(data.get("copyright", ""))[:300]}
-    rects = data.get("maxZoomRects") or data.get("maxZoomRect") or []
-    zooms = [r.get("maxzoom", r.get("maxZoom")) for r in rects if isinstance(r, dict)]
-    zooms = [z for z in zooms if isinstance(z, int)]
-    if zooms:
-        answer["maxZoom"] = min(zooms)
+    zoom = closest_zoom(data.get("maxZoomRects") or data.get("maxZoomRect") or [],
+                        (float(south) + float(north)) / 2, (float(west) + float(east)) / 2)
+    if zoom is not None:
+        answer["maxZoom"] = zoom
     return answer, 200
+
+
+def closest_zoom(rects, lat, lon):
+    """The closest zoom Google has pictures for at (lat, lon).
+
+    Google lists areas with the closest zoom available in each; they
+    overlap, and one usually covers the whole world with a LOW zoom. The
+    answer is the highest zoom among the areas that contain the point (the
+    lowest would stretch one world-sized picture over the screen).
+    """
+    def zoom_of(r):
+        z = r.get("maxzoom", r.get("maxZoom"))
+        return z if isinstance(z, int) else None
+
+    def contains(r):
+        try:
+            return (float(r["south"]) <= lat <= float(r["north"])
+                    and float(r["west"]) <= lon <= float(r["east"]))
+        except (KeyError, TypeError, ValueError):
+            return True   # no corners given: assume it covers the point
+
+    rects = [r for r in rects if isinstance(r, dict) and zoom_of(r) is not None]
+    here = [zoom_of(r) for r in rects if contains(r)]
+    return max(here) if here else None
+
+
+# ---- "python3 server.py --check-google": try each kind of map once -------------------
+def check():
+    """Ask Google for a session and one picture of each kind of map, and
+    describe what Google said. Returns lines of text (never the key)."""
+    key = current_settings().get("googleMapsKey", "")
+    if not key:
+        return ["No Google Maps key is saved. Add it on the settings page (Settings -> Map)."]
+    tries = [(name, {**body, "language": "en-US", "region": "US"}) for name, body in GOOGLE_SETS.items()]
+    # Other ways of asking, to narrow down what Google objects to.
+    tries += [
+        ("roadmap, no language/region", {"mapType": "roadmap"}),
+        ("roads as a separate layer", {"mapType": "satellite", "layerTypes": ["layerRoadmap"], "overlay": True,
+                                       "language": "en-US", "region": "US"}),
+    ]
+    lines = [f"Asking Google ({GOOGLE_TILES_URL}) with the saved key:"]
+    for name, body in tries:
+        try:
+            status, _, answer, _ = GOOGLE.request(
+                "POST", "/v1/createSession?" + urlencode({"key": key}, quote_via=quote),
+                body=json.dumps(body).encode(), headers={"Content-Type": "application/json"})
+        except OSError as err:
+            lines.append(f"  {name:30} could not reach Google: {err}")
+            continue
+        if status != 200:
+            lines.append(f"  {name:30} session REFUSED ({status}): {_error_text(answer, key)}")
+            continue
+        try:
+            session = json.loads(answer)["session"]
+        except (ValueError, KeyError):
+            lines.append(f"  {name:30} session: unexpected answer from Google")
+            continue
+        query = urlencode({"session": session, "key": key}, quote_via=quote)
+        status, ctype, answer, _ = GOOGLE.request("GET", f"/v1/2dtiles/0/0/0?{query}")
+        picture = (f"OK ({ctype}, {len(answer)} bytes)" if status == 200
+                   else f"REFUSED ({status}): {_error_text(answer, key)}")
+        lines.append(f"  {name:30} session OK, picture {picture}")
+    return lines
