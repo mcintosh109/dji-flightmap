@@ -947,6 +947,126 @@ class LiveGoogleKey(unittest.TestCase):
         self.assertEqual(self.srv.request('/tiles/google/roadmap/1/0/0.png')[0], 404)
 
 
+class LiveHttps(unittest.TestCase):
+    """HTTPS with a private certificate made by deploy/set-https.sh."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = tempfile.mkdtemp(prefix='flightmap-test-')
+        for d in ('state', 'archive'):
+            os.makedirs(os.path.join(cls.tmp, d))
+        cls.tls = os.path.join(cls.tmp, 'tls')
+        conf = os.path.join(cls.tmp, 'env')
+        with open(conf, 'w') as fh:
+            fh.write('PORT=8080\n')
+        subprocess.run(['bash', os.path.join(ROOT, 'deploy', 'set-https.sh'), '--private', '--name', 'flightmap.test'],
+                       env=dict(os.environ, CONF=conf, TLS_DIR=cls.tls, OWNER=str(os.getuid()), RESTART_CMD='true',
+                                SKIP_CHECK='1', ALLOW_NON_ROOT='1', IP='127.0.0.1'),
+                       check=True, capture_output=True)
+        cls.http_port, cls.https_port = free_port(), free_port()
+        cls.proc, cls.log = cls.start(cls.tls + '/cert.pem', cls.http_port, cls.https_port)
+
+    @classmethod
+    def start(cls, cert, http_port, https_port):
+        import ssl
+        log = open(os.path.join(cls.tmp, 'state', f'server-{os.path.basename(cert)}.log'), 'w')
+        env = dict(os.environ, DATA_DIR=os.path.join(cls.tmp, 'archive'), HOST='127.0.0.1',
+                   PORT=str(http_port), HTTPS_PORT=str(https_port), TLS_MODE='private',
+                   TLS_CERT=cert, TLS_KEY=cls.tls + '/key.pem',
+                   CACHE_FILE=os.path.join(cls.tmp, 'state', 'summaries.json'))
+        proc = subprocess.Popen([sys.executable, '-u', os.path.join(APP, 'server.py')], env=env,
+                                stdout=log, stderr=subprocess.STDOUT)
+        cls.ctx = ssl.create_default_context(cafile=cls.tls + '/ca.crt')
+        for _ in range(100):
+            try:
+                urllib.request.urlopen(f'http://127.0.0.1:{http_port}/api/health', timeout=2)
+                return proc, log
+            except (urllib.error.URLError, ConnectionError, OSError):
+                time.sleep(0.1)
+        raise RuntimeError('server did not start')
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.proc.terminate()
+        cls.proc.wait(5)
+        cls.log.close()
+        shutil.rmtree(cls.tmp, ignore_errors=True)
+
+    def https(self, path):
+        return urllib.request.urlopen(f'https://127.0.0.1:{self.https_port}{path}', context=self.ctx, timeout=5)
+
+    def plain(self, method, path, host='192.168.1.50:8080'):
+        import http.client
+        conn = http.client.HTTPConnection('127.0.0.1', self.http_port, timeout=5)
+        try:
+            conn.request(method, path, body=b'x' if method == 'POST' else None, headers={'Host': host})
+            res = conn.getresponse()
+            return res.status, res.getheader('Location'), res.getheader('Content-Type'), res.read()
+        finally:
+            conn.close()
+
+    def test_map_over_https(self):
+        with self.https('/api/health') as res:
+            self.assertEqual(res.status, 200)
+        with self.https('/') as res:
+            self.assertIn(b'Flight Map', res.read())
+
+    def test_http_sends_you_to_https(self):
+        self.assertEqual(self.plain('GET', '/settings.html?x=1')[:2],
+                         (301, f'https://192.168.1.50:{self.https_port}/settings.html?x=1'))
+        self.assertEqual(self.plain('POST', '/api/login', host='flightmap.test')[:2],
+                         (308, f'https://flightmap.test:{self.https_port}/api/login'))
+        self.assertEqual(self.plain('GET', '/', host='bad host')[0], 400)
+
+    def test_health_and_certificate_on_the_http_port(self):
+        self.assertEqual(self.plain('GET', '/api/health')[0], 200)
+        status, _, ctype, body = self.plain('GET', '/flightmap-ca.crt')
+        self.assertEqual((status, ctype), (200, 'application/x-x509-ca-cert'))
+        self.assertIn(b'BEGIN CERTIFICATE', body)
+        self.assertNotIn(b'PRIVATE KEY', body)
+
+    def test_cookie_is_secure_over_https(self):
+        import http.client
+        conn = http.client.HTTPSConnection('127.0.0.1', self.https_port, context=self.ctx, timeout=5)
+        conn.request('GET', '/logout')
+        res = conn.getresponse()
+        res.read()
+        conn.close()
+        self.assertIn('Secure', res.getheader('Set-Cookie'))
+
+    def test_settings_page_shows_https(self):
+        with self.https('/api/settings') as res:
+            info = json.loads(res.read())['info']['https']
+        self.assertTrue(info['on'])
+        self.assertEqual(info['mode'], 'private')
+        self.assertIn('flightmap.test', info['names'])
+        self.assertGreater(info['daysLeft'], 800)
+        self.assertTrue(info['caCert'])
+
+    def test_untrusting_browser_does_not_disturb_the_server(self):
+        import ssl
+        with self.assertRaises(urllib.error.URLError):
+            urllib.request.urlopen(f'https://127.0.0.1:{self.https_port}/api/health',
+                                   context=ssl.create_default_context(), timeout=5)
+        with self.https('/api/health') as res:
+            self.assertEqual(res.status, 200)
+        with open(self.log.name) as fh:
+            self.assertNotIn('Traceback', fh.read())
+
+    def test_broken_certificate_falls_back_to_plain_http(self):
+        http_port = free_port()
+        proc, log = self.start(self.tls + '/missing.pem', http_port, free_port())
+        try:
+            with urllib.request.urlopen(f'http://127.0.0.1:{http_port}/api/flights', timeout=5) as res:
+                self.assertEqual(res.status, 200, 'the map itself is served on http, not a redirect')
+            with open(log.name) as fh:
+                self.assertIn('Serving plain http instead', fh.read())
+        finally:
+            proc.terminate()
+            proc.wait(5)
+            log.close()
+
+
 class LiveMigration(unittest.TestCase):
     """Settings saved by versions before 1.5.0 used one 'mapStyle'."""
 

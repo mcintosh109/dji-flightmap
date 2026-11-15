@@ -106,6 +106,28 @@ function renderAircraft() {
     </div>`).join('');
 }
 
+// ---------- HTTPS ----------
+function renderHttps(h) {
+  const status = $('#https-status');
+  const kind = h.mode === 'letsencrypt' ? "Let's Encrypt (renews itself)" : 'private certificate';
+  const until = h.expires ? ` Valid until ${h.expires}.` : '';
+  if (h.on) {
+    status.textContent = `🔒 On, with a ${kind}, for ${(h.names || []).join(', ') || 'this map'}.${until}`;
+    status.className = 'help ok';
+    if (Number.isInteger(h.daysLeft) && h.daysLeft < 30 && h.mode !== 'letsencrypt') {
+      status.textContent += ` It runs out in ${h.daysLeft} days: renew it with the command below (choose --renew).`;
+      status.className = 'help warn';
+    }
+  } else if (h.mode) {
+    status.textContent = 'HTTPS is set up, but its certificate could not be loaded, so the map uses plain http. Run the command below again.';
+    status.className = 'help warn';
+  } else {
+    status.textContent = 'Off: the map uses plain http, so your login travels unencrypted on your network.';
+    status.className = 'help';
+  }
+  $('#https-private').classList.toggle('hidden', !h.caCert);
+}
+
 // ---------- preview map ----------
 function updatePreview() {
   const values = readForm();
@@ -241,6 +263,7 @@ async function start() {
   $('#version').textContent = `Flight Map ${info.version}`;
   $('#info-login').textContent = info.auth ? `On (username: ${info.user})` : 'Off: anyone on your network can open the map';
   $('#info-data').textContent = info.dataDir;
+  renderHttps(info.https || { on: false });
   renderAircraft();
   fillForm(saved);
   baseline = JSON.stringify(readForm());
@@ -248,6 +271,7 @@ async function start() {
   $('#savebar').classList.remove('hidden');
   $('#upd-cmd').textContent = Updates.COMMAND;
   Updates.wireCopyButton($('#upd-copy'));
+  Updates.wireCopyButton($('#https-copy'), $('#https-cmd').textContent);
   $('#upd-check').addEventListener('click', () => showUpdates(true));
   showUpdates(true);   // always ask GitHub when the settings page opens
   if (location.hash === '#updates') $('#updates').scrollIntoView();

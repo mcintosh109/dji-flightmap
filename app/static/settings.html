@@ -247,6 +247,27 @@
         <pre class="cmd">pct exec 105 -- bash /opt/dji-flightmap/deploy/set-login.sh</pre>
       </section>
 
+      <!-- ================= HTTPS ================= -->
+      <section class="card" id="https">
+        <h2>Secure connection (HTTPS)</h2>
+        <p id="https-status" class="help"></p>
+        <div id="https-private" class="hidden">
+          <p><a id="https-ca" class="chip" href="flightmap-ca.crt" download>Download the map's certificate</a></p>
+          <p class="help">Do this once on each device, so the browser trusts the map and shows the padlock:</p>
+          <ol class="help steps">
+            <li>Press <b>Download the map's certificate</b> above. It saves <code>flightmap-ca.crt</code>.</li>
+            <li><b>Windows:</b> double-click the file → <b>Install Certificate</b> → <b>Current User</b> → <b>Next</b> →
+              <b>Place all certificates in the following store</b> → <b>Browse</b> → <b>Trusted Root Certification Authorities</b> →
+              <b>OK</b> → <b>Next</b> → <b>Finish</b> → <b>Yes</b>.</li>
+            <li>Close the browser completely and open it again.</li>
+          </ol>
+          <p class="help">This certificate only works for this map's address and name: it can't be used to fake other websites.</p>
+        </div>
+        <p class="help">To turn HTTPS on or off, change its name or renew it, run this in the Proxmox Shell:</p>
+        <pre class="cmd" id="https-cmd">pct exec $(pct list | awk '/dji-flightmap/{print $1; exit}') -- bash /opt/dji-flightmap/deploy/set-https.sh</pre>
+        <button type="button" class="chip" id="https-copy">Copy</button>
+      </section>
+
       <!-- ================= UPDATES ================= -->
       <section class="card" id="updates">
         <h2>Updates</h2>

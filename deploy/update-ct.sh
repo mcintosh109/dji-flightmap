@@ -185,9 +185,14 @@ fi
 prune_backups "$CTID"
 
 PORT=$(pct exec "$CTID" -- sh -c "grep -E '^PORT=' /etc/default/dji-flightmap | cut -d= -f2" || true)
+HTTPS_PORT=$(pct exec "$CTID" -- sh -c "grep -E '^HTTPS_PORT=' /etc/default/dji-flightmap | cut -d= -f2" || true)
 IP=$(pct exec "$CTID" -- hostname -I | awk '{print $1}')
+URL="http://${IP}:${PORT:-8080}"
+if [[ -n "$HTTPS_PORT" ]]; then
+  URL="https://${IP}$([[ "$HTTPS_PORT" == 443 ]] || echo ":$HTTPS_PORT")"
+fi
 NOW=$(pct exec "$CTID" -- sed -n 's/.*"version": *"\([^"]*\)".*/\1/p' /opt/dji-flightmap/app/version.json | head -1 || true)
 echo
-echo "Update finished. Version ${NOW:-?} is installed and the map is working: http://${IP}:${PORT:-8080}"
+echo "Update finished. Version ${NOW:-?} is installed and the map is working: $URL"
 echo "Your settings were backed up to: $BACKUP"
 echo "Tip: press Ctrl+Shift+R in the browser to load the new version."

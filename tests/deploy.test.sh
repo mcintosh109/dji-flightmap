@@ -196,6 +196,51 @@ CTID=999 bash "$HOSTUP" --version 7.7.7 >"$LOGS/r6.log" 2>&1; code=$?
 check "an unknown version is refused, with the list of releases" bash -c "[ $code -ne 0 ] && grep -q 'no released version' '$LOGS/r6.log' && grep -q '9.1.0' '$LOGS/r6.log'"
 check "  ...and nothing was changed" [ "$(installed)" = 9.1.0 ]
 
+echo "HTTPS (set-https.sh)"
+HP=18443
+TLS=/var/lib/dji-flightmap/tls
+set_https() { IP=127.0.0.1 HTTPS_PORT=$HP bash /opt/dji-flightmap/deploy/set-https.sh "$@"; }
+ca_fingerprint() { openssl x509 -in $TLS/ca.crt -noout -fingerprint -sha256; }
+https_answers() { curl -sf --cacert $TLS/ca.crt "https://127.0.0.1:$HP/api/health" >/dev/null; }
+set_https --private --name flightmap.test >"$LOGS/s1.log" 2>&1
+check "private certificate: the map answers on https" https_answers
+check "  ...and the http address sends you there" bash -c "curl -s -o /dev/null -w '%{redirect_url}' http://127.0.0.1:$PORT/settings.html | grep -q '^https://127.0.0.1:$HP/settings.html'"
+check "  ...and says how to trust it on Windows" grep -q "Trusted Root Certification Authorities" "$LOGS/s1.log"
+check "the authority's key is readable by root only" [ "$(stat -c '%U %a' $TLS/ca.key)" = "root 600" ]
+check "the map's key belongs to the map's user only" [ "$(stat -c '%U %a' $TLS/key.pem)" = "flightmap 600" ]
+check "the authority only covers this map's address and name" bash -c "openssl x509 -in $TLS/ca.crt -noout -ext nameConstraints | grep -q 'DNS:flightmap.test'"
+FP=$(ca_fingerprint)
+set_https --renew >"$LOGS/s2.log" 2>&1
+check "renewing keeps the same authority (nothing to import again)" [ "$FP" = "$(ca_fingerprint)" ]
+check "  ...and the map still answers on https" https_answers
+CTID=999 bash "$HOSTUP" --no-pull >"$LOGS/s3.log" 2>&1
+check "an update keeps HTTPS on, with the same authority" bash -c "https_answers() { curl -sf --cacert $TLS/ca.crt https://127.0.0.1:$HP/api/health; }; https_answers && [ '$FP' = \"\$(openssl x509 -in $TLS/ca.crt -noout -fingerprint -sha256)\" ]"
+check "  ...and its backup holds the certificate files" bash -c "ls /root/dji-flightmap-backups/ct999_*/tls-ca.key"
+check "  ...and it shows the https address" grep -q "map is working: https://" "$LOGS/s3.log"
+set_https --private --name other.test >"$LOGS/s4.log" 2>&1
+check "a new name makes a new authority, and says to import again" bash -c "[ '$FP' != \"\$(openssl x509 -in $TLS/ca.crt -noout -fingerprint -sha256)\" ] && grep -q 'import it again' '$LOGS/s4.log'"
+
+# Let's Encrypt, with a pretend acme.sh that records what it was asked.
+cp $TLS/cert.pem "$WORK/le-cert.pem"; cp $TLS/key.pem "$WORK/le-key.pem"
+cat > "$WORK/acme.sh" <<EOF
+#!/bin/bash
+echo "\$*" >> "$LOGS/acme.args"
+echo "token:\${CF_Token:+given}" >> "$LOGS/acme.args"
+while [ \$# -gt 0 ]; do
+  case "\$1" in --key-file) cp "$WORK/le-key.pem" "\$2";; --fullchain-file) cp "$WORK/le-cert.pem" "\$2";; esac
+  shift
+done
+EOF
+chmod +x "$WORK/acme.sh"
+CF_Token=SECRET-CF-TOKEN ACME_SH="$WORK/acme.sh" set_https --letsencrypt --name map.example.com --dns dns_cf >"$LOGS/s5.log" 2>&1
+check "Let's Encrypt: acme.sh is told to use Let's Encrypt" grep -q -- "--set-default-ca --server letsencrypt" "$LOGS/acme.args"
+check "  ...asks for the name through the DNS company" grep -q -- "--issue --dns dns_cf -d map.example.com --keylength ec-256" "$LOGS/acme.args"
+check "  ...gets the API token, but never on its command line" bash -c "grep -q 'token:given' '$LOGS/acme.args' && ! grep -q SECRET-CF-TOKEN '$LOGS/acme.args'"
+check "  ...installs the certificate where the map reads it, with a reload" grep -q -- "--install-cert -d map.example.com --ecc --key-file $TLS/key.pem" "$LOGS/acme.args"
+check "  ...and the map answers on https" grep -q '^TLS_MODE=letsencrypt' /etc/default/dji-flightmap
+set_https --off >"$LOGS/s6.log" 2>&1
+check "--off: plain http again" bash -c "! grep -q '^TLS_' /etc/default/dji-flightmap && curl -sf http://127.0.0.1:$PORT/api/flights -o /dev/null -b '$JAR'"
+
 echo
 echo "$PASSED passed, $FAILED failed"
 [ "$FAILED" -eq 0 ]

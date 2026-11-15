@@ -23,6 +23,7 @@ rest lives in the flightmap/ folder, one file per job:
   places.py      shops, schools, parks... from OpenStreetMap
   gplaces.py     places from Google (with the Google map), with a daily limit
   upstream.py    reused connections to Azure and Google
+  https.py       HTTPS (the padlock), set up by deploy/set-https.sh
 
 Settings are read from environment variables (see deploy/dji-flightmap.env):
   DATA_DIR      folder that holds the flight logs     (default: /srv/dji-logs)
@@ -62,6 +63,7 @@ Web addresses it answers:
                         squares, from OpenStreetMap (see flightmap/places.py)
   /api/plans            GET: saved flight plans
   /api/plans/<id>       PUT: save a plan (id "new" makes one), DELETE: remove it
+  /flightmap-ca.crt     the private HTTPS certificate, to import on a device
   /login.html           the login page (only used when a login is set)
   /logout               signs you out
   /settings.html        the settings page
@@ -80,6 +82,7 @@ import hmac
 import json
 import re
 import secrets
+import ssl
 import sys
 import threading
 import time
@@ -91,9 +94,9 @@ from flightmap import auth
 from flightmap.auth import (COOKIE_NAME, PUBLIC_PATHS, hash_password, make_session_cookie, record_failure,
                             session_days, session_is_valid, too_many_failures, verify_password)
 from flightmap.azure import AZURE_TILESETS, azure_request, html_to_text
-from flightmap.config import (APP_VERSION, AUTH_ENABLED, AUTH_PASSWORD_HASH, AUTH_USER, DATA_DIR, HOST, PORT,
-                              STATIC_DIR, VERSION_INFO, log)
-from flightmap import google
+from flightmap.config import (APP_VERSION, AUTH_ENABLED, AUTH_PASSWORD_HASH, AUTH_USER, DATA_DIR, HOST,
+                              HTTPS_PORT, PORT, STATIC_DIR, VERSION_INFO, log)
+from flightmap import google, https
 from flightmap.google import GOOGLE_SETS, google_credits, google_tile
 from flightmap.gplaces import search as google_places_search
 from flightmap.library import FlightLibrary
@@ -132,6 +135,18 @@ class Handler(SimpleHTTPRequestHandler):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=STATIC_DIR, **kwargs)
+
+    def setup(self):
+        # HTTPS: the secure "handshake" happens here, in this request's own
+        # thread, so one slow or refusing browser can't hold up the others.
+        if isinstance(self.request, ssl.SSLSocket):
+            self.request.settimeout(10)
+            self.request.do_handshake()
+        super().setup()
+
+    @property
+    def secure(self):
+        return isinstance(self.connection, ssl.SSLSocket)
 
     def end_headers(self):
         # Tell browsers to re-check files, so updates show up straight away
@@ -202,13 +217,16 @@ class Handler(SimpleHTTPRequestHandler):
             return self.redirect("/login.html")
         if path == "/logout":
             return self.redirect("/login.html" if AUTH_ENABLED else "/",
-                                 cookie=f"{COOKIE_NAME}=; Max-Age=0; Path=/; HttpOnly; SameSite=Lax")
+                                 cookie=f"{COOKIE_NAME}=; Max-Age=0; Path=/; HttpOnly; SameSite=Lax"
+                                 + ("; Secure" if self.secure else ""))
         if path == "/login.html" and not AUTH_ENABLED:
             return self.redirect("/")
         if not self.allowed(path):
             return
         if path == "/api/health":
             return self.send_json({"ok": True})
+        if path == https.CA_PATH:
+            return https.send_ca(self)
         if path == "/api/flights":
             return self.send_json(self.flights_payload())
         if path == "/api/settings":
@@ -376,6 +394,7 @@ class Handler(SimpleHTTPRequestHandler):
                 "auth": AUTH_ENABLED,
                 "user": AUTH_USER if AUTH_ENABLED else "",
                 "dataDir": DATA_DIR,
+                "https": https.status(),
                 "aircraft": [{"serial": k, "model": v} for k, v in aircraft.items()],
             },
         }
@@ -495,8 +514,9 @@ class Handler(SimpleHTTPRequestHandler):
         password_ok = verify_password(password, AUTH_PASSWORD_HASH)  # always run: same timing
         if user_ok and password_ok:
             log(f"{ip} signed in as {AUTH_USER}")
+            # "Secure": over HTTPS, the browser never sends the cookie unencrypted.
             cookie = (f"{COOKIE_NAME}={make_session_cookie()}; Max-Age={session_days() * 86400}; "
-                      "Path=/; HttpOnly; SameSite=Lax")
+                      "Path=/; HttpOnly; SameSite=Lax" + ("; Secure" if self.secure else ""))
             return self.redirect("/", cookie=cookie)
         record_failure(ip)
         log(f"{ip} wrong username or password")
@@ -533,12 +553,44 @@ def main():
     LIBRARY = FlightLibrary(DATA_DIR)
     log(f"DJI Flight Map: reading logs from {DATA_DIR}")
     threading.Thread(target=scan_forever, daemon=True).start()
-    server = ThreadingHTTPServer((HOST, PORT), Handler)
-    log(f"Open http://<this-container-ip>:{PORT} in a browser")
+    server = start_https() or QuietServer((HOST, PORT), Handler)
+    if not https.ACTIVE["on"]:
+        log(f"Open http://<this-container-ip>:{PORT} in a browser")
     try:
         server.serve_forever()
     except KeyboardInterrupt:
         pass
+
+
+class QuietServer(ThreadingHTTPServer):
+    """Doesn't fill the log when a browser drops a connection or refuses
+    the certificate (normal until a device trusts it)."""
+
+    def handle_error(self, request, client_address):
+        if isinstance(sys.exc_info()[1], (ssl.SSLError, ConnectionError, TimeoutError)):
+            return
+        super().handle_error(request, client_address)
+
+
+def start_https():
+    """If HTTPS is set up: the map on HTTPS_PORT, and the old http port
+    sending browsers there. Returns the https server, or None (plain http)."""
+    ctx = https.load_context()
+    if ctx is None:
+        return None
+    try:
+        secure = QuietServer((HOST, HTTPS_PORT), Handler)
+    except OSError as err:
+        log(f"Could not open port {HTTPS_PORT} for HTTPS ({err}); serving plain http instead.")
+        return None
+    secure.socket = ctx.wrap_socket(secure.socket, server_side=True, do_handshake_on_connect=False)
+    plain = QuietServer((HOST, PORT), https.RedirectHandler)
+    threading.Thread(target=plain.serve_forever, daemon=True).start()
+    https.ACTIVE["on"] = True
+    port = "" if HTTPS_PORT == 443 else f":{HTTPS_PORT}"
+    log(f"HTTPS is on: open https://<this-container-ip-or-name>{port} "
+        f"(http on port {PORT} sends you there)")
+    return secure
 
 
 if __name__ == "__main__":

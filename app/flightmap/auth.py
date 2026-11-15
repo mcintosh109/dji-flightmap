@@ -18,7 +18,8 @@ from .settings import current_settings
 # guess. Format:  pbkdf2_sha256:<rounds>:<salt hex>:<hash hex>
 # (no "$" characters, so it is safe inside a systemd EnvironmentFile).
 COOKIE_NAME = "flightmap_session"
-PUBLIC_PATHS = {"/login", "/login.html", "/api/login", "/api/health", "/favicon.ico"}
+# "/flightmap-ca.crt": the private certificate, so a device can trust the map before signing in.
+PUBLIC_PATHS = {"/login", "/login.html", "/api/login", "/api/health", "/favicon.ico", "/flightmap-ca.crt"}
 FAILED_LOGINS = {}            # ip address -> list of times of failed logins
 FAILED_LOCK = threading.Lock()
 MAX_FAILURES = 10             # this many wrong passwords ...

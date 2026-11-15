@@ -16,6 +16,11 @@ Restart=on-failure
 RestartSec=5
 StateDirectory=dji-flightmap
 
+# May use ports below 1024 (443 for HTTPS) without running as root;
+# and no other special powers.
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+
 # Extra safety: the server can only write to its own cache folder.
 NoNewPrivileges=true
 ProtectSystem=strict

@@ -364,6 +364,113 @@ Tailscale or WireGuard.
 
 ---
 
+## HTTPS (the padlock)
+
+HTTPS encrypts everything between your browser and the map, including your
+password when you sign in. Without it, anyone on your network who listens
+can read it. (Research: *"HTTPS"*, *"TLS certificate"*.)
+
+There are two kinds. Both work with the IP address and, if you like, with a
+name such as `flightmap.home`.
+
+| | Private certificate | Let's Encrypt |
+|---|---|---|
+| Needs | nothing | a domain you own, or a free DuckDNS name, and an API key from your DNS company |
+| Browser trusts it | after you import it **once on each device** | straight away, on every device |
+| Renewing | every 2 years, one command (no new import) | automatic, every 60–90 days |
+| Works without internet | yes | renewals need internet |
+
+**Set it up** by running this on the Proxmox host. It asks which kind you
+want, then a name (or press Enter for the IP address only):
+
+```bash
+pct exec $(pct list | awk '/dji-flightmap/{print $1; exit}') -- bash /opt/dji-flightmap/deploy/set-https.sh
+```
+
+Afterwards the map is at `https://<container-ip>` (or `https://<name>`).
+The old `http://<container-ip>:8080` still works: it sends you to the https
+address, so bookmarks keep working.
+
+### Private certificate: trusting it on each device
+
+Do this once per device. Until then the browser warns *"Your connection
+isn't private"* (that's expected).
+
+1. Open **Settings** (⚙) on the map → **Secure connection (HTTPS)** →
+   **Download the map's certificate**. It saves `flightmap-ca.crt`.
+   (Or open `http://<container-ip>:8080/flightmap-ca.crt`.)
+2. **Windows:** double-click the file → **Install Certificate** →
+   **Current User** → **Next** → **Place all certificates in the following
+   store** → **Browse** → **Trusted Root Certification Authorities** → **OK**
+   → **Next** → **Finish** → **Yes**. Then close the browser completely and
+   open it again.
+3. **Android:** Settings → Security → Encryption & credentials → Install a
+   certificate → **CA certificate** → pick the file. (Menu names vary a little.)
+4. **iPhone / iPad:** open the download link in **Safari** → Allow →
+   Settings → **Profile Downloaded** → Install. Then Settings → General →
+   About → **Certificate Trust Settings** → turn the map's certificate on.
+
+The certificate only works for **this map's address and name** (research:
+*"X.509 name constraints"*), so even in the wrong hands it can't be used to
+fake other websites. Its secret key never leaves the container (root only).
+
+If the container's address or the name changes, run the setup again: it
+makes a new certificate, and each device imports it again.
+
+### Let's Encrypt
+
+1. You need a name under a domain you own (e.g. `flightmap.example.com`), or
+   a free name from **duckdns.org** (e.g. `yourname.duckdns.org`).
+2. You need an API key from the company that runs the domain's DNS. The
+   setup asks for it in the Proxmox Shell, hidden while you type. Never paste
+   it anywhere else.
+   - **Cloudflare:** dash.cloudflare.com → My Profile → API Tokens → a token
+     with *Zone → DNS → Edit*.
+   - **DuckDNS:** the token at the top of duckdns.org after signing in.
+   - **GoDaddy:** developer.godaddy.com/keys. GoDaddy may only allow its DNS
+     API for larger accounts; if it is refused, move the DNS to Cloudflare
+     (free) or use DuckDNS.
+   - **Others:** over 150 are supported, see the acme.sh *dnsapi* wiki.
+3. The setup downloads **acme.sh** (a free, widely used tool, research:
+   *"acme.sh"*) from GitHub, gets the certificate, and renews it by itself.
+   The DNS key is saved for renewals in `/root/.acme.sh/account.conf` inside
+   the container (root only).
+4. The name must lead to the container on your network (see below).
+
+### Opening the map by name
+
+A name like `flightmap.home` only works if your network knows it:
+
+- **Pi-hole:** Local DNS → DNS Records → Domain `flightmap.home`, IP
+  `<container-ip>` → Add.
+- **Router:** look for *Local DNS*, *DNS host names* or *Static DNS*.
+- **Let's Encrypt names** can instead get a public DNS record pointing to the
+  container's local IP. Some routers block that ("DNS rebinding
+  protection"); then use the Pi-hole or router way.
+
+### Renewing, changing, turning off
+
+The settings page shows how long the certificate lasts and warns 30 days
+before a private one runs out. Run the same command again to change the
+kind or name, or:
+
+```bash
+pct exec $(pct list | awk '/dji-flightmap/{print $1; exit}') -- bash /opt/dji-flightmap/deploy/set-https.sh --renew
+```
+
+```bash
+pct exec $(pct list | awk '/dji-flightmap/{print $1; exit}') -- bash /opt/dji-flightmap/deploy/set-https.sh --off
+```
+
+Updates and backups keep the certificate files, so after an update or a
+restore your devices still trust the map. (A rebuilt container with
+Let's Encrypt: run the setup again.)
+
+If a certificate ever can't be loaded, the map falls back to plain http
+instead of disappearing, and the settings page says so.
+
+---
+
 ## Updating later
 
 The map tells you when there's a new **released** version: a green **Update
@@ -500,6 +607,18 @@ pct exec $(pct list | awk '/dji-flightmap/{print $1; exit}') -- python3 /opt/dji
   Google refuses, the server waits a minute before asking again.
   The key itself is never written to the log.
 
+**The browser says "Your connection isn't private" (NET::ERR_CERT_AUTHORITY_INVALID)**
+
+The device doesn't trust the map's private certificate yet: import it (see
+*HTTPS → Private certificate*). If you imported it, close the browser
+completely and open it again.
+
+**The browser says the certificate is for a different name (ERR_CERT_COMMON_NAME_INVALID)**
+
+You opened the map by an address the certificate doesn't cover (the
+settings page lists them). Use one of those, or run `set-https.sh` again
+with the new name.
+
 **Places don't show up**
 
 - Zoom in further: places only appear at about street level.
@@ -595,6 +714,7 @@ SESSION_DAYS=30             # starting value; change it on the settings page
 OVERPASS_URL=...            # optional: OpenStreetMap Overpass servers for Places, comma-separated
 AUTH_USER=...               # added by set-login.sh
 AUTH_PASSWORD_HASH=...      # added by set-login.sh
+TLS_MODE=... TLS_CERT=... TLS_KEY=... HTTPS_PORT=443   # added by set-https.sh
 ```
 
 After changing them, restart the service (from the Proxmox host):
@@ -647,6 +767,8 @@ pct exec 105 -- systemctl restart dji-flightmap
 | `deploy/backup-ct.sh` | Proxmox host: makes a backup now (the daily timer runs it) | |
 | `deploy/install.sh` | Inside the container: installs the app | *"bash script basics"* |
 | `deploy/set-login.sh` | Inside the container: sets up the login | |
+| `deploy/set-https.sh` | Inside the container: HTTPS with a private certificate or Let's Encrypt | *"openssl req"*, *"acme.sh"* |
+| `app/flightmap/https.py` | Serves the map over HTTPS, and sends the old http address there | *"TLS"*, *"HTTP 301 redirect"* |
 | `deploy/dji-flightmap.service` | Runs the server at boot and restarts it if it crashes | *"systemd service file"* |
 
 ### What the CSV columns mean

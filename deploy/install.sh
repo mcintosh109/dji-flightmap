@@ -22,7 +22,8 @@ fi
 
 echo "==> Installing Python 3"
 apt-get update -qq
-DEBIAN_FRONTEND=noninteractive apt-get install -y -qq python3 ca-certificates >/dev/null   # ca-certificates: HTTPS to Azure Maps
+# ca-certificates: HTTPS to the map companies; openssl: certificates for set-https.sh
+DEBIAN_FRONTEND=noninteractive apt-get install -y -qq python3 ca-certificates openssl >/dev/null
 
 echo "==> Creating the 'flightmap' service user"
 if ! id flightmap >/dev/null 2>&1; then
@@ -56,14 +57,22 @@ systemctl restart dji-flightmap
 sleep 2
 
 PORT=$(grep -E '^PORT=' /etc/default/dji-flightmap | cut -d= -f2-)
+HTTPS_PORT=$(grep -E '^HTTPS_PORT=' /etc/default/dji-flightmap | cut -d= -f2- || true)   # empty = no HTTPS
 IP=$(hostname -I | awk '{print $1}')
+URL="http://${IP}:${PORT:-8080}"
+if [[ -n "$HTTPS_PORT" ]]; then
+  URL="https://${IP}$([[ "$HTTPS_PORT" == 443 ]] || echo ":$HTTPS_PORT")"
+fi
 if systemctl is-active --quiet dji-flightmap; then
   echo
-  echo "Done! Open this in a browser:  http://${IP}:${PORT:-8080}"
+  echo "Done! Open this in a browser:  $URL"
   echo "Logs are read from:            ${DATA_DIR:-/srv/dji-logs}"
   echo "See what the server is doing:  journalctl -u dji-flightmap -f"
   if ! grep -q '^AUTH_USER=' /etc/default/dji-flightmap; then
     echo "Add a login page:              bash $APP_DIR/deploy/set-login.sh"
+  fi
+  if [[ -z "$HTTPS_PORT" ]]; then
+    echo "Turn on HTTPS (the padlock):   bash $APP_DIR/deploy/set-https.sh"
   fi
 else
   echo "The service did not start. Showing its log:" >&2

@@ -516,6 +516,8 @@ function fakeInternet(ctx, { github = null } = {}) {
     page = await ctx.newPage();
     await page.goto(`${app.base}/settings.html`, { waitUntil: 'networkidle' });
     await page.waitForTimeout(500);
+    check('the HTTPS box says it is off, and how to turn it on', (await page.textContent('#https-status')).includes('plain http')
+      && (await page.textContent('#https-cmd')).includes('set-https.sh') && await page.isHidden('#https-private'));
     const shownKeys = () => page.$$eval('.provider-key', (els) => els.filter((e) => !e.classList.contains('hidden')).map((e) => e.dataset.provider).join());
     check('only the Azure key box is shown', (await shownKeys()) === 'azure', await shownKeys());
     check('saved Azure key is shown as hidden, not filled in', (await page.inputValue('#azureMapsKey')) === ''
