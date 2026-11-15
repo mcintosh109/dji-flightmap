@@ -15,12 +15,12 @@ CONFIG_FILES=(
   "/var/lib/dji-flightmap/settings.json|flightmap|0600|settings.json"   # settings page (map keys, nicknames, ...)
   "/var/lib/dji-flightmap/session-secret|flightmap|0600|session-secret" # keeps you signed in
   "/var/lib/dji-flightmap/plans.json|flightmap|0600|plans.json"         # saved flight plans
-  # HTTPS (set-https.sh). Keeping the private certificate authority means a
-  # rebuilt container is still trusted by your devices without importing again.
-  "/var/lib/dji-flightmap/tls/ca.key|root|0600|tls-ca.key"
-  "/var/lib/dji-flightmap/tls/ca.crt|root|0644|tls-ca.crt"
-  "/var/lib/dji-flightmap/tls/ca-names.txt|root|0644|tls-ca-names.txt"
-  "/var/lib/dji-flightmap/tls/cert.pem|root|0644|tls-cert.pem"
+  # HTTPS. Keeping the private certificate authority means a rebuilt
+  # container is still trusted by your devices without importing again.
+  "/var/lib/dji-flightmap/tls/ca.key|flightmap|0600|tls-ca.key"
+  "/var/lib/dji-flightmap/tls/ca.crt|flightmap|0644|tls-ca.crt"
+  "/var/lib/dji-flightmap/tls/ca-names.txt|flightmap|0644|tls-ca-names.txt"
+  "/var/lib/dji-flightmap/tls/cert.pem|flightmap|0644|tls-cert.pem"
   "/var/lib/dji-flightmap/tls/key.pem|flightmap|0600|tls-key.pem"
 )
 

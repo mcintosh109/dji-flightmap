@@ -370,72 +370,76 @@ HTTPS encrypts everything between your browser and the map, including your
 password when you sign in. Without it, anyone on your network who listens
 can read it. (Research: *"HTTPS"*, *"TLS certificate"*.)
 
-There are two kinds. Both work with the IP address and, if you like, with a
-name such as `flightmap.home`.
+**It is on from the start**, with a certificate the map makes itself. Change
+it in **Settings → Secure connection (HTTPS)**:
 
-| | Private certificate | Let's Encrypt |
-|---|---|---|
-| Needs | nothing | a domain you own, or a free DuckDNS name, and an API key from your DNS company |
-| Browser trusts it | after you import it **once on each device** | straight away, on every device |
-| Renewing | every 2 years, one command (no new import) | automatic, every 60–90 days |
-| Works without internet | yes | renewals need internet |
+| Choice | What it means |
+|---|---|
+| **Private certificate** (the default) | No domain needed. Each device imports the map's certificate **once**, then shows the padlock. Renews itself; devices don't need to import again. |
+| **Let's Encrypt** | A free certificate every device trusts straight away, for a name under a domain you own (or a free duckdns.org name). Renews itself every 60–90 days. Needs your DNS company's API key. |
+| **Off (plain http)** | Everything, including your password, travels unencrypted on your network. |
 
-**Set it up** by running this on the Proxmox host. It asks which kind you
-want, then a name (or press Enter for the IP address only):
+You can also give the map a **name** (like `flightmap.home`) and change the
+HTTPS **port** (443, the normal one, means no number in the address). Press
+**Save**: the map switches by itself and the settings page moves to the new
+address.
 
-```bash
-pct exec $(pct list | awk '/dji-flightmap/{print $1; exit}') -- bash /opt/dji-flightmap/deploy/set-https.sh
-```
+The map is at `https://<container-ip>` (or `https://<name>`). The old
+`http://<container-ip>:8080` still works: it sends you to the https address,
+so bookmarks keep working.
 
-Afterwards the map is at `https://<container-ip>` (or `https://<name>`).
-The old `http://<container-ip>:8080` still works: it sends you to the https
-address, so bookmarks keep working.
+### The first time on each device (private certificate)
 
-### Private certificate: trusting it on each device
+Until a device trusts the map's certificate, the browser warns *"Your
+connection isn't private"*. That's expected.
 
-Do this once per device. Until then the browser warns *"Your connection
-isn't private"* (that's expected).
-
-1. Open **Settings** (⚙) on the map → **Secure connection (HTTPS)** →
+1. On the warning page, click **Advanced** → **Continue to … (unsafe)**. (Only
+   this once, and only for your own map.)
+2. Sign in, open **Settings** (⚙) → **Secure connection (HTTPS)** →
    **Download the map's certificate**. It saves `flightmap-ca.crt`.
    (Or open `http://<container-ip>:8080/flightmap-ca.crt`.)
-2. **Windows:** double-click the file → **Install Certificate** →
+3. **Windows:** double-click the file → **Install Certificate** →
    **Current User** → **Next** → **Place all certificates in the following
    store** → **Browse** → **Trusted Root Certification Authorities** → **OK**
    → **Next** → **Finish** → **Yes**. Then close the browser completely and
    open it again.
-3. **Android:** Settings → Security → Encryption & credentials → Install a
+4. **Android:** Settings → Security → Encryption & credentials → Install a
    certificate → **CA certificate** → pick the file. (Menu names vary a little.)
-4. **iPhone / iPad:** open the download link in **Safari** → Allow →
+5. **iPhone / iPad:** open the download link in **Safari** → Allow →
    Settings → **Profile Downloaded** → Install. Then Settings → General →
    About → **Certificate Trust Settings** → turn the map's certificate on.
 
 The certificate only works for **this map's address and name** (research:
 *"X.509 name constraints"*), so even in the wrong hands it can't be used to
-fake other websites. Its secret key never leaves the container (root only).
+fake other websites. Its secret key never leaves the container.
 
-If the container's address or the name changes, run the setup again: it
-makes a new certificate, and each device imports it again.
+If the container's address or the name changes, the map makes a new
+certificate by itself, and the settings page tells you to trust it again on
+each device.
 
 ### Let's Encrypt
 
 1. You need a name under a domain you own (e.g. `flightmap.example.com`), or
    a free name from **duckdns.org** (e.g. `yourname.duckdns.org`).
-2. You need an API key from the company that runs the domain's DNS. The
-   setup asks for it in the Proxmox Shell, hidden while you type. Never paste
-   it anywhere else.
+2. In **Settings → Secure connection**, choose **Let's Encrypt**, type the
+   name, choose who runs its DNS, and paste that company's API key. It is
+   kept on your server like the map keys, and only handed to acme.sh.
    - **Cloudflare:** dash.cloudflare.com → My Profile → API Tokens → a token
      with *Zone → DNS → Edit*.
    - **DuckDNS:** the token at the top of duckdns.org after signing in.
-   - **GoDaddy:** developer.godaddy.com/keys. GoDaddy may only allow its DNS
-     API for larger accounts; if it is refused, move the DNS to Cloudflare
-     (free) or use DuckDNS.
-   - **Others:** over 150 are supported, see the acme.sh *dnsapi* wiki.
-3. The setup downloads **acme.sh** (a free, widely used tool, research:
-   *"acme.sh"*) from GitHub, gets the certificate, and renews it by itself.
-   The DNS key is saved for renewals in `/root/.acme.sh/account.conf` inside
-   the container (root only).
+   - **GoDaddy:** developer.godaddy.com/keys (a *Production* key). GoDaddy may
+     only allow its DNS API for larger accounts; if it is refused, move the
+     DNS to Cloudflare (free) or use DuckDNS.
+   - **Another company:** over 150 are supported; type its acme.sh name
+     (like `dns_namecheap`) and its settings, as listed in the acme.sh
+     *dnsapi* wiki.
+3. Press **Save**. Getting the certificate can take a few minutes; the
+   settings page shows progress, and explains the problem if it is refused.
+   The map stays reachable the whole time.
 4. The name must lead to the container on your network (see below).
+
+The map uses **acme.sh** (a free, widely used tool, research: *"acme.sh"*),
+which updates install from its official GitHub page.
 
 ### Opening the map by name
 
@@ -448,26 +452,20 @@ A name like `flightmap.home` only works if your network knows it:
   container's local IP. Some routers block that ("DNS rebinding
   protection"); then use the Pi-hole or router way.
 
-### Renewing, changing, turning off
+### If a setting locks you out
 
-The settings page shows how long the certificate lasts and warns 30 days
-before a private one runs out. Run the same command again to change the
-kind or name, or:
-
-```bash
-pct exec $(pct list | awk '/dji-flightmap/{print $1; exit}') -- bash /opt/dji-flightmap/deploy/set-https.sh --renew
-```
+If a certificate ever can't be made or loaded, the map stays on plain http
+and the settings page says why. If you still can't reach it, switch HTTPS off
+from the Proxmox Shell:
 
 ```bash
 pct exec $(pct list | awk '/dji-flightmap/{print $1; exit}') -- bash /opt/dji-flightmap/deploy/set-https.sh --off
 ```
 
-Updates and backups keep the certificate files, so after an update or a
-restore your devices still trust the map. (A rebuilt container with
-Let's Encrypt: run the setup again.)
+Then open `http://<container-ip>:8080` again. (`--private` turns it back on.)
 
-If a certificate ever can't be loaded, the map falls back to plain http
-instead of disappearing, and the settings page says so.
+Updates and backups keep the certificate files, so after an update or a
+restore your devices still trust the map.
 
 ---
 
@@ -616,8 +614,8 @@ completely and open it again.
 **The browser says the certificate is for a different name (ERR_CERT_COMMON_NAME_INVALID)**
 
 You opened the map by an address the certificate doesn't cover (the
-settings page lists them). Use one of those, or run `set-https.sh` again
-with the new name.
+settings page lists them). Use one of those, or put the new name in
+Settings → Secure connection and press Save.
 
 **Places don't show up**
 
@@ -714,7 +712,6 @@ SESSION_DAYS=30             # starting value; change it on the settings page
 OVERPASS_URL=...            # optional: OpenStreetMap Overpass servers for Places, comma-separated
 AUTH_USER=...               # added by set-login.sh
 AUTH_PASSWORD_HASH=...      # added by set-login.sh
-TLS_MODE=... TLS_CERT=... TLS_KEY=... HTTPS_PORT=443   # added by set-https.sh
 ```
 
 After changing them, restart the service (from the Proxmox host):
@@ -767,8 +764,8 @@ pct exec 105 -- systemctl restart dji-flightmap
 | `deploy/backup-ct.sh` | Proxmox host: makes a backup now (the daily timer runs it) | |
 | `deploy/install.sh` | Inside the container: installs the app | *"bash script basics"* |
 | `deploy/set-login.sh` | Inside the container: sets up the login | |
-| `deploy/set-https.sh` | Inside the container: HTTPS with a private certificate or Let's Encrypt | *"openssl req"*, *"acme.sh"* |
-| `app/flightmap/https.py` | Serves the map over HTTPS, and sends the old http address there | *"TLS"*, *"HTTP 301 redirect"* |
+| `deploy/set-https.sh` | Inside the container: the way back to plain http if HTTPS locks you out | |
+| `app/flightmap/https.py` | Makes the private certificate (or asks Let's Encrypt via acme.sh), serves HTTPS, sends the old http address there | *"openssl req"*, *"acme.sh"*, *"HTTP 301 redirect"* |
 | `deploy/dji-flightmap.service` | Runs the server at boot and restarts it if it crashes | *"systemd service file"* |
 
 ### What the CSV columns mean

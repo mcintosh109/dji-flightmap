@@ -250,9 +250,86 @@
       <!-- ================= HTTPS ================= -->
       <section class="card" id="https">
         <h2>Secure connection (HTTPS)</h2>
-        <p id="https-status" class="help"></p>
+        <p id="https-status" class="help" aria-live="polite"></p>
+
+        <fieldset class="field">
+          <legend>Connection</legend>
+          <div class="seg" role="radiogroup" aria-label="Secure connection">
+            <label><input type="radio" name="httpsMode" value="private" data-key="httpsMode"><span>Private certificate</span></label>
+            <label><input type="radio" name="httpsMode" value="letsencrypt" data-key="httpsMode"><span>Let's Encrypt</span></label>
+            <label><input type="radio" name="httpsMode" value="off" data-key="httpsMode"><span>Off (plain http)</span></label>
+          </div>
+          <p class="help https-for" data-for="private"><b>Private certificate</b> (recommended): the map makes its own. No domain needed. Each device imports it once (steps below), then shows the padlock.</p>
+          <p class="help https-for" data-for="letsencrypt"><b>Let's Encrypt</b>: a free certificate every device trusts straight away, for a name under a domain you own (or a free duckdns.org name). Renews itself.</p>
+          <p class="help https-for warn" data-for="off"><b>Off</b>: everything, including your password, travels unencrypted on your network.</p>
+        </fieldset>
+
+        <div class="https-on">
+          <div class="field">
+            <label for="httpsName">Name <span class="muted https-for" data-for="private">(optional)</span></label>
+            <input id="httpsName" data-key="httpsName" spellcheck="false" autocapitalize="off" placeholder="flightmap.home">
+            <p class="help">Open the map by name instead of its address. The name must lead to this container: add it in your router or Pi-hole (Local DNS). The address always works too.</p>
+          </div>
+          <div class="field inline">
+            <label for="httpsPort">HTTPS port</label>
+            <input id="httpsPort" data-key="httpsPort" data-number type="number" min="1" max="65535" step="1">
+          </div>
+          <p class="help">443 is the normal one: then the address needs no number, e.g. <code>https://flightmap.home</code>. The old <code>http://…:<span class="http-port">8080</span></code> address keeps working and sends you here.</p>
+        </div>
+
+        <div class="https-for" data-for="letsencrypt">
+          <div class="field">
+            <label for="https-dns">Who runs the DNS for that name?</label>
+            <select id="https-dns">
+              <option value="dns_cf">Cloudflare</option>
+              <option value="dns_duckdns">DuckDNS (free names like yourname.duckdns.org)</option>
+              <option value="dns_gd">GoDaddy</option>
+              <option value="other">Another company</option>
+            </select>
+          </div>
+          <div class="field dns-for" data-dns="dns_cf">
+            <label for="cred-cf">Cloudflare API token</label>
+            <input id="cred-cf" data-cred="CF_Token" type="password" spellcheck="false" autocomplete="off">
+            <p class="help">dash.cloudflare.com → My Profile → API Tokens → Create Token with <b>Zone → DNS → Edit</b> for your domain.</p>
+          </div>
+          <div class="field dns-for" data-dns="dns_duckdns">
+            <label for="cred-duck">DuckDNS token</label>
+            <input id="cred-duck" data-cred="DuckDNS_Token" type="password" spellcheck="false" autocomplete="off">
+            <p class="help">Shown at the top of duckdns.org after signing in.</p>
+          </div>
+          <div class="dns-for" data-dns="dns_gd">
+            <div class="field">
+              <label for="cred-gdk">GoDaddy key</label>
+              <input id="cred-gdk" data-cred="GD_Key" type="password" spellcheck="false" autocomplete="off">
+            </div>
+            <div class="field">
+              <label for="cred-gds">GoDaddy secret</label>
+              <input id="cred-gds" data-cred="GD_Secret" type="password" spellcheck="false" autocomplete="off">
+            </div>
+            <p class="help">developer.godaddy.com/keys (a <b>Production</b> key). GoDaddy may only allow this for larger accounts; if Let's Encrypt is refused, use Cloudflare (free) or DuckDNS.</p>
+          </div>
+          <div class="dns-for" data-dns="other">
+            <div class="field">
+              <label for="httpsDnsApi">The company's acme.sh name</label>
+              <input id="httpsDnsApi" data-key="httpsDnsApi" spellcheck="false" placeholder="dns_namecheap">
+            </div>
+            <div class="field">
+              <label for="cred-other">Its settings, one per line</label>
+              <textarea id="cred-other" rows="3" spellcheck="false" placeholder="NAMECHEAP_USERNAME=…&#10;NAMECHEAP_API_KEY=…"></textarea>
+            </div>
+            <p class="help">Find your company and what it needs in the <a href="https://github.com/acmesh-official/acme.sh/wiki/dnsapi" target="_blank" rel="noopener">acme.sh DNS list</a>.</p>
+          </div>
+          <p class="help key-status" id="dns-key-status"></p>
+          <button type="button" class="chip hidden" id="dns-remove">Remove saved DNS details</button>
+          <input type="checkbox" class="hidden" data-key="removeHttpsDnsCredentials" id="removeHttpsDnsCredentials">
+          <p class="help">🔒 These stay on your server (like the map keys) and are only given to acme.sh to prove the name is yours.</p>
+        </div>
+
+        <p class="help" id="https-save-note">After you press <b>Save</b>, the map switches and this page moves to the new address. The first time with a private certificate the browser warns "not private": choose <b>Advanced → Continue</b>, then come back here to trust it.</p>
+
         <div id="https-private" class="hidden">
-          <p><a id="https-ca" class="chip" href="flightmap-ca.crt" download>Download the map's certificate</a></p>
+          <p><a id="https-ca" class="chip" href="flightmap-ca.crt" download>Download the map's certificate</a>
+            <button type="button" class="chip" id="https-renew">Make a new certificate now</button></p>
           <p class="help">Do this once on each device, so the browser trusts the map and shows the padlock:</p>
           <ol class="help steps">
             <li>Press <b>Download the map's certificate</b> above. It saves <code>flightmap-ca.crt</code>.</li>
@@ -261,10 +338,10 @@
               <b>OK</b> → <b>Next</b> → <b>Finish</b> → <b>Yes</b>.</li>
             <li>Close the browser completely and open it again.</li>
           </ol>
-          <p class="help">This certificate only works for this map's address and name: it can't be used to fake other websites.</p>
+          <p class="help">Phones: see the README (HTTPS). This certificate only works for this map's address and name: it can't be used to fake other websites.</p>
         </div>
-        <p class="help">To turn HTTPS on or off, change its name or renew it, run this in the Proxmox Shell:</p>
-        <pre class="cmd" id="https-cmd">pct exec $(pct list | awk '/dji-flightmap/{print $1; exit}') -- bash /opt/dji-flightmap/deploy/set-https.sh</pre>
+        <p class="help">If a setting ever locks you out, run this in the Proxmox Shell to go back to plain http:</p>
+        <pre class="cmd" id="https-cmd">pct exec $(pct list | awk '/dji-flightmap/{print $1; exit}') -- bash /opt/dji-flightmap/deploy/set-https.sh --off</pre>
         <button type="button" class="chip" id="https-copy">Copy</button>
       </section>
 

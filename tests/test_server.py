@@ -37,6 +37,11 @@ def read_json(path):
         return json.load(fh)
 
 
+def read_text(path):
+    with open(path, encoding='utf-8') as fh:
+        return fh.read()
+
+
 def free_port():
     with socket.socket() as s:
         s.bind(('127.0.0.1', 0))
@@ -72,7 +77,8 @@ class LiveServer:
         self.port = free_port()
         self.base = f'http://127.0.0.1:{self.port}'
         full_env = dict(os.environ, DATA_DIR=data_dir, PORT=str(self.port), HOST='127.0.0.1',
-                        CACHE_FILE=os.path.join(state_dir, 'summaries.json'), SCAN_SECONDS='5', **env)
+                        CACHE_FILE=os.path.join(state_dir, 'summaries.json'), SCAN_SECONDS='5',
+                        DEFAULT_HTTPS='off', **env)
         self.log = open(os.path.join(state_dir, 'server.log'), 'w')
         self.proc = subprocess.Popen([sys.executable, '-u', os.path.join(APP, 'server.py')],
                                      env=full_env, stdout=self.log, stderr=subprocess.STDOUT)
@@ -948,42 +954,63 @@ class LiveGoogleKey(unittest.TestCase):
 
 
 class LiveHttps(unittest.TestCase):
-    """HTTPS with a private certificate made by deploy/set-https.sh."""
+    """HTTPS: on by default with a private certificate, changed in Settings."""
 
     @classmethod
     def setUpClass(cls):
         cls.tmp = tempfile.mkdtemp(prefix='flightmap-test-')
+        cls.state = os.path.join(cls.tmp, 'state')
         for d in ('state', 'archive'):
             os.makedirs(os.path.join(cls.tmp, d))
-        cls.tls = os.path.join(cls.tmp, 'tls')
-        conf = os.path.join(cls.tmp, 'env')
-        with open(conf, 'w') as fh:
-            fh.write('PORT=8080\n')
-        subprocess.run(['bash', os.path.join(ROOT, 'deploy', 'set-https.sh'), '--private', '--name', 'flightmap.test'],
-                       env=dict(os.environ, CONF=conf, TLS_DIR=cls.tls, OWNER=str(os.getuid()), RESTART_CMD='true',
-                                SKIP_CHECK='1', ALLOW_NON_ROOT='1', IP='127.0.0.1'),
-                       check=True, capture_output=True)
         cls.http_port, cls.https_port = free_port(), free_port()
-        cls.proc, cls.log = cls.start(cls.tls + '/cert.pem', cls.http_port, cls.https_port)
+        with open(os.path.join(cls.state, 'settings.json'), 'w') as fh:
+            json.dump({'httpsPort': cls.https_port, 'httpsName': 'flightmap.test'}, fh)
+        cls.acme_log = os.path.join(cls.tmp, 'acme.log')
+        cls.make_fake_acme()
+        cls.proc, cls.log = cls.start(cls.http_port)
+        cls.wait_for(lambda: cls.https_status()['state'] == 'on')
 
     @classmethod
-    def start(cls, cert, http_port, https_port):
-        import ssl
-        log = open(os.path.join(cls.tmp, 'state', f'server-{os.path.basename(cert)}.log'), 'w')
-        env = dict(os.environ, DATA_DIR=os.path.join(cls.tmp, 'archive'), HOST='127.0.0.1',
-                   PORT=str(http_port), HTTPS_PORT=str(https_port), TLS_MODE='private',
-                   TLS_CERT=cert, TLS_KEY=cls.tls + '/key.pem',
-                   CACHE_FILE=os.path.join(cls.tmp, 'state', 'summaries.json'))
+    def make_fake_acme(cls):
+        """A pretend acme.sh: records what it is asked, hands out a test certificate."""
+        cert, key = os.path.join(cls.tmp, 'le-cert.pem'), os.path.join(cls.tmp, 'le-key.pem')
+        subprocess.run(['openssl', 'req', '-x509', '-nodes', '-newkey', 'ec', '-pkeyopt', 'ec_paramgen_curve:P-256',
+                        '-keyout', key, '-out', cert, '-days', '90', '-subj', '/CN=map.example.test',
+                        '-addext', 'subjectAltName=DNS:map.example.test'], check=True, capture_output=True)
+        cls.acme = os.path.join(cls.tmp, 'acme.sh')
+        with open(cls.acme, 'w') as fh:
+            fh.write(f"""#!/bin/bash
+echo "$* | token:${{CF_Token:+given}}" >> {cls.acme_log}
+case " $* " in
+  *" --issue "*) [ -f {cls.tmp}/fail ] && {{ echo "error: Cloudflare refused token $CF_Token"; exit 1; }}; exit 0;;
+  *" --install-cert "*) while [ $# -gt 0 ]; do
+      case "$1" in --key-file) cp {key} "$2";; --fullchain-file) cp {cert} "$2";; esac; shift; done;;
+esac
+exit 0
+""")
+        os.chmod(cls.acme, 0o755)
+
+    @classmethod
+    def start(cls, http_port):
+        log = open(os.path.join(cls.state, f'server-{http_port}.log'), 'w')
+        env = dict(os.environ, DATA_DIR=os.path.join(cls.tmp, 'archive'), HOST='127.0.0.1', PORT=str(http_port),
+                   CACHE_FILE=os.path.join(cls.state, 'summaries.json'), DEFAULT_HTTPS='private',
+                   FLIGHTMAP_IP='127.0.0.1', ACME_SH=cls.acme)
         proc = subprocess.Popen([sys.executable, '-u', os.path.join(APP, 'server.py')], env=env,
                                 stdout=log, stderr=subprocess.STDOUT)
-        cls.ctx = ssl.create_default_context(cafile=cls.tls + '/ca.crt')
-        for _ in range(100):
+        cls.wait_for(lambda: urllib.request.urlopen(f'http://127.0.0.1:{http_port}/api/health', timeout=2))
+        return proc, log
+
+    @staticmethod
+    def wait_for(test, seconds=20):
+        for _ in range(int(seconds * 10)):
             try:
-                urllib.request.urlopen(f'http://127.0.0.1:{http_port}/api/health', timeout=2)
-                return proc, log
-            except (urllib.error.URLError, ConnectionError, OSError):
-                time.sleep(0.1)
-        raise RuntimeError('server did not start')
+                if test():
+                    return
+            except (urllib.error.URLError, ConnectionError, OSError, KeyError, ValueError):
+                pass
+            time.sleep(0.1)
+        raise AssertionError('waited too long')
 
     @classmethod
     def tearDownClass(cls):
@@ -992,8 +1019,36 @@ class LiveHttps(unittest.TestCase):
         cls.log.close()
         shutil.rmtree(cls.tmp, ignore_errors=True)
 
-    def https(self, path):
-        return urllib.request.urlopen(f'https://127.0.0.1:{self.https_port}{path}', context=self.ctx, timeout=5)
+    # ---- helpers ----
+    @classmethod
+    def ctx(cls):
+        import ssl
+        return ssl.create_default_context(cafile=os.path.join(cls.state, 'tls', 'ca.crt'))
+
+    @classmethod
+    def https(cls, path, data=None, method='GET', ctx=None):
+        req = urllib.request.Request(f'https://127.0.0.1:{cls.https_port}{path}', data=data, method=method,
+                                     headers={'Content-Type': 'application/json', 'X-Requested-With': 'flightmap'})
+        with urllib.request.urlopen(req, context=ctx or cls.ctx(), timeout=5) as res:
+            return res.status, res.read()
+
+    @classmethod
+    def https_status(cls):
+        """The HTTPS status, asked over https or (when off) plain http."""
+        try:
+            return json.loads(cls.https('/api/settings')[1])['info']['https']
+        except (urllib.error.URLError, OSError):
+            with urllib.request.urlopen(f'http://127.0.0.1:{cls.http_port}/api/settings', timeout=5) as res:
+                return json.loads(res.read())['info']['https']
+
+    def save(self, values, over_https=True):
+        body = json.dumps(values).encode()
+        if over_https:
+            return self.https('/api/settings', body, 'PUT')
+        req = urllib.request.Request(f'http://127.0.0.1:{self.http_port}/api/settings', data=body, method='PUT',
+                                     headers={'Content-Type': 'application/json', 'X-Requested-With': 'flightmap'})
+        with urllib.request.urlopen(req, timeout=5) as res:
+            return res.status, res.read()
 
     def plain(self, method, path, host='192.168.1.50:8080'):
         import http.client
@@ -1005,62 +1060,120 @@ class LiveHttps(unittest.TestCase):
         finally:
             conn.close()
 
-    def test_map_over_https(self):
-        with self.https('/api/health') as res:
-            self.assertEqual(res.status, 200)
-        with self.https('/') as res:
-            self.assertIn(b'Flight Map', res.read())
+    def ca_fingerprint(self):
+        out = subprocess.run(['openssl', 'x509', '-in', os.path.join(self.state, 'tls', 'ca.crt'), '-noout',
+                              '-fingerprint', '-sha256'], capture_output=True, text=True)
+        return out.stdout
 
-    def test_http_sends_you_to_https(self):
+    # ---- tests (named a_, b_... so they run in this order) ----
+    def test_a_on_by_default_with_a_private_certificate(self):
+        self.assertEqual(self.https('/api/health')[0], 200)
+        self.assertIn(b'Flight Map', self.https('/')[1])
+        info = self.https_status()
+        self.assertEqual((info['state'], info['mode'], info['caCert']), ('on', 'private', True))
+        self.assertEqual(set(info['names']), {'127.0.0.1', 'flightmap.test'})
+        self.assertGreater(info['daysLeft'], 800)
+        key = os.path.join(self.state, 'tls', 'ca.key')
+        self.assertEqual(os.stat(key).st_mode & 0o777, 0o600)
+        names = subprocess.run(['openssl', 'x509', '-in', os.path.join(self.state, 'tls', 'ca.crt'), '-noout',
+                                '-ext', 'nameConstraints'], capture_output=True, text=True).stdout
+        self.assertIn('DNS:flightmap.test', names, 'the authority only covers this map')
+
+    def test_b_http_sends_you_to_https(self):
         self.assertEqual(self.plain('GET', '/settings.html?x=1')[:2],
                          (301, f'https://192.168.1.50:{self.https_port}/settings.html?x=1'))
         self.assertEqual(self.plain('POST', '/api/login', host='flightmap.test')[:2],
                          (308, f'https://flightmap.test:{self.https_port}/api/login'))
         self.assertEqual(self.plain('GET', '/', host='bad host')[0], 400)
-
-    def test_health_and_certificate_on_the_http_port(self):
-        self.assertEqual(self.plain('GET', '/api/health')[0], 200)
+        status, _, _, body = self.plain('GET', '/api/health')
+        self.assertEqual((status, json.loads(body)['httpsPort']), (200, self.https_port))
         status, _, ctype, body = self.plain('GET', '/flightmap-ca.crt')
         self.assertEqual((status, ctype), (200, 'application/x-x509-ca-cert'))
         self.assertIn(b'BEGIN CERTIFICATE', body)
         self.assertNotIn(b'PRIVATE KEY', body)
 
-    def test_cookie_is_secure_over_https(self):
+    def test_c_cookie_is_secure_and_untrusting_browsers_are_quiet(self):
         import http.client
-        conn = http.client.HTTPSConnection('127.0.0.1', self.https_port, context=self.ctx, timeout=5)
+        import ssl
+        conn = http.client.HTTPSConnection('127.0.0.1', self.https_port, context=self.ctx(), timeout=5)
         conn.request('GET', '/logout')
         res = conn.getresponse()
         res.read()
         conn.close()
         self.assertIn('Secure', res.getheader('Set-Cookie'))
-
-    def test_settings_page_shows_https(self):
-        with self.https('/api/settings') as res:
-            info = json.loads(res.read())['info']['https']
-        self.assertTrue(info['on'])
-        self.assertEqual(info['mode'], 'private')
-        self.assertIn('flightmap.test', info['names'])
-        self.assertGreater(info['daysLeft'], 800)
-        self.assertTrue(info['caCert'])
-
-    def test_untrusting_browser_does_not_disturb_the_server(self):
-        import ssl
         with self.assertRaises(urllib.error.URLError):
-            urllib.request.urlopen(f'https://127.0.0.1:{self.https_port}/api/health',
-                                   context=ssl.create_default_context(), timeout=5)
-        with self.https('/api/health') as res:
-            self.assertEqual(res.status, 200)
+            self.https('/api/health', ctx=ssl.create_default_context())
+        self.assertEqual(self.https('/api/health')[0], 200)
         with open(self.log.name) as fh:
             self.assertNotIn('Traceback', fh.read())
 
-    def test_broken_certificate_falls_back_to_plain_http(self):
+    def test_d_bad_choices_refused(self):
+        for values in ({'httpsMode': 'letsencrypt', 'httpsName': ''}, {'httpsPort': self.http_port},
+                       {'httpsName': 'not a name'}, {'httpsDnsApi': 'rm -rf'}):
+            with self.assertRaises(urllib.error.HTTPError, msg=values) as err:
+                self.save(values)
+            self.assertEqual(err.exception.code, 400)
+
+    def test_e_off_and_on_again_from_settings(self):
+        before = self.ca_fingerprint()
+        self.save({'httpsMode': 'off'})
+        self.wait_for(lambda: urllib.request.urlopen(f'http://127.0.0.1:{self.http_port}/api/flights', timeout=2))
+        self.assertEqual(self.https_status()['state'], 'off')
+        self.save({'httpsMode': 'private'}, over_https=False)
+        self.wait_for(lambda: self.https('/api/health')[0] == 200)
+        self.assertEqual(self.ca_fingerprint(), before, 'same authority: devices need not import again')
+
+    def test_f_letsencrypt(self):
+        self.save({'httpsMode': 'letsencrypt', 'httpsName': 'map.example.test', 'httpsDnsApi': 'dns_cf',
+                   'httpsDnsCredentials': {'CF_Token': 'SECRET-CF-TOKEN'}})
+        self.wait_for(lambda: urllib.request.urlopen(f'http://127.0.0.1:{self.http_port}/api/health', timeout=2)
+                      and os.path.exists(self.acme_log) and 'install-cert' in read_text(self.acme_log))
+        import ssl
+        ctx = ssl.create_default_context(cafile=os.path.join(self.tmp, 'le-cert.pem'))
+        ctx.check_hostname = False
+        self.wait_for(lambda: json.loads(self.https('/api/settings', ctx=ctx)[1])['info']['https']['state'] == 'on')
+        _, body = self.https('/api/settings', ctx=ctx)
+        self.assertNotIn(b'SECRET-CF-TOKEN', body)
+        data = json.loads(body)
+        self.assertEqual(data['settings']['httpsDnsCredentialsSet'], ['CF_Token'])
+        self.assertEqual(data['info']['https']['mode'], 'letsencrypt')
+        with open(self.acme_log) as fh:
+            calls = fh.read()
+        self.assertIn('--set-default-ca --server letsencrypt', calls)
+        self.assertIn('--issue --dns dns_cf -d map.example.test --keylength ec-256 | token:given', calls)
+        self.assertNotIn('SECRET-CF-TOKEN', calls, 'the token goes by environment, never on the command line')
+        # Refused by the DNS company: an error, the secret hidden, the map still there.
+        open(os.path.join(self.tmp, 'fail'), 'w').close()
+        self.https('/api/https/renew', b'', 'POST', ctx=ctx)
+        self.wait_for(lambda: json.loads(self.https('/api/settings', ctx=ctx)[1])['info']['https']['state'] == 'error')
+        message = json.loads(self.https('/api/settings', ctx=ctx)[1])['info']['https']['message']
+        self.assertIn('Cloudflare refused token <hidden>', message)
+        with open(self.log.name) as fh:
+            self.assertNotIn('SECRET-CF-TOKEN', fh.read())
+        os.remove(os.path.join(self.tmp, 'fail'))
+        self.https('/api/settings', json.dumps({'httpsMode': 'private', 'removeHttpsDnsCredentials': True}).encode(),
+                   'PUT', ctx=ctx)
+        self.wait_for(lambda: self.https('/api/health')[0] == 200)
+        self.assertEqual(json.loads(self.https('/api/settings')[1])['settings']['httpsDnsCredentialsSet'], [])
+
+    def test_h_address_only_certificate_is_accepted(self):
+        """Without a name: a certificate for the address only (checked by the
+        same OpenSSL rules browsers use for "name constraints")."""
+        self.https('/api/settings', json.dumps({'httpsName': ''}).encode(), 'PUT')
+        self.wait_for(lambda: self.https('/api/health')[0] == 200
+                      and self.https_status()['names'] == ['127.0.0.1'])
+        curl = subprocess.run(['curl', '-sf', '--cacert', os.path.join(self.state, 'tls', 'ca.crt'),
+                               f'https://127.0.0.1:{self.https_port}/api/health'], capture_output=True, text=True)
+        self.assertEqual(curl.returncode, 0, curl.stderr)
+
+    def test_g_busy_port_falls_back_to_plain_http(self):
+        # A second map with the same settings: its HTTPS port is taken (by the first).
         http_port = free_port()
-        proc, log = self.start(self.tls + '/missing.pem', http_port, free_port())
+        proc, log = self.start(http_port)
         try:
+            self.wait_for(lambda: 'Could not open port' in read_text(log.name))
             with urllib.request.urlopen(f'http://127.0.0.1:{http_port}/api/flights', timeout=5) as res:
-                self.assertEqual(res.status, 200, 'the map itself is served on http, not a redirect')
-            with open(log.name) as fh:
-                self.assertIn('Serving plain http instead', fh.read())
+                self.assertEqual(res.status, 200, 'the map itself, on plain http')
         finally:
             proc.terminate()
             proc.wait(5)

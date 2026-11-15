@@ -36,7 +36,23 @@ function fillForm(values) {
   }
   fillProviderList(values);
   showProviderFields(values.mapProvider);
+  // HTTPS: the DNS company list, and the secret boxes start empty.
+  const known = [...$('#https-dns').options].some((o) => o.value === values.httpsDnsApi);
+  $('#https-dns').value = known ? values.httpsDnsApi : 'other';
+  for (const el of $$('[data-cred]')) el.value = '';
+  $('#cred-other').value = '';
+  showHttpsFields();
   showKeyStatus();
+}
+
+// Show only the HTTPS boxes for the chosen kind and DNS company.
+function showHttpsFields() {
+  const mode = $('[name=httpsMode]:checked')?.value || 'private';
+  const dns = $('#https-dns').value;
+  for (const el of $$('.https-for')) el.classList.toggle('hidden', el.dataset.for !== mode);
+  $('.https-on').classList.toggle('hidden', mode === 'off');
+  for (const el of $$('.dns-for')) el.classList.toggle('hidden', el.dataset.dns !== dns);
+  $('#https-save-note').classList.toggle('hidden', !saved || mode === saved.httpsMode);
 }
 
 // "A key is saved (hidden)" / "will be removed" under the Azure and Google key boxes.
@@ -48,6 +64,16 @@ function showKeyStatus() {
     $(`#${box}-remove`).classList.toggle('hidden', !isSaved || remove);
     $(`#${box}-key-status`).textContent = remove ? 'The saved key will be removed when you press Save.'
       : isSaved ? '✓ A key is saved on the server.' : 'No key saved yet.';
+  }
+  // The DNS details for Let's Encrypt: only their names come back.
+  const dropping = $('#removeHttpsDnsCredentials').checked;
+  const names = dropping ? [] : (saved?.httpsDnsCredentialsSet || []);
+  $('#dns-key-status').textContent = dropping
+    ? 'The saved DNS details will be removed when you press Save.'
+    : names.length ? `✓ Saved on the server (hidden): ${names.join(', ')}. Leave the boxes empty to keep them.` : 'No DNS details saved yet.';
+  $('#dns-remove').classList.toggle('hidden', !names.length);
+  for (const el of $$('[data-cred]')) {
+    el.placeholder = names.includes(el.dataset.cred) ? 'Saved (hidden). Type a new one to replace it.' : '';
   }
 }
 
@@ -62,6 +88,19 @@ function readForm() {
   }
   // Server-only keys are never sent to this page; only whether one is saved.
   for (const { key } of SERVER_KEYS) out[`${key}Set`] = !!saved?.[`${key}Set`] && !out[removeFlag(key)];
+  // HTTPS: the DNS company, and only the DNS details typed in just now.
+  const dns = $('#https-dns').value;
+  if (dns !== 'other') out.httpsDnsApi = dns;
+  const creds = {};
+  if (dns === 'other') {
+    for (const line of $('#cred-other').value.split('\n')) {
+      const at = line.indexOf('=');
+      if (at > 0 && line.slice(at + 1).trim()) creds[line.slice(0, at).trim()] = line.slice(at + 1).trim();
+    }
+  } else {
+    for (const el of $$(`.dns-for[data-dns="${dns}"] [data-cred]`)) if (el.value.trim()) creds[el.dataset.cred] = el.value.trim();
+  }
+  if (Object.keys(creds).length) out.httpsDnsCredentials = creds;
   out.aircraftNames = {};
   for (const input of $$('[data-serial]')) {
     if (input.value.trim()) out.aircraftNames[input.dataset.serial] = input.value.trim();
@@ -109,23 +148,62 @@ function renderAircraft() {
 // ---------- HTTPS ----------
 function renderHttps(h) {
   const status = $('#https-status');
-  const kind = h.mode === 'letsencrypt' ? "Let's Encrypt (renews itself)" : 'private certificate';
-  const until = h.expires ? ` Valid until ${h.expires}.` : '';
-  if (h.on) {
-    status.textContent = `🔒 On, with a ${kind}, for ${(h.names || []).join(', ') || 'this map'}.${until}`;
+  const kind = h.mode === 'letsencrypt' ? "Let's Encrypt (renews itself)" : 'a private certificate';
+  for (const el of $$('.http-port')) el.textContent = h.httpPort || 8080;
+  if (h.state === 'on') {
+    status.textContent = `🔒 On, with ${kind}, for ${(h.names || []).join(', ') || 'this map'}.`
+      + (h.expires ? ` Valid until ${h.expires}.` : '');
     status.className = 'help ok';
-    if (Number.isInteger(h.daysLeft) && h.daysLeft < 30 && h.mode !== 'letsencrypt') {
-      status.textContent += ` It runs out in ${h.daysLeft} days: renew it with the command below (choose --renew).`;
+    if (h.newCa && h.mode === 'private') status.textContent += ' This is a new certificate: each device must trust it once (below).';
+    if (Number.isInteger(h.daysLeft) && h.daysLeft < 30 && h.mode === 'private') {
+      status.textContent += ` It runs out in ${h.daysLeft} days: press "Make a new certificate now".`;
       status.className = 'help warn';
     }
-  } else if (h.mode) {
-    status.textContent = 'HTTPS is set up, but its certificate could not be loaded, so the map uses plain http. Run the command below again.';
+  } else if (h.state === 'working') {
+    status.textContent = `⏳ ${h.message || 'Working…'}`;
+    status.className = 'help';
+  } else if (h.state === 'error') {
+    status.textContent = `⚠️ ${h.message} The map is still reachable.`;
     status.className = 'help warn';
   } else {
-    status.textContent = 'Off: the map uses plain http, so your login travels unencrypted on your network.';
-    status.className = 'help';
+    status.textContent = 'Off: the map uses plain http, so your password travels unencrypted on your network.';
+    status.className = 'help warn';
   }
-  $('#https-private').classList.toggle('hidden', !h.caCert);
+  $('#https-private').classList.toggle('hidden', !(h.state === 'on' && h.caCert));
+}
+
+// The address of this page after the map switches.
+function httpsTarget(s, h) {
+  if (s.httpsMode === 'off') return `http://${location.hostname}:${h.httpPort || 8080}/settings.html#https`;
+  const host = s.httpsMode === 'letsencrypt' && s.httpsName ? s.httpsName : location.hostname;
+  return `https://${host}${s.httpsPort === 443 ? '' : `:${s.httpsPort}`}/settings.html#https`;
+}
+
+// After saving a new choice (or "Make a new certificate now"): wait until
+// the map has switched, then move this page to the new address.
+async function followHttps(target) {
+  const status = $('#https-status');
+  const started = Date.now();
+  await new Promise((r) => setTimeout(r, 2000));
+  while (Date.now() - started < 5 * 60 * 1000) {
+    let h = null;
+    try {
+      const res = await fetch('api/settings', { cache: 'no-store' });
+      h = res.ok ? (await res.json()).info.https : null;
+    } catch { h = null; }
+    if (!h) {   // this address stopped answering: the map moved
+      status.textContent = `Moving to ${target} …`;
+      location.href = target;
+      return;
+    }
+    renderHttps(h);
+    if (h.state === 'error') return;
+    if (h.state !== 'working') {
+      if (target.split('/settings')[0] !== `${location.protocol}//${location.host}`) location.href = target;
+      return;
+    }
+    await new Promise((r) => setTimeout(r, 2000));
+  }
 }
 
 // ---------- preview map ----------
@@ -205,7 +283,13 @@ async function save() {
       btn.disabled = false;
       return;
     }
+    const httpsBefore = JSON.stringify([saved.httpsMode, saved.httpsName, saved.httpsPort, saved.httpsDnsApi]);
+    const credsTyped = !!readForm().httpsDnsCredentials;
     saved = data.settings;
+    renderHttps(data.info.https);
+    if (httpsBefore !== JSON.stringify([saved.httpsMode, saved.httpsName, saved.httpsPort, saved.httpsDnsApi]) || credsTyped) {
+      followHttps(httpsTarget(saved, data.info.https));
+    }
     // Let the new defaults show: forget this browser's own map/unit choice.
     try { localStorage.removeItem('units'); localStorage.removeItem('layer'); } catch { /* ignore */ }
     fillForm(saved);
@@ -272,6 +356,18 @@ async function start() {
   $('#upd-cmd').textContent = Updates.COMMAND;
   Updates.wireCopyButton($('#upd-copy'));
   Updates.wireCopyButton($('#https-copy'), $('#https-cmd').textContent);
+  $('#https-dns').addEventListener('change', () => { showHttpsFields(); updateSaveBar(); });
+  $('#dns-remove').addEventListener('click', () => {
+    $('#removeHttpsDnsCredentials').checked = true;
+    showKeyStatus();
+    updateSaveBar();
+  });
+  $('#https-renew').addEventListener('click', async () => {
+    if (!confirm('Make a new certificate now? Devices that trust the map keep trusting it (unless the address changed).')) return;
+    const res = await fetch('api/https/renew', { method: 'POST', headers: { 'X-Requested-With': 'flightmap' } });
+    if (res.ok) followHttps(httpsTarget(saved, (await res.json()).info.https));
+  });
+  if (location.hash === '#https') $('#https').scrollIntoView();
   $('#upd-check').addEventListener('click', () => showUpdates(true));
   showUpdates(true);   // always ask GitHub when the settings page opens
   if (location.hash === '#updates') $('#updates').scrollIntoView();
@@ -287,6 +383,7 @@ async function start() {
       fillProviderList(readForm());
     }
     if (e.target.dataset.key === 'mapProvider') showProviderFields(e.target.value);
+    if (e.target.dataset.key === 'httpsMode') showHttpsFields();
     if (e.target.closest('.card') === $('#mapProvider').closest('.card')) updatePreview();
     updateSaveBar();
   });

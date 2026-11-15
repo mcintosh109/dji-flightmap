@@ -36,7 +36,7 @@ async function startServer(dataDir, env = {}) {
   const state = fs.mkdtempSync(path.join(os.tmpdir(), 'flightmap-state-'));
   const proc = spawn(process.env.PYTHON || 'python3', ['-u', path.join(ROOT, 'app', 'server.py')], {
     env: { ...process.env, PYTHONDONTWRITEBYTECODE: '1', DATA_DIR: dataDir, PORT: String(port), HOST: '127.0.0.1',
-           CACHE_FILE: path.join(state, 'summaries.json'), ...env },
+           CACHE_FILE: path.join(state, 'summaries.json'), DEFAULT_HTTPS: 'off', ...env },
     stdio: 'ignore',
   });
   const base = `http://127.0.0.1:${port}`;
@@ -516,8 +516,15 @@ function fakeInternet(ctx, { github = null } = {}) {
     page = await ctx.newPage();
     await page.goto(`${app.base}/settings.html`, { waitUntil: 'networkidle' });
     await page.waitForTimeout(500);
-    check('the HTTPS box says it is off, and how to turn it on', (await page.textContent('#https-status')).includes('plain http')
-      && (await page.textContent('#https-cmd')).includes('set-https.sh') && await page.isHidden('#https-private'));
+    check('the HTTPS box says it is off, with the way back', (await page.textContent('#https-status')).includes('plain http')
+      && (await page.textContent('#https-cmd')).includes('set-https.sh --off') && await page.isHidden('#https-private'));
+    await page.click('label:has([name=httpsMode][value=letsencrypt])');
+    check("Let's Encrypt asks for the DNS company's token", await page.isVisible('#cred-cf') && await page.isVisible('#httpsName'));
+    await page.selectOption('#https-dns', 'dns_gd');
+    check('GoDaddy asks for its key and secret', await page.isVisible('#cred-gdk') && await page.isVisible('#cred-gds') && await page.isHidden('#cred-cf'));
+    await page.click('label:has([name=httpsMode][value=off])');
+    check('Off hides the name, port and DNS boxes', await page.isHidden('#httpsName') && await page.isHidden('#cred-gdk'));
+    await page.reload({ waitUntil: 'networkidle' });
     const shownKeys = () => page.$$eval('.provider-key', (els) => els.filter((e) => !e.classList.contains('hidden')).map((e) => e.dataset.provider).join());
     check('only the Azure key box is shown', (await shownKeys()) === 'azure', await shownKeys());
     check('saved Azure key is shown as hidden, not filled in', (await page.inputValue('#azureMapsKey')) === ''
@@ -582,6 +589,30 @@ function fakeInternet(ctx, { github = null } = {}) {
     await page.click('#btn-version');
     check('test version: the window says it is not released yet', /test version.*newest release is 0\.5\.0/.test(await page.textContent('#upd-status')), await page.textContent('#upd-status'));
     await ctx.close();
+
+    // ---- 5b. turning HTTPS on from the settings page ----
+    console.log('HTTPS from the settings page');
+    {
+      const httpsPort = await freePort();
+      const own = await startServer(archive, { FLIGHTMAP_IP: '127.0.0.1' });
+      servers.push(own);
+      const hctx = await browser.newContext({ ignoreHTTPSErrors: true });
+      await fakeInternet(hctx);
+      const hpage = await hctx.newPage();
+      await hpage.goto(`${own.base}/settings.html`, { waitUntil: 'networkidle' });
+      await hpage.click('label:has([name=httpsMode][value=private])');
+      check('choosing HTTPS says the page will move', await hpage.isVisible('#https-save-note'));
+      await hpage.fill('#httpsPort', String(httpsPort));
+      await hpage.click('#btn-save');
+      await hpage.waitForURL(`https://127.0.0.1:${httpsPort}/settings.html#https`, { timeout: 20000 }).catch(() => {});
+      check('after Save, the page moves to the https address', hpage.url().startsWith(`https://127.0.0.1:${httpsPort}/`), hpage.url());
+      await hpage.waitForTimeout(800);
+      check('it says HTTPS is on, with a private certificate', (await hpage.textContent('#https-status')).includes('🔒 On'),
+        await hpage.textContent('#https-status'));
+      check('...and offers the certificate download with the Windows steps', await hpage.isVisible('#https-ca')
+        && (await hpage.textContent('#https-private')).includes('Trusted Root Certification Authorities'));
+      await hctx.close();
+    }
 
     // ---- 6. phone layout ----
     console.log('Phone layout');

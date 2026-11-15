@@ -83,6 +83,7 @@ import json
 import re
 import secrets
 import ssl
+import subprocess
 import sys
 import threading
 import time
@@ -94,8 +95,8 @@ from flightmap import auth
 from flightmap.auth import (COOKIE_NAME, PUBLIC_PATHS, hash_password, make_session_cookie, record_failure,
                             session_days, session_is_valid, too_many_failures, verify_password)
 from flightmap.azure import AZURE_TILESETS, azure_request, html_to_text
-from flightmap.config import (APP_VERSION, AUTH_ENABLED, AUTH_PASSWORD_HASH, AUTH_USER, DATA_DIR, HOST,
-                              HTTPS_PORT, PORT, STATIC_DIR, VERSION_INFO, log)
+from flightmap.config import (APP_VERSION, AUTH_ENABLED, AUTH_PASSWORD_HASH, AUTH_USER, DATA_DIR, HOST, PORT,
+                              STATIC_DIR, VERSION_INFO, log)
 from flightmap import google, https
 from flightmap.google import GOOGLE_SETS, google_credits, google_tile
 from flightmap.gplaces import search as google_places_search
@@ -394,7 +395,7 @@ class Handler(SimpleHTTPRequestHandler):
                 "auth": AUTH_ENABLED,
                 "user": AUTH_USER if AUTH_ENABLED else "",
                 "dataDir": DATA_DIR,
-                "https": https.status(),
+                "https": https.status(current_settings(), PORT),
                 "aircraft": [{"serial": k, "model": v} for k, v in aircraft.items()],
             },
         }
@@ -456,6 +457,8 @@ class Handler(SimpleHTTPRequestHandler):
             elif not str(incoming.get(key, "")).strip():
                 incoming.pop(key, None)
             incoming.pop(key + "Set", None)
+        incoming.pop("httpsDnsCredentialsSet", None)
+        before = https_choice(current_settings())
         new, problems = clean_settings(incoming)
         if problems:
             return self.send_json({"error": " ".join(problems), "problems": problems}, 400)
@@ -464,6 +467,10 @@ class Handler(SimpleHTTPRequestHandler):
         except OSError as exc:
             return self.send_json({"error": f"could not save: {exc}"}, 500)
         log(f"{self.client_address[0]} saved settings")
+        if https_choice(new) != before:
+            # Switch http/https in the background, after this answer is sent.
+            https.set_state("working", "Changing the secure connection…", mode=new["httpsMode"])
+            threading.Thread(target=LISTENERS.apply, kwargs={"delay": 1}, daemon=True).start()
         return self.send_json(self.settings_payload())
 
     def put_plan(self, path):
@@ -495,6 +502,13 @@ class Handler(SimpleHTTPRequestHandler):
 
     def do_POST(self):
         path = urlparse(self.path).path
+        if path == "/api/https/renew":
+            # "Make a new certificate now" on the settings page.
+            if not self.allowed(path) or not self.from_our_page():
+                return
+            https.set_state("working", "Making a new certificate…", mode=current_settings()["httpsMode"])
+            threading.Thread(target=LISTENERS.apply, kwargs={"delay": 1, "force": True}, daemon=True).start()
+            return self.send_json(self.settings_payload())
         if path == "/api/rescan":
             if not self.allowed(path) or not self.from_our_page():
                 return
@@ -526,6 +540,18 @@ class Handler(SimpleHTTPRequestHandler):
 
 def main():
     global LIBRARY
+    if "--set-https" in sys.argv:
+        # Used by deploy/set-https.sh (the way back if a setting locks you out).
+        choice = sys.argv[sys.argv.index("--set-https") + 1] if len(sys.argv) > sys.argv.index("--set-https") + 1 else ""
+        if choice not in ("off", "private"):
+            sys.exit("Use: --set-https off   or   --set-https private")
+        load_settings()
+        new, problems = clean_settings({"httpsMode": choice})
+        if problems:
+            sys.exit(" ".join(problems))
+        save_settings(new)
+        print(f"Secure connection set to: {choice}")
+        return
     if "--check-google" in sys.argv:
         # Tries each kind of Google map once and prints what Google said.
         load_settings()
@@ -553,11 +579,10 @@ def main():
     LIBRARY = FlightLibrary(DATA_DIR)
     log(f"DJI Flight Map: reading logs from {DATA_DIR}")
     threading.Thread(target=scan_forever, daemon=True).start()
-    server = start_https() or QuietServer((HOST, PORT), Handler)
-    if not https.ACTIVE["on"]:
-        log(f"Open http://<this-container-ip>:{PORT} in a browser")
+    LISTENERS.apply(first=True)
+    threading.Thread(target=renew_forever, daemon=True).start()
     try:
-        server.serve_forever()
+        threading.Event().wait()   # the servers run in their own threads
     except KeyboardInterrupt:
         pass
 
@@ -565,6 +590,7 @@ def main():
 class QuietServer(ThreadingHTTPServer):
     """Doesn't fill the log when a browser drops a connection or refuses
     the certificate (normal until a device trusts it)."""
+    daemon_threads = True
 
     def handle_error(self, request, client_address):
         if isinstance(sys.exc_info()[1], (ssl.SSLError, ConnectionError, TimeoutError)):
@@ -572,25 +598,86 @@ class QuietServer(ThreadingHTTPServer):
         super().handle_error(request, client_address)
 
 
-def start_https():
-    """If HTTPS is set up: the map on HTTPS_PORT, and the old http port
-    sending browsers there. Returns the https server, or None (plain http)."""
-    ctx = https.load_context()
-    if ctx is None:
-        return None
-    try:
-        secure = QuietServer((HOST, HTTPS_PORT), Handler)
-    except OSError as err:
-        log(f"Could not open port {HTTPS_PORT} for HTTPS ({err}); serving plain http instead.")
-        return None
-    secure.socket = ctx.wrap_socket(secure.socket, server_side=True, do_handshake_on_connect=False)
-    plain = QuietServer((HOST, PORT), https.RedirectHandler)
-    threading.Thread(target=plain.serve_forever, daemon=True).start()
-    https.ACTIVE["on"] = True
-    port = "" if HTTPS_PORT == 443 else f":{HTTPS_PORT}"
-    log(f"HTTPS is on: open https://<this-container-ip-or-name>{port} "
-        f"(http on port {PORT} sends you there)")
-    return secure
+def https_choice(settings):
+    """The settings that need the servers switched when they change."""
+    return (settings["httpsMode"], settings["httpsName"], settings["httpsPort"], settings["httpsDnsApi"],
+            json.dumps(settings.get("httpsDnsCredentials") or {}, sort_keys=True))
+
+
+class Listeners:
+    """The map's web servers: plain http, or https plus the old http port
+    sending browsers there. Switched while the map keeps running."""
+
+    def __init__(self):
+        self.servers = []
+        self.lock = threading.Lock()
+
+    def _stop(self):
+        for server in self.servers:
+            server.shutdown()
+            server.server_close()
+        self.servers = []
+
+    def _serve(self, server):
+        self.servers.append(server)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+
+    def _plain(self):
+        self._stop()
+        self._serve(QuietServer((HOST, PORT), Handler))
+
+    def apply(self, first=False, force=False, delay=0):
+        """Make the servers match the settings. Never leaves the map unreachable."""
+        time.sleep(delay)
+        with self.lock:
+            settings = current_settings()
+            mode, port = settings["httpsMode"], settings["httpsPort"]
+            if mode == "off":
+                self._plain()
+                https.set_state("off", "", mode="off")
+                log(f"Open http://<this-container-ip>:{PORT} in a browser (HTTPS is off)")
+                return
+            if first:
+                self._plain()   # reachable straight away, even if a certificate takes a while
+            try:
+                new_ca = https.make_certificate(settings, force=force)
+                ctx = https.context()
+            except (https.CertError, OSError, subprocess.SubprocessError) as err:
+                if not self.servers:
+                    self._plain()
+                https.set_state("error", f"HTTPS could not be turned on: {err}", mode=mode)
+                return
+            self._stop()
+            try:
+                secure = QuietServer((HOST, port), Handler)
+            except OSError as err:
+                self._plain()
+                https.set_state("error", f"Could not open port {port} for HTTPS ({err}); the map uses plain http.",
+                                mode=mode)
+                return
+            secure.socket = ctx.wrap_socket(secure.socket, server_side=True, do_handshake_on_connect=False)
+            self._serve(secure)
+            self._serve(QuietServer((HOST, PORT), https.redirect_handler(port)))
+            https.set_state("on", "", mode=mode, port=port, newCa=bool(new_ca))
+            shown = "" if port == 443 else f":{port}"
+            log(f"HTTPS is on ({mode}): open https://<this-container-ip-or-name>{shown} "
+                f"(http on port {PORT} sends you there)")
+
+
+LISTENERS = Listeners()
+
+
+def renew_forever():
+    """Twice a day: renew certificates that are due."""
+    while True:
+        time.sleep(12 * 3600)
+        try:
+            if current_settings()["httpsMode"] == "letsencrypt":
+                https.renew_letsencrypt()
+            if current_settings()["httpsMode"] != "off":
+                LISTENERS.apply()   # reloads the (renewed) certificate; makes a new private one when due
+        except Exception as exc:
+            log(f"HTTPS renewal check failed: {exc}")
 
 
 if __name__ == "__main__":

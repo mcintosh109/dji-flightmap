@@ -201,16 +201,20 @@ owner confirms it works**, release it with a tag (`git tag -a vX.Y.Z` +
   server; the browser re-searches only after moving half the radius. The
   owner keeps a key restricted to Map Tiles + Places (New); don't suggest
   their 32-API key. The owner called this 3.0.5 (a fix from users' view).
-- **HTTPS** (4.0.0): `deploy/set-https.sh` (in the container) makes a private
-  CA (P-256, 10 years, nameConstraints = this IP + name only, key root 0600)
-  and a server cert (825 days) in `/var/lib/dji-flightmap/tls`, or uses
-  acme.sh (pinned release, `--server letsencrypt`, DNS-01; secrets typed into
-  the Shell and passed by env, never args). Env: TLS_MODE/TLS_NAME/TLS_CERT/
-  TLS_KEY/HTTPS_PORT (443; the service has CAP_NET_BIND_SERVICE). server.py:
-  https on HTTPS_PORT, handshake in the request thread, `QuietServer` hides
-  TLS errors; the old PORT only redirects (301/308), answers /api/health and
-  serves /flightmap-ca.crt. A cert that won't load = plain http (never dark).
-  Backups include the tls files. Cookie gets `Secure` over https.
+- **HTTPS** (4.1.0): ON BY DEFAULT (owner's wish) with a private certificate;
+  changed in Settings → Secure connection (`httpsMode` private/letsencrypt/
+  off, `httpsName`, `httpsPort` 443, `httpsDnsApi`, server-only
+  `httpsDnsCredentials` dict: the page only gets `httpsDnsCredentialsSet`
+  names). `server.py` `Listeners.apply()` switches http/https live in a
+  background thread after Save; `https.py` makes the private CA (P-256,
+  10 years, nameConstraints = this IP + name) and an 825-day leaf whose CN is
+  "DJI Flight Map" (an address-like CN breaks name constraints: OpenSSL
+  "permitted subtree violation"), or runs acme.sh (/opt/acme.sh, installed by
+  install.sh; `--server letsencrypt`; secrets by env, scrubbed from output).
+  The old PORT only redirects (301/308), answers /api/health (with
+  `httpsPort`) and serves /flightmap-ca.crt. Anything failing = plain http
+  and an error on the settings page. Recovery: `set-https.sh --off`.
+  Tests start servers with DEFAULT_HTTPS=off; FLIGHTMAP_IP fixes the address.
 - **Release tags**: in Claude's sandbox, pushing a tag was blocked by the
   safety check (a public action). The owner then makes the release on
   GitHub: Releases → Draft a new release → new tag `vX.Y.Z` on `main`.

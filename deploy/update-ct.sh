@@ -185,7 +185,8 @@ fi
 prune_backups "$CTID"
 
 PORT=$(pct exec "$CTID" -- sh -c "grep -E '^PORT=' /etc/default/dji-flightmap | cut -d= -f2" || true)
-HTTPS_PORT=$(pct exec "$CTID" -- sh -c "grep -E '^HTTPS_PORT=' /etc/default/dji-flightmap | cut -d= -f2" || true)
+# The http port says whether HTTPS is on, and its port.
+HTTPS_PORT=$(pct exec "$CTID" -- python3 -c "import json,urllib.request; print(json.load(urllib.request.urlopen('http://127.0.0.1:${PORT:-8080}/api/health', timeout=5)).get('httpsPort', ''))" 2>/dev/null || true)
 IP=$(pct exec "$CTID" -- hostname -I | awk '{print $1}')
 URL="http://${IP}:${PORT:-8080}"
 if [[ -n "$HTTPS_PORT" ]]; then

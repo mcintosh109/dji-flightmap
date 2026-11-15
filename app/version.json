@@ -1,12 +1,12 @@
 {
-  "version": "4.0.0",
+  "version": "4.1.0",
   "released": "2026-11-15",
   "repo": "mcintosh109/dji-flightmap",
   "notes": [
-    "New: HTTPS, the padlock in the browser. Your login and everything else to the map is encrypted",
-    "Choose a private certificate (no domain needed, import it once per device) or Let's Encrypt (for your own domain)",
-    "Set it up with one command (see the README or Settings \u2192 Secure connection); the map can also be opened by a name like flightmap.home",
-    "The old http address keeps working: it sends you to the secure one",
-    "Updates and backups keep the certificates, so your devices keep trusting the map"
+    "New: HTTPS, the padlock in the browser, ON from the start: your password and everything else to the map is encrypted",
+    "Change it in Settings \u2192 Secure connection: private certificate (the default), Let's Encrypt for your own domain, or plain http",
+    "The first time on each device the browser warns: download the map's certificate in Settings and install it once (steps there)",
+    "The map can be opened by a name like flightmap.home, and the old http address keeps working: it sends you to the secure one",
+    "If HTTPS ever locks you out: bash /opt/dji-flightmap/deploy/set-https.sh --off (see the README)"
   ]
 }

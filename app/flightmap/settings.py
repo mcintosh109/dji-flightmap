@@ -7,7 +7,7 @@ import os
 import re
 import threading
 
-from .config import SCAN_SECONDS, SESSION_DAYS, SETTINGS_FILE, log
+from .config import DEFAULT_HTTPS, PORT, SCAN_SECONDS, SESSION_DAYS, SETTINGS_FILE, log
 
 # Map providers and layers the page knows (see PROVIDERS in static/maps.js).
 MAP_PROVIDERS = {"free", "carto", "azure", "google", "mapbox", "maptiler", "custom"}
@@ -61,10 +61,18 @@ DEFAULT_SETTINGS = {
     "scanSeconds": SCAN_SECONDS,
     "sessionDays": SESSION_DAYS,
     "checkUpdates": True,
+    # Secure connection (see flightmap/https.py)
+    "httpsMode": DEFAULT_HTTPS if DEFAULT_HTTPS in ("off", "private", "letsencrypt") else "private",
+    "httpsName": "",              # e.g. flightmap.home (optional for private)
+    "httpsPort": 443,
+    "httpsDnsApi": "dns_cf",      # Let's Encrypt: the acme.sh name of the DNS company
+    "httpsDnsCredentials": {},    # Let's Encrypt: e.g. {"CF_Token": "..."}; never sent to the page
 }
 SETTINGS = dict(DEFAULT_SETTINGS)
 SETTINGS_LOCK = threading.Lock()
 KEY_RE = re.compile(r"^[A-Za-z0-9._-]{0,300}$")
+HOST_NAME_RE = re.compile(r"^(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$")
+VAR_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,40}$")
 SERIAL_RE = re.compile(r"^[A-Za-z0-9]{1,64}$")
 
 
@@ -137,6 +145,29 @@ def clean_settings(incoming):
     pick("scanSeconds", whole(5, 3600), "Check for new files every 5 to 3600 seconds.")
     pick("sessionDays", whole(1, 365), "Stay signed in for 1 to 365 days.")
     pick("checkUpdates", is_bool, "Check for updates must be on or off.")
+    pick("httpsMode", lambda v: v in ("off", "private", "letsencrypt"), "Unknown secure connection choice.")
+    pick("httpsName", lambda v: isinstance(v, str) and (v.strip() == "" or HOST_NAME_RE.match(v.strip().lower())),
+         "The name must look like flightmap.home (letters, numbers, dashes, with a dot).")
+    pick("httpsPort", whole(1, 65535), "The HTTPS port must be 1 to 65535.")
+    pick("httpsDnsApi", lambda v: isinstance(v, str) and re.fullmatch(r"dns_[a-z0-9_]{1,40}", v),
+         "The DNS company name must look like dns_cf.")
+    if incoming.get("removeHttpsDnsCredentials") is True:
+        new["httpsDnsCredentials"] = {}
+    elif "httpsDnsCredentials" in incoming:
+        creds = incoming["httpsDnsCredentials"]
+        if isinstance(creds, dict) and len(creds) <= 10 and all(
+                isinstance(k, str) and VAR_RE.match(k) and isinstance(v, str) and len(v) <= 300
+                and not re.search(r"[\x00-\x1f]", v) for k, v in creds.items()):
+            # An empty box means "keep what is saved" (the page never sees it).
+            new["httpsDnsCredentials"] = {**new["httpsDnsCredentials"],
+                                          **{k: v.strip() for k, v in creds.items() if v.strip()}}
+        else:
+            problems.append("The DNS company details have odd characters.")
+    new["httpsName"] = new["httpsName"].strip().lower()
+    if new["httpsMode"] != "off" and new["httpsPort"] == PORT:
+        problems.append(f"The HTTPS port can't be {PORT}: the plain http address uses it.")
+    if new["httpsMode"] == "letsencrypt" and not new["httpsName"]:
+        problems.append("Let's Encrypt needs a name, like flightmap.example.com.")
 
     for key in ("cartoKey", "mapboxToken", "maptilerKey", "azureMapsKey", "googleMapsKey",
                 "customTileName", "customAttribution"):
@@ -203,4 +234,6 @@ def public_settings():
     settings = current_settings()
     for key in SERVER_ONLY_KEYS:
         settings[key + "Set"] = bool(settings.pop(key, ""))
+    # The DNS details: only the NAMES of what is saved, never the values.
+    settings["httpsDnsCredentialsSet"] = sorted(settings.pop("httpsDnsCredentials", {}))
     return settings

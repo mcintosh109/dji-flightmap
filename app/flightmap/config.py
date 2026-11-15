@@ -28,11 +28,12 @@ GOOGLE_TILES_URL = os.environ.get("GOOGLE_TILES_URL", "https://tile.googleapis.c
 # Where Google's Places service is reached (only changed by the tests).
 GOOGLE_PLACES_URL = os.environ.get("GOOGLE_PLACES_URL", "https://places.googleapis.com").rstrip("/")
 PLANS_FILE = os.path.join(STATE_DIR, "plans.json")
-# HTTPS (set by deploy/set-https.sh; empty = plain http). See flightmap/https.py.
-TLS_MODE = os.environ.get("TLS_MODE", "").strip()           # private | letsencrypt
-TLS_CERT = os.environ.get("TLS_CERT", "").strip()
-TLS_KEY = os.environ.get("TLS_KEY", "").strip()
-HTTPS_PORT = int(os.environ.get("HTTPS_PORT", "443"))
+# HTTPS is chosen on the settings page (see flightmap/https.py). New
+# installs start with a private certificate; the tests start with "off".
+DEFAULT_HTTPS = os.environ.get("DEFAULT_HTTPS", "private").strip()
+TLS_DIR = os.path.join(STATE_DIR, "tls")            # certificates
+ACME_HOME = os.path.join(STATE_DIR, "acme")         # Let's Encrypt account and renewals
+ACME_SH = os.environ.get("ACME_SH", "/opt/acme.sh/acme.sh")   # installed by install.sh
 # Where places (shops, schools, parks...) come from: the free OpenStreetMap
 # Overpass API. These are public servers shared by everyone and can be slow,
 # so if the first doesn't answer, the next is tried. A different list can be
