@@ -292,6 +292,7 @@ Everything here is saved on the server, so it applies on every device.
 
 | Section | What you can change |
 |---|---|
+| **Flight logs on the NAS** | Checked every time the page opens: does the NAS answer, is its share connected to the map, can the logs be read, is the automatic reconnect running. **Reconnect now** if something is wrong. See [When the NAS restarts](#when-the-nas-restarts). |
 | **Map** | **Map provider**: who draws the map. *Free* (OpenStreetMap + Esri, no key), **CARTO**, **Azure Maps** (Microsoft's replacement for Bing Maps), **Google Maps**, **Mapbox**, **MapTiler**, or a custom "XYZ" tile address. Only the chosen provider's key box is shown. **Default layer** (Road, Satellite, Dark, Terrain), **Details** on satellite, and a live preview. A layer a provider doesn't have (e.g. Terrain on Azure Maps) uses the free one. |
 | **Display** | Default units, flight path colour, replay speed, whether a flight opens at the landing or take-off spot, which app **Navigate** opens (Google Maps, Apple Maps, Waze), lines for all flights, and whether an open flight is shown on its own (on by default). |
 | **Flights** | Hide flights shorter than N seconds (quick tests), hide flights without GPS, **nicknames** for each drone. |
@@ -629,6 +630,39 @@ It shows what it found and asks before changing anything.
 
 ---
 
+### When the NAS restarts
+
+If TrueNAS restarts (an update, a power cut, or on purpose), the map
+**reconnects by itself** when it is back, usually within a few minutes. You
+don't need to do anything.
+
+How: a small helper on the Proxmox server, `deploy/nas-watch.sh`, checks
+every minute (research: *"systemd timer"*):
+
+1. **Does the NAS answer on the network?** If not, it waits. The NAS is
+   probably off or restarting.
+2. **Is the share connected on the Proxmox server, and can it be read?** If
+   not, it connects it again.
+3. **Does the map's container see it?** A container that started while the
+   NAS was off keeps seeing the empty folder underneath, even after the share
+   is back (research: *"proxmox lxc bind mount"*). Then the helper restarts
+   the container, which takes about 20 seconds. To avoid restarting over and
+   over, it does this at most once every 15 minutes.
+
+**Settings → Flight logs on the NAS** shows these checks every time you open
+it, and what the helper did last. **Reconnect now** asks the helper to do
+all of it straight away (within a minute), without waiting the 15 minutes.
+
+The helper is set up by the install and by every update. It never deletes
+anything, and it waits while an update is running. To watch what it does,
+run this in the Proxmox Shell:
+
+```bash
+bash /root/dji-flightmap/deploy/nas-watch.sh --verbose
+```
+
+---
+
 ## Troubleshooting
 
 **Google Maps shows grey squares or the free map**
@@ -716,11 +750,13 @@ Check that the container can see the files:
 pct exec 105 -- ls /srv/dji-logs
 ```
 
-**The map was empty after the Proxmox server rebooted**
+**The map was empty after the Proxmox server (or the NAS) restarted**
 
-The container probably started before TrueNAS was reachable. The fstab line
-tells Proxmox to connect first, but if TrueNAS was still booting, run the
-two commands above (`mount`, then `pct reboot`).
+The container probably started before TrueNAS was reachable. The map fixes
+this by itself within a few minutes (see [When the NAS restarts](#when-the-nas-restarts)),
+or press **Reconnect now** in Settings → Flight logs on the NAS. If the
+settings page says *"Automatic reconnect isn't running"*, run the update
+once (it sets it up), or run the two commands above (`mount`, then `pct reboot`).
 
 **The page doesn't load at all**
 
@@ -814,6 +850,8 @@ pct exec 105 -- systemctl restart dji-flightmap
 | `deploy/update-ct.sh` | Proxmox host: backs up settings, installs a newer version, puts settings back, undoes it if the map doesn't start | *"pct push"*, *"pct pull"* |
 | `deploy/restore-ct.sh` | Proxmox host: puts saved settings back into a container | |
 | `deploy/ct-backup.sh` | Shared save/restore steps used by the scripts above and below | *"bash source"* |
+| `deploy/nas-watch.sh` | Proxmox host, every minute: reconnects the NAS share after the NAS restarts, restarts the container if it still sees the empty folder, tells the settings page what it found | *"systemd timer"*, *"cifs mount"* |
+| `deploy/nas-view.sh` | Run inside the container by `nas-watch.sh`: what the container sees of the logs folder | *"/proc/self/mountinfo"* |
 | `deploy/release-tags.sh` | Lists the released versions, newest first (tags like `v4.2.0`; `4.2.0` without the v counts too) | *"git tag"* |
 | `deploy/easy-install.sh` | Proxmox host: the one-command install. Downloads the newest release, then runs the scripts below in order (or offers an update) | *"curl pipe bash"* |
 | `deploy/setup-backup-share.sh` | Proxmox host: connects the writable TrueNAS backup folder, turns on the daily backup | *"systemd timer"* |

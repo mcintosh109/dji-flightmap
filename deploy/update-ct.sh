@@ -184,6 +184,7 @@ if ! health_check "$CTID"; then
   undo
 fi
 prune_backups "$CTID"
+install_nas_watch
 
 PORT=$(pct exec "$CTID" -- sh -c "grep -E '^PORT=' /etc/default/dji-flightmap | cut -d= -f2" || true)
 # The http port says whether HTTPS is on, and its port.

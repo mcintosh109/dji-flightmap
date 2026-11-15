@@ -12,6 +12,7 @@
 #   3. server    tests/test_server.py   (Python, no extra installs)
 #   4. browser   tests/browser.test.js  (needs Node.js + Playwright; skipped if missing)
 #   5. install   tests/easy-install.test.sh (the one-command install, all in a temp folder)
+#                tests/nas-watch.test.sh    (the NAS reconnect helper, all in a temp folder)
 #   6. deploy    tests/deploy.test.sh   (only on a throw-away machine; see that file)
 # ---------------------------------------------------------------------------
 set -uo pipefail
@@ -55,8 +56,9 @@ else
   echo "  SKIP  Playwright isn't installed (npm install playwright && npx playwright install chromium)"
 fi
 
-part "5/6 Easy install"
+part "5/6 Easy install and the NAS helper"
 bash tests/easy-install.test.sh || fail "the easy-install tests"
+bash tests/nas-watch.test.sh || fail "the NAS helper tests"
 
 part "6/6 Update scripts"
 bash tests/deploy.test.sh || fail "the update-script tests"

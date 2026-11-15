@@ -21,6 +21,21 @@
     <p id="load-error" class="banner error hidden" role="alert"></p>
 
     <form id="form" class="hidden" autocomplete="off">
+      <!-- ================= NAS ================= -->
+      <section class="card" id="nas">
+        <h2>Flight logs on the NAS</h2>
+        <p id="nas-summary" class="help" aria-live="polite">Checking the connection…</p>
+        <ul id="nas-checks" class="checks"></ul>
+        <p id="nas-message" class="help hidden"></p>
+        <p>
+          <button type="button" class="chip" id="nas-check">Check again</button>
+          <button type="button" class="chip hidden" id="nas-reconnect">Reconnect now</button>
+        </p>
+        <p class="help nas-share-only hidden">The Proxmox server checks the connection every minute, and reconnects
+          by itself after the NAS restarts. <b>Reconnect now</b> asks it to do that straight away; if needed, the map
+          restarts itself, which takes about 20 seconds.</p>
+      </section>
+
       <!-- ================= MAP ================= -->
       <section class="card">
         <h2>Map</h2>

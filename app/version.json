@@ -1,9 +1,10 @@
 {
-  "version": "4.2.1",
+  "version": "4.3.0",
   "released": "2026-11-15",
   "repo": "mcintosh109/dji-flightmap",
   "notes": [
-    "A release counts even if its tag on GitHub is missing the v (4.2.0 instead of v4.2.0): the update notice, updates and the one-command install all see it",
-    "If both exist for one version, the one with the v is used"
+    "New: when the NAS restarts (planned or not), the map reconnects to the flight logs by itself, usually within a few minutes",
+    "Settings \u2192 Flight logs on the NAS checks the connection every time you open it: does the NAS answer, is its share connected, can the logs be read",
+    "A Reconnect now button there fixes it straight away if something is wrong (the map may restart itself, about 20 seconds)"
   ]
 }

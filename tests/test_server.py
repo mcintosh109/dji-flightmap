@@ -1227,6 +1227,7 @@ class LiveLogin(unittest.TestCase):
         self.assertEqual((status, headers.get('Location')), (303, '/login.html'))
         self.assertEqual(self.srv.request('/api/flights')[0], 401)
         self.assertEqual(self.srv.request('/login.html')[0], 200)
+        self.assertEqual(self.srv.request('/api/nas')[0], 401, 'the NAS details need a login')
         self.assertEqual(self.srv.request('/api/health')[0], 200)
 
         status, headers, _ = self.login('wrong-password')
@@ -1241,6 +1242,184 @@ class LiveLogin(unittest.TestCase):
         for cookie in self.srv.jar:
             cookie.value = cookie.value.replace('tester:', 'admin:')
         self.assertEqual(self.srv.request('/api/flights')[0], 401)
+
+
+# ------------------------------------------------- the NAS connection (4.3.0)
+def write_mountinfo(path, data_dir, fstype, source='//127.0.0.1/Central/DJI\\040Flight\\040logs'):
+    """A pretend /proc/self/mountinfo: the container's own disk, plus what is
+    mounted at the logs folder (cifs = the NAS share)."""
+    with open(path, 'w', encoding='utf-8') as fh:
+        fh.write('22 1 0:21 / / rw,relatime shared:1 - ext4 /dev/sda1 rw\n')
+        fh.write(f'99 22 0:50 /archive {data_dir} ro,relatime - {fstype} {source} ro,vers=3.0\n')
+
+
+class NasRules(unittest.TestCase):
+    """flightmap/nas.py: the checks behind Settings -> Flight logs on the NAS."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = tempfile.mkdtemp(prefix='flightmap-nas-')
+        cls.data = os.path.join(cls.tmp, 'logs')
+        os.makedirs(cls.data)
+        cls.mountinfo = os.path.join(cls.tmp, 'mountinfo')
+        cls.nas_listener = socket.socket()          # stands in for the NAS's file sharing
+        cls.nas_listener.bind(('127.0.0.1', 0))
+        cls.nas_listener.listen()
+        os.environ.update(DATA_DIR=cls.data, NAS_MOUNTINFO=cls.mountinfo,
+                          NAS_PORT=str(cls.nas_listener.getsockname()[1]))
+        load_server(cls.tmp)
+        cls.nas = importlib.import_module('flightmap.nas')
+        os.makedirs(os.path.dirname(cls.nas.HOST_FILE), exist_ok=True)
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.nas_listener.close()
+        for key in ('DATA_DIR', 'NAS_MOUNTINFO', 'NAS_PORT'):
+            os.environ.pop(key, None)
+        shutil.rmtree(cls.tmp, ignore_errors=True)
+
+    def setUp(self):
+        for f in (self.nas.HOST_FILE, self.nas.REQUEST_FILE, os.path.join(self.data, 'archive-folder')):
+            if os.path.isdir(f):
+                os.rmdir(f)
+            elif os.path.exists(f):
+                os.remove(f)
+
+    def report(self, **values):
+        values.setdefault('at', time.time() - 20)
+        with open(self.nas.HOST_FILE, 'w', encoding='utf-8') as fh:
+            json.dump(values, fh)
+
+    def check(self, status, check_id):
+        return next(c for c in status['checks'] if c['id'] == check_id)
+
+    def test_reads_what_is_mounted(self):
+        write_mountinfo(self.mountinfo, self.data, 'cifs')
+        fs, source = self.nas.folder_mount()
+        self.assertEqual(fs, 'cifs')
+        self.assertEqual(source, '//127.0.0.1/Central/DJI Flight logs', 'spaces are written \\040 in mountinfo')
+        self.assertEqual(self.nas.server_from(source), '127.0.0.1')
+
+    def test_all_connected(self):
+        write_mountinfo(self.mountinfo, self.data, 'cifs')
+        os.makedirs(os.path.join(self.data, 'archive-folder'))
+        self.report(share=True, server='127.0.0.1', handled=0)
+        s = self.nas.status(flight_count=7)
+        self.assertEqual(s['kind'], 'share')
+        self.assertTrue(s['ok'], s)
+        self.assertEqual([c['ok'] for c in s['checks']], [True, True, True, True])
+        self.assertIn('7 flights', self.check(s, 'readable')['text'])
+        self.assertIn('Connected', s['summary'])
+
+    def test_container_sees_the_empty_folder(self):
+        # The NAS was off when the server started: the container sees the
+        # folder underneath the share, which is empty.
+        write_mountinfo(self.mountinfo, self.data, 'ext4', '/dev/sda1')
+        self.report(share=True, server='127.0.0.1')
+        s = self.nas.status()
+        self.assertEqual(s['kind'], 'share', 'the helper said it is a share')
+        self.assertFalse(s['ok'])
+        self.assertFalse(self.check(s, 'connected')['ok'])
+        self.assertFalse(self.check(s, 'readable')['ok'])
+        self.assertIn('empty', self.check(s, 'readable')['text'])
+        self.assertTrue(self.check(s, 'reachable')['ok'], 'the address comes from the helper')
+        self.assertIn('Reconnect now', s['summary'])
+
+    def test_nas_not_answering(self):
+        write_mountinfo(self.mountinfo, self.data, 'cifs')
+        os.makedirs(os.path.join(self.data, 'archive-folder'))
+        self.report(share=True, server='127.0.0.1')
+        old = self.nas.NAS_PORT
+        self.nas.NAS_PORT = free_port()   # nothing listens there
+        try:
+            s = self.nas.status()
+        finally:
+            self.nas.NAS_PORT = old
+        self.assertFalse(self.check(s, 'reachable')['ok'])
+        self.assertIn('switched on', self.check(s, 'reachable')['text'])
+
+    def test_logs_in_a_plain_folder(self):
+        write_mountinfo(self.mountinfo, self.data, 'zfs', 'tank/dji')
+        os.makedirs(os.path.join(self.data, 'archive-folder'))
+        s = self.nas.status(flight_count=2)
+        self.assertEqual(s['kind'], 'folder')
+        self.assertEqual([c['id'] for c in s['checks']], ['readable'], 'no NAS checks for a plain folder')
+        self.assertTrue(s['ok'])
+        self.assertIn('not a NAS share', s['summary'])
+
+    def test_helper_not_running(self):
+        write_mountinfo(self.mountinfo, self.data, 'cifs')
+        os.makedirs(os.path.join(self.data, 'archive-folder'))
+        self.report(share=True, server='127.0.0.1', at=time.time() - 3600)
+        s = self.nas.status()
+        self.assertFalse(self.check(s, 'helper')['ok'])
+        self.assertIn('run the update', self.check(s, 'helper')['text'])
+        self.assertEqual(s['message'], '', 'an hour-old report is not shown')
+
+    def test_reconnect_request(self):
+        write_mountinfo(self.mountinfo, self.data, 'ext4', '/dev/sda1')
+        self.report(share=True, server='127.0.0.1', handled=0)
+        asked = self.nas.request_reconnect(now=1000)
+        self.assertEqual(self.nas.request_reconnect(now=1005), asked, 'pressing twice quickly asks once')
+        self.report(share=True, server='127.0.0.1', handled=0)
+        self.assertTrue(self.nas.status()['pending'])
+        self.assertIn('Asked the Proxmox server', self.nas.status()['summary'])
+        self.report(share=True, server='127.0.0.1', handled=asked,
+                    action='Restarted the map, so it sees the NAS share again.')
+        s = self.nas.status()
+        self.assertFalse(s['pending'], 'the helper handled it')
+        self.assertIn('Restarted the map', s['message'])
+
+    def test_read_that_hangs_is_given_up(self):
+        old = self.nas._list
+        self.nas._list = lambda path, box: time.sleep(1.5)   # a NAS that doesn't answer
+        try:
+            ok, why = self.nas.readable(wait=0.2)
+            self.assertFalse(ok)
+            self.assertIn("didn't answer", why)
+            ok, why = self.nas.readable(wait=0.2)
+            self.assertIn('earlier read', why, 'no second read while one is stuck')
+        finally:
+            self.nas._list = old
+            time.sleep(1.5)
+
+
+class LiveNas(unittest.TestCase):
+    """/api/nas and /api/nas/reconnect on the real server."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = tempfile.mkdtemp(prefix='flightmap-nas-live-')
+        cls.expect = make_archive(os.path.join(cls.tmp, 'archive'))
+        cls.state = os.path.join(cls.tmp, 'state')
+        os.makedirs(cls.state)
+        cls.mountinfo = os.path.join(cls.tmp, 'mountinfo')
+        write_mountinfo(cls.mountinfo, os.path.join(cls.tmp, 'archive'), 'cifs')
+        with open(os.path.join(cls.state, 'nas-host.json'), 'w', encoding='utf-8') as fh:
+            json.dump({'at': time.time(), 'share': True, 'server': '127.0.0.1', 'handled': 0}, fh)
+        cls.srv = LiveServer(os.path.join(cls.tmp, 'archive'), cls.state,
+                             NAS_MOUNTINFO=cls.mountinfo, NAS_PORT=str(free_port()))
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.srv.stop()
+        shutil.rmtree(cls.tmp, ignore_errors=True)
+
+    def test_status(self):
+        s = self.srv.json('/api/nas')
+        self.assertEqual(s['kind'], 'share')
+        ids = [c['id'] for c in s['checks']]
+        self.assertEqual(ids, ['reachable', 'connected', 'readable', 'helper'])
+        self.assertIn(f"{self.expect['flights']} flights", next(c for c in s['checks'] if c['id'] == 'readable')['text'])
+
+    def test_reconnect(self):
+        self.assertEqual(self.srv.request('/api/nas/reconnect', 'POST')[0], 403,
+                         'only the settings page itself may ask')
+        status, _, body = self.srv.request('/api/nas/reconnect', 'POST', headers={'X-Requested-With': 'flightmap'})
+        self.assertEqual(status, 200)
+        self.assertTrue(json.loads(body)['requested'])
+        self.assertTrue(os.path.exists(os.path.join(self.state, 'nas-request.json')))
+        self.assertTrue(self.srv.json('/api/nas')['pending'])
 
 
 if __name__ == '__main__':

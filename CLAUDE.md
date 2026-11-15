@@ -73,7 +73,7 @@ another third-party library is ever bundled, add its notice there.
 | `app/flightmap/` | One module per job: `config` (env + paths), `flightlogs` (read one log), `library` (all flights), `settings`, `plans`, `auth` (login), `azure` / `google` (key-hiding proxies), `upstream` (shared connection pool), `places` (OpenStreetMap places). Modules read the environment at import, so tests set env vars first and re-import. |
 | `app/version.json` | Version number + "what's new" notes. The page compares it with GitHub to show the update notice. |
 | `app/static/` | Classic scripts sharing globals, loaded in this order by `index.html`: `common.js` (helpers), `updates.js`, `maps.js` (providers/layers), `app.js` (state, formatting, map, icons), `layers.js`, `places.js` (shops/schools/parks layer), `overview.js` (sidebar + all flights), `flight.js` (open flight + replay), `update-notice.js`, `main.js` (refresh + start), `planner.js`. Each file wires its own buttons at the bottom. Also `settings.*`, `login.html` (self-contained), `style.css`, `vendor/leaflet` (1.9.4). |
-| `deploy/` | `easy-install.sh` (host, the one-command install that runs the others), `setup-truenas-mount.sh`, `create-ct.sh` (host), `install.sh` (in container), `update-ct.sh` + `restore-ct.sh` + `ct-backup.sh` (host), `set-login.sh` (container). |
+| `deploy/` | `easy-install.sh` (host, the one-command install that runs the others), `nas-watch.sh` (host, every minute, reconnects the NAS) + `nas-view.sh`, `setup-truenas-mount.sh`, `create-ct.sh` (host), `install.sh` (in container), `update-ct.sh` + `restore-ct.sh` + `ct-backup.sh` (host), `set-login.sh` (container). |
 | `tests/` | `run-all.sh` runs everything (privacy, syntax + ruff/shellcheck when installed, server, browser, update scripts). See `tests/README.md`. |
 
 Inside the container: settings in `/var/lib/dji-flightmap/settings.json`
@@ -243,5 +243,23 @@ owner confirms it works**, release it with a tag (`git tag -a vX.Y.Z` +
   an existing `dji-flightmap` container means "offer an update". The manual
   README steps also check out the newest tag (a plain clone is main = test).
   Tests: `tests/easy-install.test.sh` (pretend origin repo + fake pct/pvesm/pvesh).
+- **NAS reconnect** (4.3.0): the container can't mount (unprivileged), and a
+  container started while the host's share was missing keeps the EMPTY folder
+  underneath its bind mount even after the host remounts (common after a
+  power cut: Proxmox boots before TrueNAS). So: `flightmap/nas.py` only
+  checks (mountinfo fstype of DATA_DIR = cifs?, TCP 445 to the NAS, listdir
+  with an 8 s timeout in a thread) for `/api/nas`; the host's
+  `deploy/nas-watch.sh` (dji-flightmap-nas.timer, every minute, installed by
+  `install_nas_watch` in ct-backup.sh from update-ct.sh/create-ct.sh)
+  repairs: NAS not answering = leave the old mount alone; host share
+  unreadable = `umount -l` + `mount`; container not seeing it = `pct reboot`
+  (max every 15 min, or at once for a "Reconnect now" request). They talk
+  through files in STATE_DIR: the page writes `nas-request.json`, the host
+  writes `nas-host.json` (via `pct exec ... sh -c 'cat > ...'`) and keeps its
+  own memory in /var/lib/dji-flightmap-nas/state. `nas-view.sh` is piped into
+  the container with `pct exec ... bash -s`, so it works whatever version is
+  installed there. Never restart for an empty share (a new install), and skip
+  while update/restore/create/easy-install runs. Tests: NasRules/LiveNas,
+  `tests/nas-watch.test.sh`, the settings-page part of browser.test.js.
 - Old installs had an `update-ct.sh` that could not download its own
   replacement; the current one does `git pull` and restarts itself.

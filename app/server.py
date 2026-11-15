@@ -24,6 +24,7 @@ rest lives in the flightmap/ folder, one file per job:
   gplaces.py     places from Google (with the Google map), with a daily limit
   upstream.py    reused connections to Azure and Google
   https.py       HTTPS (the padlock), set up by deploy/set-https.sh
+  nas.py         checks the connection to the flight logs on the NAS
 
 Settings are read from environment variables (see deploy/dji-flightmap.env):
   DATA_DIR      folder that holds the flight logs     (default: /srv/dji-logs)
@@ -61,6 +62,8 @@ Web addresses it answers:
   /api/places?x0=&x1=&y0=&y1=
                         places (shops, schools, parks...) in those map
                         squares, from OpenStreetMap (see flightmap/places.py)
+  /api/nas              is the NAS reachable, its share connected, the logs readable?
+  /api/nas/reconnect    POST: ask the Proxmox server to reconnect the NAS share now
   /api/plans            GET: saved flight plans
   /api/plans/<id>       PUT: save a plan (id "new" makes one), DELETE: remove it
   /flightmap-ca.crt     the private HTTPS certificate, to import on a device
@@ -97,7 +100,7 @@ from flightmap.auth import (COOKIE_NAME, PUBLIC_PATHS, hash_password, make_sessi
 from flightmap.azure import AZURE_TILESETS, azure_request, html_to_text
 from flightmap.config import (APP_VERSION, AUTH_ENABLED, AUTH_PASSWORD_HASH, AUTH_USER, DATA_DIR, HOST, PORT,
                               STATIC_DIR, VERSION_INFO, log)
-from flightmap import google, https
+from flightmap import google, https, nas
 from flightmap.google import GOOGLE_SETS, google_credits, google_tile
 from flightmap.gplaces import search as google_places_search
 from flightmap.library import FlightLibrary
@@ -244,6 +247,8 @@ class Handler(SimpleHTTPRequestHandler):
             return self.google_places()
         if path == "/api/places":
             return self.places()
+        if path == "/api/nas":
+            return self.send_json(nas.status(len(LIBRARY.listing()["flights"])))
         if path == "/api/plans":
             with PLANS_LOCK:
                 plans = [dict(p, id=k) for k, p in load_plans().items()]
@@ -509,6 +514,14 @@ class Handler(SimpleHTTPRequestHandler):
             https.set_state("working", "Making a new certificate…", mode=current_settings()["httpsMode"])
             threading.Thread(target=LISTENERS.apply, kwargs={"delay": 1, "force": True}, daemon=True).start()
             return self.send_json(self.settings_payload())
+        if path == "/api/nas/reconnect":
+            # "Reconnect now" on the settings page: a note for the Proxmox
+            # server's helper (deploy/nas-watch.sh), which checks every minute.
+            if not self.allowed(path) or not self.from_our_page():
+                return
+            asked = nas.request_reconnect()
+            log(f"{self.client_address[0]} asked to reconnect the NAS")
+            return self.send_json({"requested": True, "at": asked})
         if path == "/api/rescan":
             if not self.allowed(path) or not self.from_our_page():
                 return

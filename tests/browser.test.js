@@ -519,6 +519,47 @@ function fakeInternet(ctx, { github = null } = {}) {
     page = await ctx.newPage();
     await page.goto(`${app.base}/settings.html`, { waitUntil: 'networkidle' });
     await page.waitForTimeout(500);
+    // The NAS card is checked when the page opens. Here the logs are a plain
+    // folder, so there is nothing to reconnect.
+    await page.waitForSelector('#nas-checks li', { timeout: 15000 }).catch(() => {});
+    check('the NAS card checks the logs when the page opens', (await page.textContent('#nas-summary')).includes('can be read')
+      && await page.isHidden('#nas-reconnect'), await page.textContent('#nas-summary'));
+    {
+      // A lost NAS share (the server's answers are pretend ones here).
+      const nctx = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+      await fakeInternet(nctx);
+      let pending = false, fixed = false, asked = 0, fromOurPage = false;
+      const nasStatus = () => ({
+        kind: 'share', ok: fixed && !pending, pending,
+        summary: pending ? '⏳ Asked the Proxmox server to reconnect.' : fixed ? '✓ Connected: the flight logs on the NAS can be read.'
+          : "⚠️ The map can't reach its flight logs on the NAS.",
+        checks: [{ id: 'reachable', ok: true, text: 'The NAS (192.168.1.10) answers on the network' },
+          { id: 'connected', ok: fixed, text: fixed ? 'The NAS share is connected to the map' : "The NAS share isn't connected to the map" },
+          { id: 'readable', ok: fixed, text: fixed ? 'The flight logs can be read' : "The flight logs can't be read: the folder is empty" },
+          { id: 'helper', ok: true, text: 'Automatic reconnect is on' }],
+        message: fixed ? 'Restarted the map, so it sees the NAS share again.' : '',
+      });
+      await nctx.route('**/api/nas', (route) => route.fulfill({ contentType: 'application/json', body: JSON.stringify(nasStatus()) }));
+      await nctx.route('**/api/nas/reconnect', (route) => {
+        asked++;
+        fromOurPage = route.request().headers()['x-requested-with'] === 'flightmap';
+        pending = true;
+        setTimeout(() => { pending = false; fixed = true; }, 2000);
+        return route.fulfill({ contentType: 'application/json', body: '{"requested":true}' });
+      });
+      const npage = await nctx.newPage();
+      await npage.goto(`${app.base}/settings.html`, { waitUntil: 'networkidle' });
+      await npage.waitForSelector('#nas-checks li');
+      check('a lost NAS share is shown, with a Reconnect now button',
+        (await npage.textContent('#nas-summary')).includes("can't reach") && await npage.isVisible('#nas-reconnect')
+        && (await npage.locator('#nas-checks li.warn').count()) === 2);
+      await npage.click('#nas-reconnect');
+      await npage.waitForFunction(() => document.querySelector('#nas-summary').textContent.includes('Connected'), null, { timeout: 20000 }).catch(() => {});
+      check('Reconnect now asks the server once, from our page, then shows it fixed',
+        asked === 1 && fromOurPage && (await npage.textContent('#nas-summary')).includes('Connected'), { asked, fromOurPage });
+      check('  ...and what the Proxmox server did', (await npage.textContent('#nas-message')).includes('Restarted the map'));
+      await nctx.close();
+    }
     check('the HTTPS box says it is off, with the way back', (await page.textContent('#https-status')).includes('plain http')
       && (await page.textContent('#https-cmd')).includes('set-https.sh --off') && await page.isHidden('#https-private'));
     await page.click('label:has([name=httpsMode][value=letsencrypt])');

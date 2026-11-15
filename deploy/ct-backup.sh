@@ -151,3 +151,40 @@ prune_backups() {
   local ctid=$1
   ls -1dt "$BACKUP_ROOT"/ct"${ctid}"_* 2>/dev/null | tail -n +"$((KEEP_BACKUPS + 1))" | xargs -r rm -rf
 }
+
+# The NAS helper: deploy/nas-watch.sh runs every minute, so the map
+# reconnects to the NAS by itself after the NAS restarts (and the settings
+# page can show the connection). Set up or refreshed by create-ct.sh and
+# update-ct.sh. (Research: "systemd timer".)
+install_nas_watch() {
+  local dir=${SYSTEMD_DIR:-/etc/systemd/system}
+  cat > "$dir/dji-flightmap-nas.service" <<UNIT
+[Unit]
+Description=Keep DJI Flight Map connected to the NAS (reconnects after the NAS restarts)
+After=network-online.target remote-fs.target pve-guests.service
+Wants=network-online.target
+ConditionPathExists=$SRC_DIR/deploy/nas-watch.sh
+
+[Service]
+Type=oneshot
+ExecStart=/bin/bash $SRC_DIR/deploy/nas-watch.sh
+UNIT
+  cat > "$dir/dji-flightmap-nas.timer" <<'UNIT'
+[Unit]
+Description=Check the DJI Flight Map NAS connection every minute
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=1min
+AccuracySec=10s
+
+[Install]
+WantedBy=timers.target
+UNIT
+  systemctl daemon-reload
+  if systemctl enable --now dji-flightmap-nas.timer >/dev/null 2>&1; then
+    echo "    automatic NAS reconnect is on (the connection is checked every minute)"
+  else
+    echo "    WARNING: the automatic NAS reconnect couldn't be turned on." >&2
+  fi
+}

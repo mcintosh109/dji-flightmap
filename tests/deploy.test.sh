@@ -34,6 +34,9 @@ LOGS="$WORK/logs"
 mkdir -p "$FAKE" "$LOGS"
 PORT=18080
 PASSED=0; FAILED=0
+# The NAS helper's timer is written here instead of /etc/systemd/system.
+export SYSTEMD_DIR="$WORK/systemd"
+mkdir -p "$SYSTEMD_DIR"
 check() {   # check "name" command...
   local name=$1; shift
   if "$@" >/dev/null 2>&1; then echo "  PASS  $name"; PASSED=$((PASSED + 1))
@@ -121,6 +124,8 @@ check "saved flight plan kept" plan_kept
 check "login kept" login_kept
 check "still signed in" still_signed_in
 check "backup made on the host" ls /root/dji-flightmap-backups/ct999_*/settings.json
+check "the automatic NAS reconnect is set up (every minute)" grep -q "OnUnitActiveSec=1min" "$SYSTEMD_DIR/dji-flightmap-nas.timer"
+check "  ...running this project's nas-watch.sh" grep -q "deploy/nas-watch.sh" "$SYSTEMD_DIR/dji-flightmap-nas.service"
 check "flight plans are in the backup" ls /root/dji-flightmap-backups/ct999_*/plans.json
 
 echo "Update whose installer wipes the settings"

@@ -331,6 +331,66 @@ async function showUpdates(force = false) {
     ? `<h3>${esc(title)}</h3><ul class="notes">${notes.map((n) => `<li>${esc(n)}</li>`).join('')}</ul>` : '';
 }
 
+// ---------- the NAS connection ----------
+// The checks run on the server (api/nas): does the NAS answer, is its share
+// connected, can the logs be read, is the Proxmox server's helper running.
+const NAS_POLL_MS = 5000;
+const NAS_WAIT_MS = 4 * 60 * 1000;
+
+function renderNas(n) {
+  $('#nas-summary').textContent = n.summary;
+  $('#nas-summary').className = `help ${n.ok ? 'ok' : n.pending ? '' : 'warn'}`;
+  $('#nas-checks').innerHTML = n.checks.map((c) => {
+    const [mark, cls] = c.ok === true ? ['✓', 'ok'] : c.ok === false ? ['✗', 'warn'] : ['–', 'muted'];
+    return `<li class="${cls}"><span aria-hidden="true">${mark}</span> ${esc(c.text)}</li>`;
+  }).join('');
+  $('#nas-message').textContent = n.message ? `The Proxmox server says: ${n.message}` : '';
+  $('#nas-message').classList.toggle('hidden', !n.message);
+  const share = n.kind === 'share';
+  $('#nas-reconnect').classList.toggle('hidden', !share);
+  for (const el of $$('.nas-share-only')) el.classList.toggle('hidden', !share);
+}
+
+async function checkNas() {
+  try {
+    const res = await fetch('api/nas', { cache: 'no-store' });
+    if (!res.ok) throw new Error(`server answered ${res.status}`);
+    const n = await res.json();
+    renderNas(n);
+    return n;
+  } catch {
+    $('#nas-summary').textContent = "The map isn't answering right now (it may be restarting to reconnect)…";
+    $('#nas-summary').className = 'help';
+    return null;
+  }
+}
+
+// "Reconnect now": leave a note for the Proxmox server, then keep checking
+// until it has been handled (it checks every minute; the map may restart).
+async function reconnectNas() {
+  const btn = $('#nas-reconnect');
+  btn.disabled = true;
+  try {
+    const res = await fetch('api/nas/reconnect', { method: 'POST', headers: { 'X-Requested-With': 'flightmap' } });
+    if (!res.ok) throw new Error(`server answered ${res.status}`);
+    $('#nas-summary').textContent = '⏳ Asked the Proxmox server to reconnect…';
+    $('#nas-summary').className = 'help';
+    const started = Date.now();
+    while (Date.now() - started < NAS_WAIT_MS) {
+      await new Promise((r) => setTimeout(r, NAS_POLL_MS));
+      const n = await checkNas();
+      if (n && !n.pending) return;
+    }
+    $('#nas-summary').textContent = "⚠️ The Proxmox server hasn't answered yet. Is the automatic reconnect set up? (See the list above.)";
+    $('#nas-summary').className = 'help warn';
+  } catch (err) {
+    $('#nas-summary').textContent = `Couldn't ask for a reconnect (${err.message}).`;
+    $('#nas-summary').className = 'help warn';
+  } finally {
+    btn.disabled = false;
+  }
+}
+
 // ---------- start ----------
 async function start() {
   try {
@@ -368,6 +428,9 @@ async function start() {
     if (res.ok) followHttps(httpsTarget(saved, (await res.json()).info.https));
   });
   if (location.hash === '#https') $('#https').scrollIntoView();
+  $('#nas-check').addEventListener('click', checkNas);
+  $('#nas-reconnect').addEventListener('click', reconnectNas);
+  checkNas();   // check the NAS every time the settings page opens
   $('#upd-check').addEventListener('click', () => showUpdates(true));
   showUpdates(true);   // always ask GitHub when the settings page opens
   if (location.hash === '#updates') $('#updates').scrollIntoView();

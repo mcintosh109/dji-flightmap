@@ -176,4 +176,10 @@ if [[ "${want_login,,}" != n* ]]; then
 fi
 
 echo
+echo "==> Turning on the automatic NAS reconnect"
+# shellcheck source=deploy/ct-backup.sh
+source "$SRC_DIR/deploy/ct-backup.sh"
+install_nas_watch
+
+echo
 echo "Container $CTID is ready."
