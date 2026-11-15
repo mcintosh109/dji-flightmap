@@ -147,6 +147,9 @@ async function startFakeOverpass() {
         { type: 'way', id: 2, center: { lat: lat + 0.0004, lon }, tags: { name: 'Hillside School', amenity: 'school' } },
         { type: 'node', id: 3, lat, lon: lon + 0.0006, tags: { name: 'County Heliport', aeroway: 'heliport' } },
         { type: 'node', id: 4, lat: lat - 0.0004, lon, tags: { name: '<img src=x onerror="window.HACKED=3">Evil shop', shop: 'yes' } },
+        // Two places 13 m apart: their names overlap at zoom 17, not at zoom 19.
+        { type: 'node', id: 5, lat: lat - 0.0008, lon, tags: { name: 'Corner Store', shop: 'convenience' } },
+        { type: 'node', id: 6, lat: lat - 0.00092, lon, tags: { name: 'Town Clinic', amenity: 'clinic' } },
       ] }));
     });
   }).listen(port, '127.0.0.1');
@@ -280,7 +283,25 @@ function fakeInternet(ctx, { github = null } = {}) {
     await page.waitForTimeout(1500);
     const placeCount = await page.locator('.place-icon').count();
     check('zoomed in: places are drawn', placeCount >= 4, `${placeCount} places, status: ${await page.textContent('#places-status')}`);
-    check('names show under the icons', await page.isVisible('.place-icon .nm >> text=Corner Cafe'));
+    check('names show under the icons', await page.isVisible('.place-icon .nm >> text=Hillside School'));
+    // Corner Cafe's name runs into County Heliport's: the heliport (more important for a pilot) keeps it.
+    check('a cafe name that would cover the heliport name is hidden', await page.isHidden('.place-icon .nm >> text=Corner Cafe'));
+    const nameShown = (n) => page.evaluate((text) => {
+      const el = [...document.querySelectorAll('.place-icon .nm')].find((e) => e.textContent === text);
+      return !!el && getComputedStyle(el).visibility !== 'hidden';
+    }, n);
+    check('overlapping names: one is hidden, the clinic keeps its name',
+      (await nameShown('Town Clinic')) && !(await nameShown('Corner Store')));
+    // Zoom in on the two close places (where they are depends on the fake's answer).
+    await page.evaluate(() => {
+      const el = [...document.querySelectorAll('.place-icon')].find((e) => e.textContent.includes('Corner Store'));
+      const r = el.getBoundingClientRect(), m = map.getContainer().getBoundingClientRect();
+      map.setView(map.containerPointToLatLng([r.left + r.width / 2 - m.left, r.top + r.height / 2 - m.top]), 19);
+    });
+    await page.waitForTimeout(1500);
+    check('zooming in shows the hidden name again', await nameShown('Corner Store') && await nameShown('Town Clinic'));
+    await page.evaluate(() => map.setView([40.7812, -73.9665], 17));
+    await page.waitForTimeout(800);
     check('OpenStreetMap is credited', (await page.textContent('#map .leaflet-control-attribution')).includes('OpenStreetMap'));
     check('a name with code in it does not run', !(await page.evaluate(() => window.HACKED)));
     await page.locator('.place-air').first().click();

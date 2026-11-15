@@ -157,10 +157,40 @@ const Places = (() => {
       if (markers.has(p.id)) continue;
       const marker = L.marker([p.lat, p.lon], { icon: icon(p), pane: 'places', title: p.name, keyboard: false })
         .bindPopup(() => popup(p), { className: 'place-popup', maxWidth: 260 });
+      marker.place = p;
       markers.set(p.id, marker);
       group.addLayer(marker);
     }
+    requestAnimationFrame(hideOverlappingNames);
     return count;
+  }
+
+  // Names that would cover another name or another place's icon are hidden
+  // (zoom in and they come back). The most useful kinds keep their names
+  // first, e.g. a clinic before an office. Measured on screen in one go, then
+  // changed in one go, so the browser only lays the page out once.
+  const NAME_ORDER = ['air', 'health', 'car', 'food', 'shop', 'school', 'public', 'park', 'stay', 'sight',
+    'transport', 'worship', 'fun', 'work'];
+  function hideOverlappingNames() {
+    if (!map.getContainer().classList.contains('places-names')) return;
+    const rank = (m) => { const i = NAME_ORDER.indexOf(m.place?.kind); return i < 0 ? 99 : i; };
+    const items = [...markers.values()].map((m) => {
+      const el = m.getElement();
+      const pin = el?.querySelector('.pin');
+      const name = el?.querySelector('.nm');
+      return pin && name ? { m, name, pin: pin.getBoundingClientRect(), box: name.getBoundingClientRect() } : null;
+    }).filter(Boolean).sort((a, b) => rank(a.m) - rank(b.m));
+    // gap > 0: names need that much space between them (touching names read
+    // as one); gap < 0: a name may touch an icon by a pixel or two.
+    const hit = (a, b, gap) => a.left - gap < b.right && b.left - gap < a.right
+      && a.top - gap < b.bottom && b.top - gap < a.bottom;
+    const kept = [];
+    for (const it of items) {
+      const covers = kept.some((k) => hit(it.box, k, 6)) || items.some((o) => o !== it && hit(it.box, o.pin, -2));
+      it.hide = covers;
+      if (!covers) kept.push(it.box);
+    }
+    for (const it of items) it.name.classList.toggle('nm-off', it.hide);
   }
 
   // ---------- Google: one search for the middle of the screen ----------
@@ -275,7 +305,8 @@ const Places = (() => {
   box.checked = on;
   box.addEventListener('change', () => setOn(box.checked));
   map.on('moveend', update);
+  map.on('zoomend', () => requestAnimationFrame(hideOverlappingNames));
   update();
 
-  return { setOn, isOn: () => on, status: () => status, update, KINDS };
+  return { setOn, isOn: () => on, status: () => status, update, hideOverlappingNames, KINDS };
 })();
