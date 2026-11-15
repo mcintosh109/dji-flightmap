@@ -554,7 +554,8 @@ cd /root/dji-flightmap && bash deploy/backup-ct.sh
 
 If TrueNAS isn't connected when a backup runs, it says so and keeps the
 backup on the Proxmox host only (it never writes into the empty local folder).
-Up to 10 backups are kept on the host and 30 on TrueNAS.
+Up to 10 backups are kept on the host and 10 on TrueNAS; older ones are
+deleted automatically.
 
 ### Restoring settings (for example after rebuilding the container)
 

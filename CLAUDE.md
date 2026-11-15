@@ -126,7 +126,7 @@ owner confirms it works**, release it with a tag (`git tag -a vX.Y.Z` +
   deletes it. Tests use `AZURE_MAPS_URL` to point the server at a fake Azure.
 - **Backups** (2.2.0): host `/root/dji-flightmap-backups` (10 kept) and, if
   connected, TrueNAS `flightmap-backups` mounted read-write at
-  `/mnt/dji-flightmap-backups` (30 kept). It sits NEXT TO `DJI Flight logs`,
+  `/mnt/dji-flightmap-backups` (10 kept, the owner's choice in 4.1.1). It sits NEXT TO `DJI Flight logs`,
   not inside it, because the Pi dock has write access inside. `copy_offsite`
   refuses to write if the folder isn't a mount point (TrueNAS down). Daily
   `dji-flightmap-backup.timer` on the host runs `deploy/backup-ct.sh`.

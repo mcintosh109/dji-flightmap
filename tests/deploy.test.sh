@@ -164,6 +164,14 @@ rm -rf /root/dji-flightmap-backups /var/lib/dji-flightmap/plans.json   # server 
 echo y | OFFSITE_DIR="$OFF" OFFSITE_NO_MOUNT_CHECK=1 CTID=999 bash "$ROOT/deploy/restore-ct.sh" >"$LOGS/h.log" 2>&1
 check "restore from TrueNAS when this server's backups are gone" grep -q "Done. The map is working" "$LOGS/h.log"
 check "flight plans restored from TrueNAS" cmp -s "$WORK/plans-before.json" /var/lib/dji-flightmap/plans.json
+# 12 older backups on TrueNAS: after the next one, only the newest 10 are left.
+for n in $(seq -w 1 12); do
+  mkdir -p "$OFF/ct999_2020-01-${n}_00-00-00"
+  touch -d "2020-01-$n" "$OFF/ct999_2020-01-${n}_00-00-00"
+done
+OFFSITE_DIR="$OFF" OFFSITE_NO_MOUNT_CHECK=1 CTID=999 bash "$ROOT/deploy/backup-ct.sh" >"$LOGS/i.log" 2>&1
+check "TrueNAS keeps the newest 10 backups" [ "$(ls -1d "$OFF"/ct999_* | wc -l)" -eq 10 ]
+check "  ...the newest is kept, the oldest are gone" bash -c "! ls -d '$OFF'/ct999_2020-01-01_* 2>/dev/null && ls -d '$OFF'/ct999_20[2-9][1-9]-* >/dev/null"
 
 echo "Released versions (a local git repository stands in for GitHub)"
 SEED="$WORK/seed"

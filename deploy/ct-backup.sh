@@ -27,9 +27,9 @@ CONFIG_FILES=(
 # Backups are kept on the Proxmox host, readable by root only.
 BACKUP_ROOT="${BACKUP_ROOT:-/root/dji-flightmap-backups}"
 KEEP_BACKUPS="${KEEP_BACKUPS:-10}"
-# Copies on TrueNAS (connected by setup-backup-share.sh), the newest 30.
+# Copies on TrueNAS (connected by setup-backup-share.sh), the newest 10.
 OFFSITE_DIR="${OFFSITE_DIR:-/mnt/dji-flightmap-backups}"
-KEEP_OFFSITE="${KEEP_OFFSITE:-30}"
+KEEP_OFFSITE="${KEEP_OFFSITE:-10}"
 
 # Is the TrueNAS backup folder connected and writable? If TrueNAS isn't
 # connected, the folder is just an empty local one: writing there would fill
