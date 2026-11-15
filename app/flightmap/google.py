@@ -52,6 +52,13 @@ GOOGLE_SETS = {
     "terrain": {"mapType": "terrain", "layerTypes": ["layerRoadmap"]},
     "dark": {"mapType": "roadmap", "styles": DARK_STYLE},
 }
+# The same maps WITHOUT Google's own place labels and icons ("<set>-nopoi").
+# Used while the Places layer shows Google's places as pins, so each place
+# shows once. Google may refuse this style on some kinds of map; then the
+# normal pictures are used (see _ask).
+NO_POI = [{"featureType": "poi", "elementType": "labels", "stylers": [{"visibility": "off"}]}]
+for _name in ("roadmap", "hybrid", "terrain", "dark"):
+    GOOGLE_SETS[f"{_name}-nopoi"] = {**GOOGLE_SETS[_name], "styles": GOOGLE_SETS[_name].get("styles", []) + NO_POI}
 
 _sessions = {}                    # (set, key) -> (session code, valid until)
 _refused = {}                     # (set, key) -> (ask again after, status): Google said no
@@ -88,6 +95,13 @@ def _session(tileset, key, fresh=False):
             "POST", "/v1/createSession?" + urlencode({"key": key}, quote_via=quote),
             body=body, headers={"Content-Type": "application/json"})
         if status != 200:
+            if tileset.endswith("-nopoi") and status == 400:
+                # Google won't hide its places on this kind of map: use the
+                # normal pictures, and don't ask again for an hour.
+                log(f"Google Maps: hiding Google's own places is not possible on the {tileset[:-6]} map "
+                    f"({_error_text(answer, key)}); they stay in the pictures there.")
+                _refused[(tileset, key)] = (time.time() + 3600, status)
+                raise GoogleError(status)
             log(f"Google Maps: making a {tileset} session failed ({status}): {_error_text(answer, key)}. "
                 "Check in Google Cloud that the Map Tiles API is enabled for this key's project, "
                 f"billing is set up, and the key may use it. Trying again in {RETRY_AFTER} s.")
@@ -129,6 +143,8 @@ def _ask(tileset, path, params):
                 log(f"Google Maps answered {status} for {path}: {_error_text(body, key)}")
             break
     except GoogleError as err:
+        if tileset.endswith("-nopoi") and err.status == 400:
+            return _ask(tileset[:-6], path, params)   # the normal pictures instead
         status = err.status
     except (OSError, ValueError, KeyError) as err:
         log(f"Could not reach Google Maps: {err}")

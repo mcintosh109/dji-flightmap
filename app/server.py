@@ -283,7 +283,7 @@ class Handler(SimpleHTTPRequestHandler):
 
     # ---- Google Maps through this server -----------------------------------
     def google_tile(self, path):
-        m = re.fullmatch(r"/tiles/google/([a-z]+)/(\d{1,2})/(\d{1,7})/(\d{1,7})\.png", path)
+        m = re.fullmatch(r"/tiles/google/([a-z-]+)/(\d{1,2})/(\d{1,7})/(\d{1,7})\.png", path)
         if not m or m.group(1) not in GOOGLE_SETS:
             return self.send_json({"error": "unknown map picture"}, 400)
         tileset, z, x, y = m.group(1), int(m.group(2)), int(m.group(3)), int(m.group(4))

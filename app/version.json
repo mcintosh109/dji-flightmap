@@ -1,13 +1,13 @@
 {
-  "version": "3.0.6",
+  "version": "3.0.7",
   "released": "2026-11-14",
   "repo": "mcintosh109/dji-flightmap",
   "notes": [
+    "Places no longer show twice with Google Maps: while Places shows Google's places as pins, Google's own place labels are left out of the map pictures",
     "Place names no longer overlap: a name that would cover another one is hidden until you zoom in (the most useful places, like clinics and gas stations, keep their names first)",
     "New: Google Maps as a map provider (road, dark, satellite, satellite + roads, terrain). Your key stays on the map server, like the Azure key",
     "With Google Maps, Places now come from Google, so businesses Google's map pictures leave out (stores, gas stations, doctors) show up too",
     "Google places have a daily limit (Settings \u2192 Map, 150 by default) so you stay inside Google's free amount",
-    "Needs two APIs on your Google key: Map Tiles API and Places API (New) (see the README)",
-    "New check for Google Maps problems: python3 /opt/dji-flightmap/app/server.py --check-google"
+    "Needs two APIs on your Google key: Map Tiles API and Places API (New) (see the README)"
   ]
 }

@@ -179,6 +179,9 @@ with a coloured icon. Turn it on or off with **Places** in the layers panel
   towards a **daily limit** (Settings → Map, 150 by default, which stays
   inside Google's free monthly amount); the layers panel shows how many are
   used today. When the limit is reached, places come back the next day.
+  While Google's places show as pins, Google's own place labels are left out
+  of the map pictures, so each place shows once (where Google allows that
+  style; otherwise its labels stay).
 - With every other provider, places come from **OpenStreetMap** (research:
   *"OpenStreetMap"*, *"Overpass API"*), the free map made by volunteers. It is very good in
   towns and can be thin in the countryside. If something is missing, anyone

@@ -358,6 +358,18 @@ function fakeInternet(ctx, { github = null } = {}) {
       check('moving a little does not search Google again (it counts)', google.got.searches === searched, `${google.got.searches - searched} more`);
       check('no OpenStreetMap credit while the places are from Google',
         !(await gpage.textContent('#map .leaflet-control-attribution')).includes('OpenStreetMap'));
+      const googleSets = () => gpage.evaluate(() => performance.getEntriesByType('resource')
+        .map((e) => (e.name.match(/\/tiles\/google\/([a-z-]+)\/(\d+)\//) || []).slice(1).join('/')).filter(Boolean));
+      check("with Google's places as pins, the pictures leave Google's own place labels out",
+        (await googleSets()).some((s) => s.startsWith('roadmap-nopoi/17')));
+      await gpage.evaluate(() => performance.clearResourceTimings());
+      await gpage.click('#btn-layers');
+      await gpage.uncheck('#layer-places');
+      await gpage.waitForTimeout(800);
+      check("Places off: Google's own place labels come back", (await googleSets()).some((s) => s === 'roadmap/17'),
+        (await googleSets()).join());
+      await gpage.check('#layer-places');
+      await gpage.keyboard.press('Escape');
       await gpage.click('#btn-layers');
       await gpage.click('.layer-opt[data-layer=satellite]');
       await gpage.waitForTimeout(800);

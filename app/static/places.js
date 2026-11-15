@@ -60,6 +60,20 @@ const Places = (() => {
   let source = '';             // 'osm' or 'google': where the places come from
   let lastSearch = null;       // Google: { center, radius } of the last search
   let credit = false;          // OpenStreetMap credit shown?
+  let limitHit = false;        // Google: today's searches used up
+  let pinsWere = null;         // last answer of googlePinsShown()
+
+  // Are Google's places shown as pins? Then the Google map pictures leave
+  // their own place labels out (maps.js), so each place shows once.
+  function googlePinsShown() {
+    return on && currentSource() === 'google' && !limitHit;
+  }
+  // When that changes, the map pictures must be fetched again.
+  function refreshPictures() {
+    const now = googlePinsShown();
+    if (pinsWere !== null && now !== pinsWere && typeof baseLayer !== 'undefined' && baseLayer?.redraw) baseLayer.redraw();
+    pinsWere = now;
+  }
 
   // Google's places with the Google map (Google's rules: only on a Google
   // map); OpenStreetMap otherwise.
@@ -216,7 +230,11 @@ const Places = (() => {
           ? `Today's limit of ${data.limit ?? ''} Google places searches is used up. Places come back tomorrow (or raise the limit in Settings).`
           : data.off ? 'Google places are turned off in Settings.'
             : `Could not get places from Google${used}. See Troubleshooting in the README.`);
-        if (res.status === 429) lastSearch = { center, radius: Infinity, usage: used };   // don't keep asking today
+        if (res.status === 429) {
+          lastSearch = { center, radius: Infinity, usage: used };   // don't keep asking today
+          limitHit = true;
+          refreshPictures();   // Google's own place labels come back on the map
+        }
         return;
       }
       for (const p of data.places || []) known.set(p.id, p);
@@ -279,6 +297,7 @@ const Places = (() => {
   function update() {
     clearTimeout(timer);
     checkSource();
+    refreshPictures();
     const zoom = map.getZoom();
     map.getContainer().classList.toggle('places-names', zoom >= NAMES_ZOOM);
     if (!on || zoom < MIN_ZOOM) {
@@ -308,5 +327,5 @@ const Places = (() => {
   map.on('zoomend', () => requestAnimationFrame(hideOverlappingNames));
   update();
 
-  return { setOn, isOn: () => on, status: () => status, update, hideOverlappingNames, KINDS };
+  return { setOn, isOn: () => on, status: () => status, update, hideOverlappingNames, googlePinsShown, KINDS };
 })();

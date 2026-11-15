@@ -306,9 +306,22 @@ window.MapStyles = (() => {
     });
   }
 
+  // While the Places layer shows Google's places as pins (zoom 16+), ask for
+  // pictures without Google's own place labels, so each place shows once
+  // (plain satellite pictures have none anyway).
+  const GoogleTiles = L.TileLayer.extend({
+    getTileUrl(coords) {
+      const set = this.options.googleSet;
+      const pins = set !== 'satellite' && this._map && this._map.getZoom() >= 16
+        && typeof Places !== 'undefined' && Places.googlePinsShown();
+      this._url = googleUrl(pins ? `${set}-nopoi` : set);
+      return L.TileLayer.prototype.getTileUrl.call(this, coords);
+    },
+  });
+
   function buildGoogle(style) {
-    const layer = L.tileLayer(googleUrl(style.google),
-      { maxZoom: 22, ...style.opts, googleMaxZoom: style.opts.maxNativeZoom });
+    const layer = new GoogleTiles(googleUrl(style.google),
+      { maxZoom: 22, ...style.opts, googleMaxZoom: style.opts.maxNativeZoom, googleSet: style.google });
     googleCredits(layer, style.google);
     return layer;
   }

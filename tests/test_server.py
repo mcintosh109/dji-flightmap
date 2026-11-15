@@ -703,6 +703,7 @@ class FakeGoogle:
         self.expired = set()    # session codes to refuse ("ran out")
         self.session_status = 200   # set to 404 to refuse making sessions
         self.searches = []      # (field mask, body) of each Places search
+        self.no_styles_on = set()   # map types on which "styles" is refused (like Google may)
         self.cache_control = 'public, max-age=3600'
         outer = self
 
@@ -747,6 +748,9 @@ class FakeGoogle:
                         {'id': 'x', 'displayName': {'text': ''}}]}).encode())
                 if self.bad_key(q):
                     return
+                if body.get('styles') and body.get('mapType') in outer.no_styles_on:
+                    outer.sessions.append(None)
+                    return self.reply(400, b'{"error":{"message":"styles not supported","status":"INVALID_ARGUMENT"}}')
                 if outer.session_status != 200:
                     outer.sessions.append(None)
                     return self.reply(outer.session_status, json.dumps({'error': {
@@ -884,6 +888,23 @@ class LiveGoogleKey(unittest.TestCase):
         self.assertIn('session OK, picture OK', out)
         self.assertIn('roads as a separate layer', out)
         self.assertNotIn(self.KEY, out)
+
+    def test_pictures_without_googles_own_places(self):
+        status, _, body = self.srv.request('/tiles/google/roadmap-nopoi/16/100/100.png')
+        self.assertEqual((status, body), (200, b'\x89PNG google tile'))
+        styles = [b for b in self.google.sessions if b and b['mapType'] == 'roadmap' and b.get('styles')][-1]['styles']
+        self.assertIn({'featureType': 'poi', 'elementType': 'labels', 'stylers': [{'visibility': 'off'}]}, styles)
+
+    def test_refused_style_falls_back_to_normal_pictures(self):
+        self.google.no_styles_on.add('satellite')
+        try:
+            status, _, body = self.srv.request('/tiles/google/hybrid-nopoi/16/101/100.png')
+            self.assertEqual((status, body), (200, b'\x89PNG google tile'))
+            before = len(self.google.sessions)
+            self.assertEqual(self.srv.request('/tiles/google/hybrid-nopoi/16/102/100.png')[0], 200)
+            self.assertEqual(len(self.google.sessions), before, 'the refusal is remembered')
+        finally:
+            self.google.no_styles_on.clear()
 
     def test_google_places(self):
         self.srv.put_settings({'googlePlacesDailyLimit': 150})
