@@ -11,7 +11,8 @@
 #                they also look for undefined or unused names and risky shell
 #   3. server    tests/test_server.py   (Python, no extra installs)
 #   4. browser   tests/browser.test.js  (needs Node.js + Playwright; skipped if missing)
-#   5. deploy    tests/deploy.test.sh   (only on a throw-away machine; see that file)
+#   5. install   tests/easy-install.test.sh (the one-command install, all in a temp folder)
+#   6. deploy    tests/deploy.test.sh   (only on a throw-away machine; see that file)
 # ---------------------------------------------------------------------------
 set -uo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.." || exit 1
@@ -20,10 +21,10 @@ export PYTHONDONTWRITEBYTECODE=1
 part() { echo; echo "==> $1"; }
 fail() { echo; echo "STOPPED: $1 failed. Fix it before pushing."; exit 1; }
 
-part "1/5 Privacy"
+part "1/6 Privacy"
 bash tests/privacy_check.sh || fail "the privacy check"
 
-part "2/5 Syntax"
+part "2/6 Syntax"
 ok=1
 python3 -m py_compile app/server.py app/flightmap/*.py tests/*.py || ok=0
 for f in app/static/*.js tests/*.js; do node --check "$f" || { echo "  bad: $f"; ok=0; }; done
@@ -43,18 +44,21 @@ else
   echo "  SKIP  shellcheck isn't installed (apt install shellcheck)"
 fi
 
-part "3/5 Server"
+part "3/6 Server"
 python3 -m unittest discover -s tests -p 'test_*.py' 2>&1 | tail -4
 [[ ${PIPESTATUS[0]} == 0 ]] || fail "the server tests"
 
-part "4/5 Browser"
+part "4/6 Browser"
 if node -e "require('playwright')" >/dev/null 2>&1; then
   node tests/browser.test.js || fail "the browser tests"
 else
   echo "  SKIP  Playwright isn't installed (npm install playwright && npx playwright install chromium)"
 fi
 
-part "5/5 Update scripts"
+part "5/6 Easy install"
+bash tests/easy-install.test.sh || fail "the easy-install tests"
+
+part "6/6 Update scripts"
 bash tests/deploy.test.sh || fail "the update-script tests"
 
 echo

@@ -12,9 +12,10 @@ bash tests/run-all.sh
 | 2. Syntax | (in `run-all.sh`) | Every Python, JavaScript and shell file can be read. If the linters are installed: `ruff` finds undefined or unused names in Python, `shellcheck` finds risky shell | Python 3, Node.js; optional `pip install ruff`, `apt install shellcheck` |
 | 3. Server | `test_server.py` | Reading logs (normal flight, flight clock that doesn't start at 0, no GPS, GeoJSON only, junk CSV), duplicates shown once, settings rules, old settings converted, login, the web addresses | Python 3 only |
 | 4. Browser | `browser.test.js` | Opens the real pages in a hidden browser: flight list, layers panel, Azure credit line, replay (gliding, trail, Follow), only the open flight shown, settings page, update notice, phone layout, login | Node.js + [Playwright](https://playwright.dev) |
-| 5. Update scripts | `deploy.test.sh` | `update-ct.sh` keeps settings, puts back wiped settings, undoes a broken version; `restore-ct.sh` works | A **throw-away** Linux machine, as root |
+| 5. Easy install | `easy-install.test.sh` | The one-command install: downloads the newest release (or the test version with `--test`), asks where the logs and the disk go, refuses missing folders, offers an update when the map is already installed, stops outside Proxmox. Uses a pretend GitHub copy and fake Proxmox commands in a temp folder | git |
+| 6. Update scripts | `deploy.test.sh` | `update-ct.sh` keeps settings, puts back wiped settings, undoes a broken version; `restore-ct.sh` works | A **throw-away** Linux machine, as root |
 
-**Part 5 changes system folders** (`/opt`, `/etc`, `/var/lib`), so it is
+**Part 6 changes system folders** (`/opt`, `/etc`, `/var/lib`), so it is
 skipped unless you set `FLIGHTMAP_ALLOW_SYSTEM_TEST=1`, and it refuses to run on
 a Proxmox host. Never run it on your server or inside the real container.
 

@@ -40,6 +40,52 @@ one folder, it is shown only once.
 
 ---
 
+## Installing: the quick way (one command)
+
+1. In the Proxmox web page, click your server's name on the left (under
+   *Datacenter*), then **>_ Shell**.
+2. Copy this whole line, paste it into the Shell with **Ctrl+Shift+V**, and
+   press **Enter**:
+
+```bash
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/mcintosh109/dji-flightmap/main/deploy/easy-install.sh)"
+```
+
+3. Answer its questions. Pressing **Enter** picks the suggested answer
+   (shown in `[brackets]`):
+
+| Question | What to answer |
+|---|---|
+| **Where are your flight logs?** | `1` for TrueNAS or another network share (where the dji-rc2-dock Pi saves them), `2` for a folder on the Proxmox server |
+| TrueNAS address, folder, username, password | Only for `1`. See [Step 2](#step-2-connect-the-truenas-archive-folder) below for examples. Nothing shows while you type the password; that's normal |
+| **Where to keep the container's disk** | Only asked if you have more than one storage. Enter = `local-lvm` |
+| **Network address** | Enter = automatic, or type a fixed address like `192.168.1.50` |
+| **Add a login page?** | Enter = yes, then choose a username and password (at least 8 characters) |
+| **Backups on TrueNAS?** | Only with `1`. See [Backups on TrueNAS](#backups-on-truenas-recommended); Enter = later |
+
+4. At the end it prints the map's address, like `https://192.168.1.50`.
+   Go to [Step 4: Open the map](#step-4-open-the-map).
+
+What it does: it downloads the newest **released** version to
+`/root/dji-flightmap`, then runs the same scripts as the step-by-step way
+below, so you end up with exactly the same result. If the map is already
+installed, it offers to **update** it instead. Running it again is safe: it
+never deletes anything. If it stops, it says why; fix that and paste the
+same command again.
+
+> **Pasting a command from the internet as root** gives it full control of
+> your server, so only do it for projects you trust. To read the script
+> first, open the address inside the quotes in your browser. (Research:
+> *"curl pipe bash security"*.)
+
+---
+
+## Installing step by step (instead of the quick way)
+
+The same install as the one command, one step at a time. Useful if you want
+to see each part, or if the quick way stopped and you want to retry one
+step.
+
 ## Step 1: Open the Proxmox shell and download this project
 
 In the Proxmox web UI, click your node (the server name on the left), then
@@ -61,6 +107,13 @@ Go into the project folder (the next steps assume you are here):
 
 ```bash
 cd /root/dji-flightmap
+```
+
+Switch to the newest **released** version (without this you would get the
+newest *test* version):
+
+```bash
+git checkout -q "$(git tag -l 'v*' --sort=-v:refname | head -1)"
 ```
 
 ---
@@ -761,6 +814,7 @@ pct exec 105 -- systemctl restart dji-flightmap
 | `deploy/update-ct.sh` | Proxmox host: backs up settings, installs a newer version, puts settings back, undoes it if the map doesn't start | *"pct push"*, *"pct pull"* |
 | `deploy/restore-ct.sh` | Proxmox host: puts saved settings back into a container | |
 | `deploy/ct-backup.sh` | Shared save/restore steps used by the scripts above and below | *"bash source"* |
+| `deploy/easy-install.sh` | Proxmox host: the one-command install. Downloads the newest release, then runs the scripts below in order (or offers an update) | *"curl pipe bash"* |
 | `deploy/setup-backup-share.sh` | Proxmox host: connects the writable TrueNAS backup folder, turns on the daily backup | *"systemd timer"* |
 | `deploy/backup-ct.sh` | Proxmox host: makes a backup now (the daily timer runs it) | |
 | `deploy/install.sh` | Inside the container: installs the app | *"bash script basics"* |
@@ -797,7 +851,7 @@ number and start time. The CSV is preferred over the GeoJSON.
 
 `bash tests/run-all.sh` checks everything: privacy (nothing personal in the
 repository), syntax and linters, the server, the pages in a hidden browser,
-and the update scripts.
+the one-command install, and the update scripts.
 See [tests/README.md](tests/README.md). The tests use made-up flights only.
 
 `CLAUDE.md` and `.claude/skills/release/` are notes for Claude (the AI that

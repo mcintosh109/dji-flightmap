@@ -116,4 +116,5 @@ echo "Connected! ${MOUNT_POINT} contains:"
 ls "$MOUNT_POINT" | head -10
 echo "...with ${COUNT} flight CSV file(s) in total."
 echo
-echo "Next step:  bash deploy/create-ct.sh"
+# (easy-install.sh runs the next step by itself)
+[[ -n "${FLIGHTMAP_EASY:-}" ]] || echo "Next step:  bash deploy/create-ct.sh"

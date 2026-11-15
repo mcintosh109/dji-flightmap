@@ -73,7 +73,7 @@ another third-party library is ever bundled, add its notice there.
 | `app/flightmap/` | One module per job: `config` (env + paths), `flightlogs` (read one log), `library` (all flights), `settings`, `plans`, `auth` (login), `azure` / `google` (key-hiding proxies), `upstream` (shared connection pool), `places` (OpenStreetMap places). Modules read the environment at import, so tests set env vars first and re-import. |
 | `app/version.json` | Version number + "what's new" notes. The page compares it with GitHub to show the update notice. |
 | `app/static/` | Classic scripts sharing globals, loaded in this order by `index.html`: `common.js` (helpers), `updates.js`, `maps.js` (providers/layers), `app.js` (state, formatting, map, icons), `layers.js`, `places.js` (shops/schools/parks layer), `overview.js` (sidebar + all flights), `flight.js` (open flight + replay), `update-notice.js`, `main.js` (refresh + start), `planner.js`. Each file wires its own buttons at the bottom. Also `settings.*`, `login.html` (self-contained), `style.css`, `vendor/leaflet` (1.9.4). |
-| `deploy/` | `setup-truenas-mount.sh`, `create-ct.sh` (host), `install.sh` (in container), `update-ct.sh` + `restore-ct.sh` + `ct-backup.sh` (host), `set-login.sh` (container). |
+| `deploy/` | `easy-install.sh` (host, the one-command install that runs the others), `setup-truenas-mount.sh`, `create-ct.sh` (host), `install.sh` (in container), `update-ct.sh` + `restore-ct.sh` + `ct-backup.sh` (host), `set-login.sh` (container). |
 | `tests/` | `run-all.sh` runs everything (privacy, syntax + ruff/shellcheck when installed, server, browser, update scripts). See `tests/README.md`. |
 
 Inside the container: settings in `/var/lib/dji-flightmap/settings.json`
@@ -229,5 +229,16 @@ owner confirms it works**, release it with a tag (`git tag -a vX.Y.Z` +
   (zoom 16+), the Google tile layer asks for `<set>-nopoi` (style hiding
   `poi` labels). The owner confirmed Google accepts it on hybrid (satellite +
   Details) too. A 400 on a -nopoi session falls back to the normal set.
+- **Easy install** (4.2.0): `deploy/easy-install.sh`, run as
+  `bash -c "$(curl -fsSL https://raw.githubusercontent.com/mcintosh109/dji-flightmap/main/deploy/easy-install.sh)"`
+  (`bash -c "$(...)"`, not `curl | bash`, so the questions can read the
+  keyboard). The copy on `main` is what users run, so keep it working with
+  the scripts of the newest RELEASE: it clones to /root/dji-flightmap,
+  checks out the newest `v` tag (`--test`: origin/main), and only calls
+  setup-truenas-mount.sh, create-ct.sh (CTID/STORAGE/DATA_HOST_PATH env),
+  setup-backup-share.sh and update-ct.sh from that checkout. Never deletes;
+  an existing `dji-flightmap` container means "offer an update". The manual
+  README steps also check out the newest tag (a plain clone is main = test).
+  Tests: `tests/easy-install.test.sh` (pretend origin repo + fake pct/pvesm/pvesh).
 - Old installs had an `update-ct.sh` that could not download its own
   replacement; the current one does `git pull` and restarts itself.
