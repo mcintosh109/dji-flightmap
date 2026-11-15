@@ -204,5 +204,12 @@ owner confirms it works**, release it with a tag (`git tag -a vX.Y.Z` +
 - **Release tags**: in Claude's sandbox, pushing a tag was blocked by the
   safety check (a public action). The owner then makes the release on
   GitHub: Releases → Draft a new release → new tag `vX.Y.Z` on `main`.
+  Remind them of the **v**: a tag `3.0.5` (no v) is ignored by updates.js and
+  update-ct.sh (it happened; they then added `v3.0.5`). Don't push to `main`
+  between asking for a release and the owner confirming it, or the tag
+  lands on the wrong commit; work on a branch meanwhile.
+- **Place names** (3.0.6): `hideOverlappingNames()` in places.js hides a
+  name that would cover another name (6 px gap) or another icon (2 px
+  tolerance); kinds in `NAME_ORDER` keep their names first.
 - Old installs had an `update-ct.sh` that could not download its own
   replacement; the current one does `git pull` and restarts itself.
