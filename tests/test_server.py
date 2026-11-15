@@ -702,6 +702,7 @@ class FakeGoogle:
         self.tiles = []         # (path, session) of each picture request
         self.expired = set()    # session codes to refuse ("ran out")
         self.session_status = 200   # set to 404 to refuse making sessions
+        self.searches = []      # (field mask, body) of each Places search
         self.cache_control = 'public, max-age=3600'
         outer = self
 
@@ -729,6 +730,21 @@ class FakeGoogle:
                 u = urlparse(self.path)
                 q = parse_qs(u.query)
                 body = json.loads(self.rfile.read(int(self.headers.get('Content-Length') or 0)))
+                if u.path == '/v1/places:searchNearby':
+                    if self.headers.get('X-Goog-Api-Key') != outer.key:
+                        return self.reply(403, b'{"error":{"message":"denied","status":"PERMISSION_DENIED"}}')
+                    outer.searches.append((self.headers.get('X-Goog-FieldMask', ''), body))
+                    c = body['locationRestriction']['circle']['center']
+                    near = lambda dlat, name, kind, label: {
+                        'id': 'ChIJ' + name.replace(' ', ''), 'displayName': {'text': name, 'languageCode': 'en'},
+                        'location': {'latitude': c['latitude'] + dlat, 'longitude': c['longitude']},
+                        'primaryType': kind, 'primaryTypeDisplayName': {'text': label},
+                        'shortFormattedAddress': '1 Main St', 'googleMapsUri': 'https://maps.google.com/?cid=1'}
+                    return self.reply(200, json.dumps({'places': [
+                        near(0.0002, 'Dollar Store', 'discount_store', 'Discount store'),
+                        near(0.0004, 'Quick Gas', 'gas_station', 'Gas station'),
+                        near(0.0006, 'Family Doctor', 'doctor', 'Doctor'),
+                        {'id': 'x', 'displayName': {'text': ''}}]}).encode())
                 if self.bad_key(q):
                     return
                 if outer.session_status != 200:
@@ -782,7 +798,7 @@ class LiveGoogleKey(unittest.TestCase):
         os.makedirs(os.path.join(cls.tmp, 'archive'))
         cls.google = FakeGoogle(cls.KEY)
         cls.srv = LiveServer(os.path.join(cls.tmp, 'archive'), os.path.join(cls.tmp, 'state'),
-                             GOOGLE_TILES_URL=cls.google.url)
+                             GOOGLE_TILES_URL=cls.google.url, GOOGLE_PLACES_URL=cls.google.url)
 
     @classmethod
     def tearDownClass(cls):
@@ -868,6 +884,39 @@ class LiveGoogleKey(unittest.TestCase):
         self.assertIn('session OK, picture OK', out)
         self.assertIn('roads as a separate layer', out)
         self.assertNotIn(self.KEY, out)
+
+    def test_google_places(self):
+        self.srv.put_settings({'googlePlacesDailyLimit': 150})
+        status, _, body = self.srv.request('/api/google-places?lat=40.78&lon=-73.96&radius=400')
+        self.assertEqual(status, 200)
+        got = json.loads(body)
+        self.assertNotIn(self.KEY.encode(), body)
+        kinds = {p['name']: p['kind'] for p in got['places']}
+        self.assertEqual(kinds, {'Dollar Store': 'shop', 'Quick Gas': 'car', 'Family Doctor': 'health'})
+        self.assertTrue(all(p['id'].startswith('g:') and p['link'].startswith('https://') for p in got['places']))
+        mask, sent = self.google.searches[-1]
+        for dearer in ('rating', 'regularOpeningHours', 'reviews', 'photos'):
+            self.assertNotIn(dearer, mask, 'only Pro fields, so each search stays at the Pro price')
+        self.assertEqual((sent['maxResultCount'], sent['rankPreference']), (20, 'DISTANCE'))
+        self.assertEqual(sent['locationRestriction']['circle']['radius'], 400.0)
+        self.assertGreaterEqual(got['used'], 1)
+
+    def test_google_places_daily_limit(self):
+        self.srv.put_settings({'googlePlacesDailyLimit': 150})
+        used = self.srv.json('/api/google-places?lat=40.78&lon=-73.96&radius=400')['used']
+        self.srv.put_settings({'googlePlacesDailyLimit': used + 1})
+        self.assertEqual(self.srv.request('/api/google-places?lat=40.78&lon=-73.96&radius=400')[0], 200)
+        before = len(self.google.searches)
+        status, _, body = self.srv.request('/api/google-places?lat=40.78&lon=-73.96&radius=400')
+        self.assertEqual(status, 429)
+        self.assertTrue(json.loads(body)['limit'])
+        self.assertEqual(len(self.google.searches), before, 'over the limit: Google is not asked')
+        # 0 turns it off; other providers never use Google places.
+        self.srv.put_settings({'googlePlacesDailyLimit': 0})
+        self.assertEqual(self.srv.request('/api/google-places?lat=40.78&lon=-73.96&radius=400')[0], 403)
+        self.srv.put_settings({'googlePlacesDailyLimit': 150, 'mapProvider': 'free'})
+        self.assertEqual(self.srv.request('/api/google-places?lat=40.78&lon=-73.96&radius=400')[0], 400)
+        self.assertEqual(self.srv.request('/api/google-places?lat=x&lon=1&radius=1')[0], 400)
 
     def test_remove_key(self):
         self.srv.put_settings({'units': 'metric', 'googleMapsKey': ''})

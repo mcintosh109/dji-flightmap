@@ -25,6 +25,8 @@ SETTINGS_FILE = os.path.join(STATE_DIR, "settings.json")
 AZURE_MAPS_URL = os.environ.get("AZURE_MAPS_URL", "https://atlas.microsoft.com").rstrip("/")
 # Where Google's Map Tiles API is reached (only changed by the tests).
 GOOGLE_TILES_URL = os.environ.get("GOOGLE_TILES_URL", "https://tile.googleapis.com").rstrip("/")
+# Where Google's Places service is reached (only changed by the tests).
+GOOGLE_PLACES_URL = os.environ.get("GOOGLE_PLACES_URL", "https://places.googleapis.com").rstrip("/")
 PLANS_FILE = os.path.join(STATE_DIR, "plans.json")
 # Where places (shops, schools, parks...) come from: the free OpenStreetMap
 # Overpass API. These are public servers shared by everyone and can be slow,

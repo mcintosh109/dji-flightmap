@@ -33,6 +33,7 @@ function applyMapStyle() {
   }
   $('#layers-label').textContent = MapStyles.LAYERS.find((l) => l.id === layer).name;
   if (!$('#layers-panel').classList.contains('hidden')) renderLayersPanel();
+  if (typeof Places !== 'undefined') Places.update();   // the places' source can follow the provider
 }
 
 // The layers panel: one button per layer, each with a small real picture

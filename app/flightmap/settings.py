@@ -36,6 +36,7 @@ DEFAULT_SETTINGS = {
     "maptilerKey": "",
     "azureMapsKey": "",
     "googleMapsKey": "",
+    "googlePlacesDailyLimit": 150,   # Google places searches a day (0 = off); ~4,500 a month
     "customTileUrl": "",
     "customTileName": "Custom map",
     "customAttribution": "",
@@ -109,6 +110,7 @@ def clean_settings(incoming):
          "The Azure Maps key can only contain letters, numbers, dots, dashes and underscores.")
     pick("googleMapsKey", lambda v: isinstance(v, str) and KEY_RE.match(v.strip()),
          "The Google Maps key can only contain letters, numbers, dots, dashes and underscores.")
+    pick("googlePlacesDailyLimit", whole(0, 5000), "Google places searches a day must be 0 to 5000.")
     pick("customTileUrl", lambda v: isinstance(v, str) and (v == "" or (
         len(v) <= 500 and re.match(r"^https?://[^\s<>\"']+$", v)
         and all(part in v for part in ("{z}", "{x}", "{y}")))),

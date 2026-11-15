@@ -21,6 +21,7 @@ rest lives in the flightmap/ folder, one file per job:
   azure.py       Azure Maps through this server (keeps the key private)
   google.py      Google Maps through this server (keeps the key private)
   places.py      shops, schools, parks... from OpenStreetMap
+  gplaces.py     places from Google (with the Google map), with a daily limit
   upstream.py    reused connections to Azure and Google
 
 Settings are read from environment variables (see deploy/dji-flightmap.env):
@@ -53,6 +54,9 @@ Web addresses it answers:
                         one Google Maps picture (same idea as Azure; never
                         stored on this server, as Google's rules say)
   /api/google-credits   Google's copyright line for the area on screen
+  /api/google-places?lat=&lon=&radius=
+                        the 20 Google places closest to that point (counts
+                        towards the daily limit set on the settings page)
   /api/places?x0=&x1=&y0=&y1=
                         places (shops, schools, parks...) in those map
                         squares, from OpenStreetMap (see flightmap/places.py)
@@ -91,6 +95,7 @@ from flightmap.config import (APP_VERSION, AUTH_ENABLED, AUTH_PASSWORD_HASH, AUT
                               STATIC_DIR, VERSION_INFO, log)
 from flightmap import google
 from flightmap.google import GOOGLE_SETS, google_credits, google_tile
+from flightmap.gplaces import search as google_places_search
 from flightmap.library import FlightLibrary
 from flightmap.places import PlacesError, parse_range, places_in
 from flightmap.plans import MAX_PLANS, PLAN_ID_RE, PLANS_LOCK, clean_plan, load_plans, save_plans
@@ -216,6 +221,8 @@ class Handler(SimpleHTTPRequestHandler):
             return self.google_tile(path)
         if path == "/api/google-credits":
             return self.google_credits()
+        if path == "/api/google-places":
+            return self.google_places()
         if path == "/api/places":
             return self.places()
         if path == "/api/plans":
@@ -299,6 +306,17 @@ class Handler(SimpleHTTPRequestHandler):
         west, south, east, north = bounds.split(",")
         answer, status = google_credits(tileset, int(zoom), west, south, east, north)
         return self.send_json(answer, 200 if status == 404 else status)
+
+    def google_places(self):
+        q = parse_qs(urlparse(self.path).query)
+        try:
+            lat, lon, radius = (float((q.get(k) or [""])[0]) for k in ("lat", "lon", "radius"))
+        except ValueError:
+            return self.send_json({"error": "bad request"}, 400)
+        if not (-85 <= lat <= 85 and -180 <= lon <= 180 and 0 < radius <= 50000):
+            return self.send_json({"error": "bad request"}, 400)
+        answer, status = google_places_search(lat, lon, radius)
+        return self.send_json(answer, status)
 
     # ---- places from OpenStreetMap ------------------------------------------
     def places(self):

@@ -82,7 +82,12 @@
           <p class="help key-status" id="google-key-status"></p>
           <p class="help">🔒 This key stays on your server: the map fetches Google pictures through the server, so the key is never sent to your browser.</p>
           <p class="help">In the <a href="https://console.cloud.google.com/google/maps-apis/" target="_blank" rel="noopener">Google Cloud console</a>, turn on the <b>Map Tiles API</b> for your project, then copy your API key from <b>Keys &amp; Credentials</b>. Google charges after a free monthly amount: set a <b>budget alert</b> in Google Cloud Billing so a mistake can never cost you money.</p>
-          <p class="help">Google's road maps show businesses, petrol stations, doctors and so on, the same as the Google Maps app.</p>
+          <p class="help">Google's road maps show some businesses. For the rest, "Places" in the map's layers panel asks Google's Places service (turn on <b>Places API (New)</b> in Google Cloud and allow it for this key).</p>
+          <div class="field inline">
+            <label for="googlePlacesDailyLimit">Google places searches per day</label>
+            <input id="googlePlacesDailyLimit" data-key="googlePlacesDailyLimit" data-number type="number" min="0" max="5000" step="1">
+          </div>
+          <p class="help">Each search shows the 20 places nearest the middle of the map. Google gives a free amount each month (5,000 searches at the time of writing) and charges after that. 150 a day stays under it. 0 turns Google places off.</p>
         </div>
 
         <div class="provider-key" data-provider="custom">

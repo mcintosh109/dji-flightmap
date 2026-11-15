@@ -9,6 +9,12 @@
   tiles); we ask for the squares on screen that we don't have yet, keep the
   answers in memory, and only draw the places that are on screen.
 
+  With Google Maps as the map provider, the places come from GOOGLE instead
+  (api/google-places, see app/flightmap/gplaces.py): Google's map pictures
+  leave out many businesses. Each Google search gives the 20 places closest
+  to the middle of the screen and counts towards a daily limit (Settings),
+  so we only search again after the map has moved a fair way.
+
   Places are only shown when zoomed in (zoom 16 or closer); further out
   there would be thousands. Names appear under the icons at zoom 17+.
 
@@ -44,13 +50,42 @@ const Places = (() => {
   // A pane just above the map pictures but under the flight paths, so a
   // path is never hidden behind a shop icon.
   map.createPane('places').style.zIndex = 390;
-  const group = L.layerGroup([], { attribution: CREDIT });
+  const group = L.layerGroup();
   const known = new Map();     // place id -> place (everything loaded so far)
   const markers = new Map();   // place id -> marker (only those on screen)
   const loaded = new Set();    // squares already asked for ("x/y")
   let on = loadSetting('mapPlaces', '1') === '1';
   let busy = false, again = false, timer = null;
   let status = '';
+  let source = '';             // 'osm' or 'google': where the places come from
+  let lastSearch = null;       // Google: { center, radius } of the last search
+  let credit = false;          // OpenStreetMap credit shown?
+
+  // Google's places with the Google map (Google's rules: only on a Google
+  // map); OpenStreetMap otherwise.
+  function currentSource() {
+    const s = state.settings;
+    return s.mapProvider === 'google' && s.googleMapsKeySet && (s.googlePlacesDailyLimit ?? 150) > 0 ? 'google' : 'osm';
+  }
+
+  // The OpenStreetMap credit, only while its places are on the map.
+  function showCredit(show) {
+    if (show === credit || !map.attributionControl) return;
+    if (show) map.attributionControl.addAttribution(CREDIT); else map.attributionControl.removeAttribution(CREDIT);
+    credit = show;
+  }
+
+  // Start again when the source changes (Settings changed the provider).
+  function checkSource() {
+    const now = currentSource();
+    if (now === source) return;
+    source = now;
+    known.clear();
+    loaded.clear();
+    group.clearLayers();
+    markers.clear();
+    lastSearch = null;
+  }
 
   function setStatus(text) {
     status = text;
@@ -92,8 +127,9 @@ const Places = (() => {
 
   function popup(p) {
     const kind = KINDS[p.kind] || ['', '', ''];
-    const osmType = { n: 'node', w: 'way', r: 'relation' }[p.id[0]];
+    const osmType = p.id.startsWith('g:') ? '' : { n: 'node', w: 'way', r: 'relation' }[p.id[0]];
     const osmUrl = osmType ? `https://www.openstreetmap.org/${osmType}/${encodeURIComponent(p.id.slice(1))}` : '';
+    const googleUrl = /^https:\/\//.test(p.link || '') ? p.link : '';
     return `<div class="place-pop">
       <b>${esc(p.name)}</b>
       <div class="muted">${esc(p.label)}${kind[2] && kind[2] !== p.label ? ` · ${esc(kind[2])}` : ''}</div>
@@ -103,6 +139,7 @@ const Places = (() => {
       <div class="links">
         <a href="${esc(navUrl(p.lat, p.lon))}" target="_blank" rel="noopener">Navigate</a>
         ${osmUrl ? ` · <a href="${esc(osmUrl)}" target="_blank" rel="noopener">More on OpenStreetMap</a>` : ''}
+        ${googleUrl ? ` · <a href="${esc(googleUrl)}" target="_blank" rel="noopener">Open in Google Maps</a>` : ''}
       </div>
     </div>`;
   }
@@ -126,7 +163,47 @@ const Places = (() => {
     return count;
   }
 
+  // ---------- Google: one search for the middle of the screen ----------
+  async function loadGoogle() {
+    if (busy) { again = true; return; }
+    const center = map.getCenter();
+    const radius = Math.min(2000, Math.max(50, center.distanceTo(map.getBounds().getNorthEast())));
+    // Still near the last search, and not zoomed far out: no new search
+    // (each search counts towards the daily limit).
+    if (lastSearch && center.distanceTo(lastSearch.center) < lastSearch.radius * 0.5
+        && radius <= lastSearch.radius * 1.5) {
+      setStatus(`${draw()} places here (from Google)${lastSearch.usage}`);
+      return;
+    }
+    busy = true;
+    setStatus('Asking Google for places…');
+    try {
+      const res = await fetch(`api/google-places?lat=${center.lat.toFixed(6)}&lon=${center.lng.toFixed(6)}&radius=${Math.round(radius)}`);
+      const data = await res.json().catch(() => ({}));
+      const used = Number.isInteger(data.used) ? ` · ${data.used} of ${data.limit} Google searches used today` : '';
+      if (!res.ok) {
+        setStatus(data.limit === true || res.status === 429
+          ? `Today's limit of ${data.limit ?? ''} Google places searches is used up. Places come back tomorrow (or raise the limit in Settings).`
+          : data.off ? 'Google places are turned off in Settings.'
+            : `Could not get places from Google${used}. See Troubleshooting in the README.`);
+        if (res.status === 429) lastSearch = { center, radius: Infinity, usage: used };   // don't keep asking today
+        return;
+      }
+      for (const p of data.places || []) known.set(p.id, p);
+      if (known.size > 600) known.clear();
+      lastSearch = { center, radius, usage: used };
+      const count = on && map.getZoom() >= MIN_ZOOM ? draw() : 0;
+      setStatus(`${count} places here (from Google)${used}`);
+    } catch {
+      setStatus('Could not load places (is the map server running?)');
+    } finally {
+      busy = false;
+      if (again) { again = false; update(); }
+    }
+  }
+
   async function load() {
+    if (source === 'google') return loadGoogle();
     if (busy) { again = true; return; }
     const box = missingBox(squaresOnScreen());
     if (!box) { setStatus(`${draw()} places here`); return; }
@@ -171,16 +248,20 @@ const Places = (() => {
   // Called whenever the map stops moving, and when Places is switched.
   function update() {
     clearTimeout(timer);
+    checkSource();
     const zoom = map.getZoom();
     map.getContainer().classList.toggle('places-names', zoom >= NAMES_ZOOM);
     if (!on || zoom < MIN_ZOOM) {
       if (map.hasLayer(group)) map.removeLayer(group);
+      showCredit(false);
       setStatus(on ? 'Zoom in closer to see places' : '');
       return;
     }
     if (!map.hasLayer(group)) group.addTo(map);
+    showCredit(source === 'osm');
     draw();
-    timer = setTimeout(load, 400);   // wait until the map has stopped moving
+    // Wait until the map has stopped moving (longer for Google: searches count).
+    timer = setTimeout(load, source === 'google' ? 900 : 400);
   }
 
   function setOn(value) {

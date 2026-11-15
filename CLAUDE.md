@@ -192,6 +192,15 @@ owner confirms it works**, release it with a tag (`git tag -a vX.Y.Z` +
   places data must not be put on a non-Google map, so Places stays
   OpenStreetMap. Tests use `GOOGLE_TILES_URL`. developers.google.com is not
   reachable from Claude's sandbox; rules came from search results.
+- **Google places** (3.0.5): Google's 2D tiles leave out many businesses
+  (the owner's DG, gas stations, doctor). With the Google provider, Places
+  use Places API (New) `places:searchNearby` (20 nearest, rankPreference
+  DISTANCE, Pro-only field mask: no rating/hours or the price goes up),
+  through `/api/google-places`, with a daily limit `googlePlacesDailyLimit`
+  (default 150, count in `google-places-usage.json`). Nothing stored on the
+  server; the browser re-searches only after moving half the radius. The
+  owner keeps a key restricted to Map Tiles + Places (New); don't suggest
+  their 32-API key. The owner called this 3.0.5 (a fix from users' view).
 - **Release tags**: in Claude's sandbox, pushing a tag was blocked by the
   safety check (a public action). The owner then makes the release on
   GitHub: Releases → Draft a new release → new tag `vX.Y.Z` on `main`.

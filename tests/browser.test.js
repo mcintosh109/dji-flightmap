@@ -97,6 +97,16 @@ async function startFakeGoogle() {
     let body = '';
     req.on('data', (c) => { body += c; });
     req.on('end', () => {
+      if (u.pathname === '/v1/places:searchNearby') {
+        got.searches = (got.searches || 0) + 1;
+        const c = JSON.parse(body).locationRestriction.circle.center;
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ places: [
+          { id: 'A1', displayName: { text: 'Dollar Store' }, location: { latitude: c.latitude + 0.0003, longitude: c.longitude },
+            primaryType: 'discount_store', primaryTypeDisplayName: { text: 'Discount store' }, googleMapsUri: 'https://maps.google.com/?cid=1' },
+          { id: 'A2', displayName: { text: 'Quick Gas' }, location: { latitude: c.latitude, longitude: c.longitude + 0.0004 },
+            primaryType: 'gas_station', primaryTypeDisplayName: { text: 'Gas station' } }] }));
+      }
       if (u.pathname === '/v1/createSession') {
         got.sessions.push(JSON.parse(body));
         res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -214,7 +224,8 @@ function fakeInternet(ctx, { github = null } = {}) {
   const azure = await startFakeAzure();
   const osm = await startFakeOverpass();
   const google = await startFakeGoogle();
-  const app = await startServer(archive, { AZURE_MAPS_URL: azure.base, OVERPASS_URL: osm.url, GOOGLE_TILES_URL: google.base });
+  const app = await startServer(archive, { AZURE_MAPS_URL: azure.base, OVERPASS_URL: osm.url,
+    GOOGLE_TILES_URL: google.base, GOOGLE_PLACES_URL: google.base });
   const browser = await chromium.launch();
   const servers = [app];
   try {
@@ -309,6 +320,23 @@ function fakeInternet(ctx, { github = null } = {}) {
       check('the Google logo is shown', await gpage.isVisible('#map .google-logo'));
       const nativeZoom = await gpage.evaluate(() => { let z = null; map.eachLayer((l) => { if (l.options.googleMaxZoom) z = l.options.maxNativeZoom; }); return z; });
       check("pictures come from the closest zoom Google has here (19), not the world's (3)", nativeZoom === 19, `maxNativeZoom ${nativeZoom}`);
+      // Places come from Google with the Google map.
+      const osmBefore = osm.got.queries;
+      await gpage.evaluate(() => map.setView([40.7812, -73.9665], 17));
+      await gpage.waitForTimeout(2000);
+      check('with Google, places come from Google', await gpage.isVisible('.place-icon .nm >> text=Dollar Store')
+        && osm.got.queries === osmBefore, await gpage.textContent('#places-status'));
+      check('the daily count is shown', (await gpage.textContent('#places-status')).includes('Google searches used today'),
+        await gpage.textContent('#places-status'));
+      await gpage.locator('.place-icon', { hasText: 'Dollar Store' }).click();
+      await gpage.waitForTimeout(300);
+      check('a Google place links to Google Maps', (await gpage.textContent('.leaflet-popup-content')).includes('Open in Google Maps'));
+      const searched = google.got.searches;
+      await gpage.evaluate(() => { map.closePopup(); map.panBy([20, 10]); });
+      await gpage.waitForTimeout(1500);
+      check('moving a little does not search Google again (it counts)', google.got.searches === searched, `${google.got.searches - searched} more`);
+      check('no OpenStreetMap credit while the places are from Google',
+        !(await gpage.textContent('#map .leaflet-control-attribution')).includes('OpenStreetMap'));
       await gpage.click('#btn-layers');
       await gpage.click('.layer-opt[data-layer=satellite]');
       await gpage.waitForTimeout(800);

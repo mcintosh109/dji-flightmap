@@ -1,13 +1,13 @@
 {
-  "version": "3.0.4",
+  "version": "3.0.5",
   "released": "2026-11-14",
   "repo": "mcintosh109/dji-flightmap",
   "notes": [
-    "New: Google Maps as a map provider (road, dark, satellite, satellite + roads, terrain). Its road map shows businesses, gas stations and doctors like the Google Maps app",
-    "Your Google key stays on the map server, like the Azure key. Add it in Settings \u2192 Map",
-    "Needs one step in Google Cloud: turn on the Map Tiles API for your key (see the README)",
-    "If Google refuses, the server waits a minute before asking again, and its log says what to check",
-    "New check for Google Maps problems: python3 /opt/dji-flightmap/app/server.py --check-google (see the README)",
-    "The map's credit line and the Google logo stay visible, also above the flight and planner panels and on light maps"
+    "New: Google Maps as a map provider (road, dark, satellite, satellite + roads, terrain). Your key stays on the map server, like the Azure key",
+    "With Google Maps, Places now come from Google, so businesses Google's map pictures leave out (stores, gas stations, doctors) show up too",
+    "Google places have a daily limit (Settings \u2192 Map, 150 by default) so you stay inside Google's free amount",
+    "Needs two APIs on your Google key: Map Tiles API and Places API (New) (see the README)",
+    "New check for Google Maps problems: python3 /opt/dji-flightmap/app/server.py --check-google",
+    "The map's credit line and the Google logo stay visible, also above the flight and planner panels"
   ]
 }

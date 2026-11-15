@@ -172,8 +172,15 @@ with a coloured icon. Turn it on or off with **Places** in the layers panel
 - Zoom in one more step and the **names** appear under the icons.
 - Click an icon for its name, address and opening hours (when known), a
   **Navigate** link, and a link to more details on OpenStreetMap.
-- Places come from **OpenStreetMap** (research: *"OpenStreetMap"*,
-  *"Overpass API"*), the free map made by volunteers. It is very good in
+- **With Google Maps as the provider, the places come from Google** (its
+  Places service), so you see the same businesses as in the Google Maps app.
+  Each search shows the 20 places nearest the middle of the map, and a new
+  search only happens after you move the map a fair way. Searches count
+  towards a **daily limit** (Settings → Map, 150 by default, which stays
+  inside Google's free monthly amount); the layers panel shows how many are
+  used today. When the limit is reached, places come back the next day.
+- With every other provider, places come from **OpenStreetMap** (research:
+  *"OpenStreetMap"*, *"Overpass API"*), the free map made by volunteers. It is very good in
   towns and can be thin in the countryside. If something is missing, anyone
   can add it at openstreetmap.org.
 - It works with every map provider, needs no key and costs nothing. The
@@ -260,10 +267,14 @@ Everything here is saved on the server, so it applies on every device.
   1. Sign in to the Google Cloud console (console.cloud.google.com) and
      pick (or create) the project your key belongs to.
   2. Go to **APIs & Services → Library**, search for **Map Tiles API**, and
-     press **Enable**. (Research: *"Google Map Tiles API enable"*.)
+     press **Enable**. Do the same for **Places API (New)** (for the
+     businesses, see *Places* above). (Research: *"Google Map Tiles API
+     enable"*.)
   3. Go to **APIs & Services → Credentials** and copy your API key (it
      starts with `AIza`). Recommended: under **API restrictions**, limit the
-     key to the Map Tiles API.
+     key to exactly these two: **Map Tiles API** and **Places API (New)**.
+     A key that can only do what the map needs is safer if it ever leaks
+     (research: *"principle of least privilege"*).
   4. **Strongly recommended:** in **Billing → Budgets & alerts**, add a small
      monthly budget with an email alert. Google gives a free monthly amount
      of map pictures (100,000 at the time of writing) and charges after
@@ -603,6 +614,7 @@ pct exec 105 -- systemctl restart dji-flightmap
 | `app/flightmap/plans.py` | Saved flight plans: checks, loading and saving | |
 | `app/flightmap/auth.py` | The optional login: password hashing, signed cookies, lock-out | *"password hashing pbkdf2"*, *"HMAC signed cookie"* |
 | `app/flightmap/azure.py` | Fetches Azure Maps pictures and credits for the browser, so the key stays on the server | *"reverse proxy"* |
+| `app/flightmap/gplaces.py` | Google places for the Google map, with the daily limit | *"Places API (New) Nearby Search"* |
 | `app/flightmap/google.py` | The same for Google Maps: makes a "session", fetches pictures and credits, stores nothing | *"Google Map Tiles API"* |
 | `app/flightmap/upstream.py` | Keeps connections to Azure and Google open and reuses them | *"HTTP keep-alive"*, *"connection pool"* |
 | `app/static/index.html` | The map page layout | *"HTML basics"* |
