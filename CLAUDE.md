@@ -211,5 +211,9 @@ owner confirms it works**, release it with a tag (`git tag -a vX.Y.Z` +
 - **Place names** (3.0.6): `hideOverlappingNames()` in places.js hides a
   name that would cover another name (6 px gap) or another icon (2 px
   tolerance); kinds in `NAME_ORDER` keep their names first.
+- **No double places with Google** (3.0.7): while Google places show as pins
+  (zoom 16+), the Google tile layer asks for `<set>-nopoi` (style hiding
+  `poi` labels). The owner confirmed Google accepts it on hybrid (satellite +
+  Details) too. A 400 on a -nopoi session falls back to the normal set.
 - Old installs had an `update-ct.sh` that could not download its own
   replacement; the current one does `git pull` and restarts itself.
