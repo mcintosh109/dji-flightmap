@@ -195,7 +195,10 @@ function fakeInternet(ctx, { github = null } = {}) {
     if (u.hostname === 'api.github.com') {
       seen.github++;
       if (!github) return route.abort();
-      const tags = [{ name: 'v0.0.1' }, { name: `v${github.version}` }, { name: 'nightly' }, { name: 'v999' }];
+      // Both v99.0.0 and 99.0.0 (a forgotten v): the v one must be used. With
+      // noV, only 99.0.0 exists, and it must still count as a release.
+      const tags = [{ name: 'v0.0.1' }, ...(github.noV ? [] : [{ name: `v${github.version}` }]),
+        { name: github.version }, { name: 'nightly' }, { name: 'v999' }];
       return route.fulfill({ contentType: 'application/json', headers: cors, body: JSON.stringify(tags) });
     }
     if (u.hostname === 'raw.githubusercontent.com') {
@@ -549,6 +552,7 @@ function fakeInternet(ctx, { github = null } = {}) {
     for (const [label, gh, checkOn, wantBanner] of [
       ['newer version on GitHub shows the notice', { version: '99.0.0', notes: ['Test note'] }, true, true],
       ['same version: no notice', { version: installed, notes: [] }, true, false],
+      ['a release tagged without the v (99.0.0) also shows the notice', { version: '99.0.0', notes: ['Test note'], noV: true }, true, true],
       ['checking off: no notice', { version: '99.0.0', notes: [] }, false, false],
     ]) {
       await putSettings(app.base, { checkUpdates: checkOn });
@@ -572,7 +576,8 @@ function fakeInternet(ctx, { github = null } = {}) {
       if (wantBanner) {
         await page.click('#update-banner');
         check('update window shows the command', (await page.textContent('#upd-cmd')).includes('deploy/update-ct.sh'));
-        check('notes come from the released version (its tag), not from main', seen.notesFrom.includes('/v99.0.0/app/version.json'), seen.notesFrom);
+        const tagPath = gh.noV ? '/99.0.0/app/version.json' : '/v99.0.0/app/version.json';
+        check('notes come from the released version (its tag), not from main', seen.notesFrom.endsWith(tagPath), seen.notesFrom);
         check('update window shows what is new', (await page.textContent('#upd-notes')).includes('Test note'));
       }
       await ctx.close();

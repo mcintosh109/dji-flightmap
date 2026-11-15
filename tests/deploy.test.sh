@@ -206,6 +206,15 @@ CTID=999 bash "$HOSTUP" --version 7.7.7 >"$LOGS/r6.log" 2>&1; code=$?
 check "an unknown version is refused, with the list of releases" bash -c "[ $code -ne 0 ] && grep -q 'no released version' '$LOGS/r6.log' && grep -q '9.1.0' '$LOGS/r6.log'"
 check "  ...and nothing was changed" [ "$(installed)" = 9.1.0 ]
 
+gitc tag 9.2.0; setver 9.3.0           # released WITHOUT the v (it was forgotten on GitHub)
+gitc push -q "$WORK/origin.git" main --tags
+CTID=999 bash "$HOSTUP" >"$LOGS/r7.log" 2>&1
+check "a release tagged without the v (9.2.0) is installed too" [ "$(installed)" = 9.2.0 ]
+CTID=999 bash "$HOSTUP" --version 9.1.0 >"$LOGS/r8.log" 2>&1
+check "  ...and going back from it works (9.1.0)" [ "$(installed)" = 9.1.0 ]
+CTID=999 bash "$HOSTUP" --version 9.2.0 >"$LOGS/r9.log" 2>&1
+check "  ...and --version finds it without the v (9.2.0)" [ "$(installed)" = 9.2.0 ]
+
 echo "HTTPS (Settings -> Secure connection)"
 HP=18443
 TLS=/var/lib/dji-flightmap/tls

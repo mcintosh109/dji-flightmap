@@ -33,26 +33,32 @@ window.Updates = (() => {
   }
 
   const REPO_RE = /^[\w.-]+\/[\w.-]+$/;        // "owner/name"
-  const TAG_RE = /^v(\d+\.\d+\.\d+)$/;        // release tags look like v2.3.0
+  const TAG_RE = /^v?(\d+\.\d+\.\d+)$/;       // release tags look like v2.3.0 (2.3.0 counts too)
 
-  // The newest released version of `repo`, e.g. "2.3.0", or '' if none yet.
+  // The newest release of `repo`: { version: "2.3.0", tag: "v2.3.0" }, or
+  // { version: '' } if none yet. A tag without the v counts too (it is easy
+  // to forget on GitHub); if both exist, the v one is used.
   async function newestRelease(repo) {
     const res = await fetch(`https://api.github.com/repos/${repo}/tags?per_page=100`, { cache: 'no-store' });
     if (res.status === 403 || res.status === 429) throw new Error('GitHub is busy; it allows about 60 checks an hour. Try again later');
     if (!res.ok) throw new Error(`GitHub answered ${res.status}`);
     const tags = await res.json();
-    let newest = '';
+    let newest = { version: '', tag: '' };
     for (const tag of Array.isArray(tags) ? tags : []) {
-      const match = TAG_RE.exec(String(tag.name));
-      if (match && (!newest || isNewer(match[1], newest))) newest = match[1];
+      const name = String(tag.name);
+      const match = TAG_RE.exec(name);
+      if (!match) continue;
+      const version = match[1];
+      if (!newest.version || isNewer(version, newest.version)
+          || (version === newest.version && name.startsWith('v'))) newest = { version, tag: name };
     }
     return newest;
   }
 
   // The "what's new" notes of a released version (best effort).
-  async function releaseNotes(repo, version) {
+  async function releaseNotes(repo, tag) {
     try {
-      const res = await fetch(`https://raw.githubusercontent.com/${repo}/v${version}/app/version.json`, { cache: 'no-store' });
+      const res = await fetch(`https://raw.githubusercontent.com/${repo}/${encodeURIComponent(tag)}/app/version.json`, { cache: 'no-store' });
       if (!res.ok) return {};
       const data = await res.json();
       return {
@@ -83,9 +89,9 @@ window.Updates = (() => {
       return compare(cached, installed);
     }
     try {
-      const latest = await newestRelease(repo);
+      const { version: latest, tag } = await newestRelease(repo);
       const info = { repo, latest, released: '', notes: [], checkedAt: Date.now() };
-      if (latest && isNewer(latest, installed)) Object.assign(info, await releaseNotes(repo, latest));
+      if (latest && isNewer(latest, installed)) Object.assign(info, await releaseNotes(repo, tag));
       writeCache(info);
       return compare(info, installed);
     } catch (err) {

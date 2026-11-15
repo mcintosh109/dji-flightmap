@@ -219,7 +219,10 @@ owner confirms it works**, release it with a tag (`git tag -a vX.Y.Z` +
   safety check (a public action). The owner then makes the release on
   GitHub: Releases → Draft a new release → new tag `vX.Y.Z` on `main`.
   Remind them of the **v**: a tag `3.0.5` (no v) is ignored by updates.js and
-  update-ct.sh (it happened; they then added `v3.0.5`). Don't push to `main`
+  update-ct.sh (it happened; they then added `v3.0.5`). It happened again
+  with 4.2.0, so since 4.2.1 a tag without the v counts too
+  (`deploy/release-tags.sh`, `TAG_RE` in updates.js; the v one wins when
+  both exist). Older installs still only see v tags, so keep asking for the v. Don't push to `main`
   between asking for a release and the owner confirming it, or the tag
   lands on the wrong commit; work on a branch meanwhile.
 - **Place names** (3.0.6): `hideOverlappingNames()` in places.js hides a

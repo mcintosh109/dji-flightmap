@@ -71,17 +71,18 @@ if [[ "$CHOOSE" == yes && -d "$SRC_DIR/.git" ]]; then
     echo "Could not reach GitHub. Check this server's internet connection and try again." >&2
     exit 1
   fi
-  NEWEST=$(git -C "$SRC_DIR" tag -l 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | head -1)
+  # Releases are tags like v2.3.0 (2.3.0 without the v counts too).
+  NEWEST=$(bash "$SRC_DIR/deploy/release-tags.sh" "$SRC_DIR" | head -1)
   case "$MODE" in
     test)
       INSTALL=origin/main
       LABEL="test version $(version_in origin/main), which has NOT been released yet"
       ;;
     version)
-      TAG="v${WANT#v}"
-      if [[ -z "$WANT" ]] || ! git -C "$SRC_DIR" rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
+      TAG=$(bash "$SRC_DIR/deploy/release-tags.sh" "$SRC_DIR" | grep -xE "v?${WANT#v}" | head -1 || true)
+      if [[ -z "$WANT" || -z "$TAG" ]]; then
         echo "There is no released version '${WANT}'. Released versions:" >&2
-        git -C "$SRC_DIR" tag -l 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | sed 's/^v/  /' >&2
+        bash "$SRC_DIR/deploy/release-tags.sh" "$SRC_DIR" | sed 's/^v//; s/^/  /' >&2
         exit 1
       fi
       INSTALL=$TAG

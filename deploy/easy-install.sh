@@ -65,7 +65,11 @@ elif [[ -e "$DIR" ]]; then
 else
   git clone -q "$REPO_URL" "$DIR" || stop "could not reach GitHub. Check this server's internet connection and try again."
 fi
-NEWEST=$(git -C "$DIR" tag -l 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | head -1)
+# The newest release: a tag like v4.2.0 (4.2.0 without the v counts too).
+# The same as deploy/release-tags.sh, written out here because the folder
+# may still hold an older version that doesn't have that file.
+NEWEST=$(git -C "$DIR" tag -l | grep -E '^v?[0-9]+\.[0-9]+\.[0-9]+$' \
+  | awk '{ n = $0; sub(/^v/, "", n); print n, $0 }' | sort -k1,1Vr -k2,2r | awk 'NR == 1 { print $2 }' || true)
 if [[ "$MODE" == test || -z "$NEWEST" ]]; then REF=origin/main; else REF=$NEWEST; fi
 if ! git -C "$DIR" checkout -q --detach "$REF"; then
   stop "could not switch $DIR to $REF. Has a file in it been changed by hand? See: git -C $DIR status"

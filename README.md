@@ -113,7 +113,7 @@ Switch to the newest **released** version (without this you would get the
 newest *test* version):
 
 ```bash
-git checkout -q "$(git tag -l 'v*' --sort=-v:refname | head -1)"
+git checkout -q "$(bash deploy/release-tags.sh | head -1)"
 ```
 
 ---
@@ -814,6 +814,7 @@ pct exec 105 -- systemctl restart dji-flightmap
 | `deploy/update-ct.sh` | Proxmox host: backs up settings, installs a newer version, puts settings back, undoes it if the map doesn't start | *"pct push"*, *"pct pull"* |
 | `deploy/restore-ct.sh` | Proxmox host: puts saved settings back into a container | |
 | `deploy/ct-backup.sh` | Shared save/restore steps used by the scripts above and below | *"bash source"* |
+| `deploy/release-tags.sh` | Lists the released versions, newest first (tags like `v4.2.0`; `4.2.0` without the v counts too) | *"git tag"* |
 | `deploy/easy-install.sh` | Proxmox host: the one-command install. Downloads the newest release, then runs the scripts below in order (or offers an update) | *"curl pipe bash"* |
 | `deploy/setup-backup-share.sh` | Proxmox host: connects the writable TrueNAS backup folder, turns on the daily backup | *"systemd timer"* |
 | `deploy/backup-ct.sh` | Proxmox host: makes a backup now (the daily timer runs it) | |

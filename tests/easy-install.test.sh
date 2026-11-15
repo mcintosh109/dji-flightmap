@@ -122,6 +122,12 @@ run "$WORK/e" "\n"
 check "a folder that isn't this project is left alone" said "isn't a download of this project"
 check "its file is still there" test -e "$WORK/e/something"
 
+echo "A release whose tag has no v (9.1.0 instead of v9.1.0)"
+git -C "$ORIGIN" tag 9.1.0
+run "$WORK/f" "2\n$WORK/logs\n"
+check "still counts as the newest release" said "version 9.1.0 (the newest release)"
+check "and is the one downloaded" version_is "$WORK/f" 9.1.0
+
 echo
 echo "Easy install: $PASSED passed, $FAILED failed"
 [[ $FAILED -eq 0 ]]
