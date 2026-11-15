@@ -508,5 +508,9 @@ code, .cmd { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 1
 
 /* ---------- Google Maps logo (Google's rules: always visible) ---------- */
 .google-logo { margin: 0 6px 2px 0 !important; pointer-events: none; }
-.google-logo img { display: block; height: 18px; width: auto; }
+.google-logo img {
+  display: block; height: 18px; width: auto;
+  /* Google's logo is white: a thin dark outline keeps it visible on light road maps. */
+  filter: drop-shadow(0 0 1px rgba(0, 0, 0, 0.9)) drop-shadow(0 1px 2px rgba(0, 0, 0, 0.6));
+}
 .google-logo.text { font: 700 15px/1 Arial, sans-serif; color: #fff; text-shadow: 0 0 3px #000, 0 0 2px #000; }

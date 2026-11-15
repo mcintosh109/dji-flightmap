@@ -1,5 +1,5 @@
 {
-  "version": "3.0.3",
+  "version": "3.0.4",
   "released": "2026-11-14",
   "repo": "mcintosh109/dji-flightmap",
   "notes": [
@@ -8,6 +8,6 @@
     "Needs one step in Google Cloud: turn on the Map Tiles API for your key (see the README)",
     "If Google refuses, the server waits a minute before asking again, and its log says what to check",
     "New check for Google Maps problems: python3 /opt/dji-flightmap/app/server.py --check-google (see the README)",
-    "The map's credit line now stays visible above the flight and planner panels"
+    "The map's credit line and the Google logo stay visible, also above the flight and planner panels and on light maps"
   ]
 }
