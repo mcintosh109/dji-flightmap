@@ -1,0 +1,16 @@
+# Line endings. The map runs on Linux (Proxmox), where a script saved with
+# Windows line endings (CRLF) fails with errors like "$'\r': command not
+# found". So Git always stores these files with Linux line endings (LF),
+# even when they were edited on Windows. (Research: "gitattributes eol".)
+* text=auto eol=lf
+
+# Visual Studio's own files use Windows line endings.
+*.sln text eol=crlf
+*.pyproj text eol=crlf
+
+# Pictures are never changed.
+*.png binary
+*.ico binary
+
+# Third-party files (Leaflet) are kept exactly as they were published.
+app/static/vendor/** -text

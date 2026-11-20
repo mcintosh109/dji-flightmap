@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Visual Studio project for DJI Flight Map (opened by dji-flightmap.sln).
+  It is only for EDITING in Visual Studio: the map runs on the Proxmox
+  server, not on Windows. Files are picked up by folder (the ** patterns),
+  so new files show up without changing this file.
+  Needs Visual Studio's "Python development" workload.
+-->
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003" ToolsVersion="4.0">
+  <PropertyGroup>
+    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
+    <SchemaVersion>2.0</SchemaVersion>
+    <ProjectGuid>{C8212026-C1DB-446F-A1B1-28C29AAAED02}</ProjectGuid>
+    <ProjectHome>.</ProjectHome>
+    <StartupFile>app\server.py</StartupFile>
+    <SearchPath>app</SearchPath>
+    <WorkingDirectory>app</WorkingDirectory>
+    <OutputPath>.</OutputPath>
+    <Name>dji-flightmap</Name>
+    <RootNamespace>dji-flightmap</RootNamespace>
+    <LaunchProvider>Standard Python launcher</LaunchProvider>
+    <EnableNativeCodeDebugging>False</EnableNativeCodeDebugging>
+    <!-- Only used if you press Start (F5): a local test, plain http, files kept in .vs-run -->
+    <Environment>DEFAULT_HTTPS=off
+PORT=8080
+HOST=127.0.0.1
+DATA_DIR=..\.vs-run\logs
+CACHE_FILE=..\.vs-run\state\summaries.json</Environment>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)' == 'Debug' ">
+    <DebugSymbols>true</DebugSymbols>
+    <EnableUnmanagedDebugging>false</EnableUnmanagedDebugging>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)' == 'Release' ">
+    <DebugSymbols>true</DebugSymbols>
+    <EnableUnmanagedDebugging>false</EnableUnmanagedDebugging>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- Python: the server and its tests -->
+    <Compile Include="app\**\*.py" />
+    <Compile Include="tests\**\*.py" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Everything else: the web pages, install scripts, tests and notes -->
+    <Content Include="app\**\*.html;app\**\*.js;app\**\*.css;app\**\*.json;app\**\*.png;app\**\*.svg" />
+    <Content Include="deploy\**\*" />
+    <Content Include="tests\**\*.js;tests\**\*.sh;tests\**\*.md" />
+    <Content Include=".claude\**\*.md" />
+    <Content Include="README.md;CLAUDE.md;SECURITY.md;LICENSE;NOTICE;.gitignore;.gitattributes;.editorconfig" />
+  </ItemGroup>
+  <Import Project="$(MSBuildExtensionsPath32)\Microsoft\VisualStudio\v$(VisualStudioVersion)\Python Tools\Microsoft.PythonTools.targets" />
+</Project>

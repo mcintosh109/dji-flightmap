@@ -261,5 +261,12 @@ owner confirms it works**, release it with a tag (`git tag -a vX.Y.Z` +
   installed there. Never restart for an empty share (a new install), and skip
   while update/restore/create/easy-install runs. Tests: NasRules/LiveNas,
   `tests/nas-watch.test.sh`, the settings-page part of browser.test.js.
+- **Visual Studio** (after 4.3.0): the owner edits in Visual Studio, so the
+  repo has `dji-flightmap.sln` + `dji-flightmap.pyproj` (wildcard items, so
+  new files need no change there), `.gitattributes` (`eol=lf` for
+  everything except the VS files; `app/static/vendor/**` is `-text` so
+  Leaflet's CRLF files stay as published) and `.editorconfig`. Their commits
+  may now come from Windows: before building on them, check scripts still
+  have LF endings and run the full tests.
 - Old installs had an `update-ct.sh` that could not download its own
   replacement; the current one does `git pull` and restarts itself.

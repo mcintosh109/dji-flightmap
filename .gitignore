@@ -6,3 +6,8 @@ __pycache__/
 cache.json
 *.csv
 *.geojson
+
+# Visual Studio (its own settings per computer, and the local test folder)
+.vs/
+.vs-run/
+*.user

@@ -1,0 +1,29 @@
+# Editor settings, read by Visual Studio and VS Code. (Research: "editorconfig".)
+root = true
+
+# Linux line endings (LF): the map and its scripts run on Linux, where
+# Windows line endings break the scripts. See .gitattributes.
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+[*.py]
+indent_style = space
+indent_size = 4
+
+[*.{js,html,css,json}]
+indent_style = space
+indent_size = 2
+
+[*.sh]
+indent_style = space
+indent_size = 2
+
+# Visual Studio's own files use Windows line endings.
+[*.{sln,pyproj}]
+end_of_line = crlf
+
+[*.md]
+trim_trailing_whitespace = false

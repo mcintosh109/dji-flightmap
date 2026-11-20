@@ -886,6 +886,27 @@ contain garbage values, so the first GPS point is used as the take-off spot.
 Two files count as the **same flight** when they have the same aircraft serial
 number and start time. The CSV is preferred over the GeoJSON.
 
+### Editing in Visual Studio
+
+The project includes `dji-flightmap.sln`, so it opens in **Visual Studio**
+(2022 or newer) like any other solution. It's for **editing**: the map
+itself runs on the Proxmox server, not on Windows.
+
+1. In the **Visual Studio Installer**, make sure the **Python development**
+   workload is ticked (it lets Visual Studio open `.pyproj` projects).
+2. Start Visual Studio → **Clone a repository** → paste
+   `https://github.com/mcintosh109/dji-flightmap` → **Clone**.
+3. In **Solution Explorer**, double-click **dji-flightmap.sln**.
+4. After editing: **Git** → **Commit or Stash** → write what you changed →
+   **Commit All** → **Push** (the ↑ arrow).
+
+Files are stored with Linux line endings even when edited on Windows
+(`.gitattributes` and `.editorconfig` take care of it): a script with
+Windows line endings fails on Linux with *"$'\r': command not found"*.
+That's also why it's better to push from Visual Studio than to upload
+edited files on GitHub's website. (Research: *"Visual Studio Git changes
+window"*, *"CRLF vs LF"*.)
+
 ### Tests
 
 `bash tests/run-all.sh` checks everything: privacy (nothing personal in the
