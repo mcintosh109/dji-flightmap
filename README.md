@@ -256,7 +256,8 @@ Open the **Plans** tab in the sidebar and press **New plan**.
 
 1. **Take-off point:** click the map where you'll take off, or press
    *Use the take-off point of my last flight*. It shows as **H**.
-2. **Waypoints:** click the map to add them in order. Drag a number to move
+2. **Waypoints:** click the map to add them in order. **Right-click** a
+   waypoint (or press and hold on a phone) for a menu with **Delete**. Drag a number to move
    it. In the table, change each waypoint's **height** (above take-off),
    **speed** and **pause**, or delete it with ✕. *Apply to all* gives every
    waypoint the "New waypoints" height and speed.

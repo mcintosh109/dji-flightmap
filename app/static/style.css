@@ -334,6 +334,10 @@ a.icon-btn { color: var(--text); }
 .pl-warnings li { padding: 6px 10px; border-radius: 8px; font-size: 13px; }
 .pl-warnings li.warn { background: rgba(255, 176, 32, 0.12); color: var(--warn); }
 .pl-warnings li.danger { background: rgba(255, 107, 107, 0.14); color: #ff8c8c; }
+.wp-menu-popup .leaflet-popup-content { margin: 10px 12px; }
+.wp-menu { display: grid; gap: 6px; min-width: 150px; font-size: 13px; }
+.wp-menu span { color: var(--muted); }
+.wp-menu-delete { color: #ff8c8c; }
 .dj-field { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin: 6px 0; }
 .dj-field select { max-width: 60%; }
 .dj-checks { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }

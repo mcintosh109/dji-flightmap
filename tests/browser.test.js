@@ -461,6 +461,14 @@ function fakeInternet(ctx, { github = null } = {}) {
     check('take-off point is visible above the planner panel', hBox && hBox.y + hBox.height < plannerTop, JSON.stringify({ hBox, plannerTop }));
     for (const [x, y] of [[650, 120], [1100, 120], [1150, 300], [650, 300]]) { await page.mouse.click(x, y); await page.waitForTimeout(120); }
     check('clicking the map adds waypoints (4)', (await page.locator('#pl-wps tbody tr').count()) === 4);
+    // Right-click a waypoint: a menu with Delete (here on a 5th, extra point).
+    await page.mouse.click(900, 200);
+    await page.waitForTimeout(150);
+    await page.locator('.wp-icon', { hasText: '5' }).click({ button: 'right' });
+    check('right-clicking a waypoint opens its menu', await page.isVisible('.wp-menu') && (await page.textContent('.wp-menu')).includes('Waypoint 5'));
+    await page.click('.wp-menu-delete');
+    await page.waitForTimeout(400);   // the menu fades out (0.2 s) before it is removed
+    check('  ...and Delete removes that waypoint', (await page.locator('#pl-wps tbody tr').count()) === 4 && await page.isHidden('.wp-menu'));
     check('new waypoints start at 200 ft and 18 mph',
       (await page.inputValue('#pl-wps tr[data-i="0"] input[data-f=alt]')) === '200' && (await page.inputValue('#pl-wps tr[data-i="0"] input[data-f=speed]')) === '18');
     check('distance and time are worked out', !(await page.textContent('#pl-stats')).includes('–'));

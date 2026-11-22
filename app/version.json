@@ -1,8 +1,9 @@
 {
-  "version": "5.0.0",
+  "version": "5.1.0",
   "released": "2026-11-15",
   "repo": "mcintosh109/dji-flightmap",
   "notes": [
+    "In the flight planner, right-click a waypoint (or press and hold on a phone) to delete it",
     "New: Download for DJI Fly\u2026 in the flight planner makes a waypoint mission (.kmz) the Mini 4 Pro can fly by itself",
     "It is written exactly like DJI Fly's own missions, and put on the RC 2 in place of a placeholder mission (steps in the window)",
     "It won't download until the plan is saved, safe heights are used, no \u26d4 warning is left and the four safety boxes are ticked",

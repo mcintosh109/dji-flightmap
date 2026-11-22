@@ -226,11 +226,39 @@ const Planner = (() => {
     home.on('dragend', () => changed({ weather: true }));
     plan.waypoints.forEach((w, i) => {
       const m = L.marker([w.lat, w.lon], { icon: wpIcon(i + 1, i === selected), draggable: true, zIndexOffset: 1000 })
-        .bindTooltip(`Waypoint ${i + 1}: ${fmt.height(w.alt)}, ${fmt.speed(w.speed)}`).addTo(layer);
+        .bindTooltip(`Waypoint ${i + 1}: ${fmt.height(w.alt)}, ${fmt.speed(w.speed)} (right-click for more)`).addTo(layer);
       m.on('click', () => select(i));
+      // Right-click (or a long press on a phone): a small menu with "Delete".
+      m.on('contextmenu', (e) => {
+        L.DomEvent.preventDefault(e.originalEvent);
+        select(i);
+        waypointMenu(i);
+      });
       m.on('drag', (e) => { w.lat = e.latlng.lat; w.lon = e.latlng.lng; redrawLines(); });
       m.on('dragend', () => { select(i); changed(); });
     });
+  }
+
+  // The right-click menu of a waypoint.
+  function waypointMenu(i) {
+    const w = plan.waypoints[i];
+    const box = L.DomUtil.create('div', 'wp-menu');
+    box.innerHTML = `<b>Waypoint ${i + 1}</b><span>${esc(fmt.height(w.alt))}, ${esc(fmt.speed(w.speed))}</span>`
+      + '<button type="button" class="chip wp-menu-delete">Delete waypoint</button>';
+    L.DomEvent.disableClickPropagation(box);   // a click here must not add a waypoint underneath
+    const menu = L.popup({ closeButton: false, className: 'wp-menu-popup', offset: [0, -10] })
+      .setLatLng([w.lat, w.lon]).setContent(box);
+    box.querySelector('button').addEventListener('click', () => {
+      menu.close();
+      removeWaypoint(i);
+    });
+    menu.openOn(map);
+  }
+
+  function removeWaypoint(i) {
+    plan.waypoints.splice(i, 1);
+    selected = -1;
+    changed();
   }
 
   // Cheap redraw while dragging: only the lines.
@@ -367,6 +395,7 @@ const Planner = (() => {
     if (ask && dirty && !confirm('Close this plan without saving the changes?')) return false;
     plan = null;
     dirty = false;
+    map.closePopup();
     state.planning = false;
     layer.clearLayers();
     map.removeLayer(layer);
@@ -589,9 +618,7 @@ const Planner = (() => {
       if (!btn || !row) return;
       const i = Number(row.dataset.i);
       if (btn.dataset.act === 'delete') {
-        plan.waypoints.splice(i, 1);
-        selected = -1;
-        changed();
+        removeWaypoint(i);
       } else if (btn.dataset.act === 'select') {
         select(i);
         const w = plan.waypoints[i];
@@ -604,9 +631,7 @@ const Planner = (() => {
       if (!plan || e.target.matches('input, select, textarea')) return;
       if ((e.key === 'Delete' || e.key === 'Backspace') && selected >= 0) {
         e.preventDefault();
-        plan.waypoints.splice(selected, 1);
-        selected = -1;
-        changed();
+        removeWaypoint(selected);
       }
     });
     window.addEventListener('beforeunload', (e) => { if (plan && dirty) { e.preventDefault(); e.returnValue = ''; } });
