@@ -25,6 +25,7 @@ rest lives in the flightmap/ folder, one file per job:
   upstream.py    reused connections to Azure and Google
   https.py       HTTPS (the padlock), set up by deploy/set-https.sh
   nas.py         checks the connection to the flight logs on the NAS
+  djifly.py      a saved plan as a DJI Fly waypoint mission (.kmz)
 
 Settings are read from environment variables (see deploy/dji-flightmap.env):
   DATA_DIR      folder that holds the flight logs     (default: /srv/dji-logs)
@@ -66,6 +67,8 @@ Web addresses it answers:
   /api/nas/reconnect    POST: ask the Proxmox server to reconnect the NAS share now
   /api/plans            GET: saved flight plans
   /api/plans/<id>       PUT: save a plan (id "new" makes one), DELETE: remove it
+  /api/plans/<id>/djifly.kmz?finish=&lost=&shape=
+                        the plan as a DJI Fly waypoint mission (download)
   /flightmap-ca.crt     the private HTTPS certificate, to import on a device
   /login.html           the login page (only used when a login is set)
   /logout               signs you out
@@ -100,7 +103,7 @@ from flightmap.auth import (COOKIE_NAME, PUBLIC_PATHS, hash_password, make_sessi
 from flightmap.azure import AZURE_TILESETS, azure_request, html_to_text
 from flightmap.config import (APP_VERSION, AUTH_ENABLED, AUTH_PASSWORD_HASH, AUTH_USER, DATA_DIR, HOST, PORT,
                               STATIC_DIR, VERSION_INFO, log)
-from flightmap import google, https, nas
+from flightmap import djifly, google, https, nas
 from flightmap.google import GOOGLE_SETS, google_credits, google_tile
 from flightmap.gplaces import search as google_places_search
 from flightmap.library import FlightLibrary
@@ -249,6 +252,8 @@ class Handler(SimpleHTTPRequestHandler):
             return self.places()
         if path == "/api/nas":
             return self.send_json(nas.status(len(LIBRARY.listing()["flights"])))
+        if path.startswith("/api/plans/") and path.endswith("/djifly.kmz"):
+            return self.djifly_kmz(path)
         if path == "/api/plans":
             with PLANS_LOCK:
                 plans = [dict(p, id=k) for k, p in load_plans().items()]
@@ -355,6 +360,32 @@ class Handler(SimpleHTTPRequestHandler):
                 return self.send_json({"error": "OpenStreetMap is busy, try again in a minute", "busy": True}, 503)
             return self.send_json({"error": "could not get places from OpenStreetMap"}, 502)
         return self.send_json(answer)
+
+    # ---- a plan as a DJI Fly mission ------------------------------------------
+    def djifly_kmz(self, path):
+        plan_id = path[len("/api/plans/"):-len("/djifly.kmz")]
+        query = parse_qs(urlparse(self.path).query)
+        choice = lambda key, default: (query.get(key) or [default])[0]
+        with PLANS_LOCK:
+            plan = load_plans().get(plan_id) if PLAN_ID_RE.match(plan_id) else None
+        if plan is None:
+            return self.send_json({"error": "plan not found"}, 404)
+        straight = choice("shape", "curved") == "straight"
+        try:
+            body = djifly.build_kmz(plan, current_settings()["plannerMaxHeight"],
+                                    finish=choice("finish", "goHome"), lost=choice("lost", "goBack"),
+                                    straight=straight)
+        except djifly.MissionError as exc:
+            return self.send_json({"error": str(exc)}, 400)
+        name = re.sub(r"[^A-Za-z0-9 _-]+", "", plan.get("name", "")).strip()[:40] or "plan"
+        name += " (straight)" if straight else ""
+        log(f"{self.client_address[0]} downloaded plan {plan_id} for DJI Fly")
+        self.send_response(200)
+        self.send_header("Content-Type", "application/vnd.google-earth.kmz")
+        self.send_header("Content-Disposition", f'attachment; filename="{name}.kmz"')
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
 
     def send_raw(self, status, ctype, body):
         self.send_response(status)

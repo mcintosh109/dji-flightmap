@@ -268,5 +268,24 @@ owner confirms it works**, release it with a tag (`git tag -a vX.Y.Z` +
   Leaflet's CRLF files stay as published) and `.editorconfig`. Their commits
   may now come from Windows: before building on them, check scripts still
   have LF endings and run the full tests.
+- **DJI Fly missions** (5.0.0): `flightmap/djifly.py` + `/api/plans/<id>/djifly.kmz`
+  (Download for DJI Fly… in the planner). DJI Fly (RC 2) has NO import: the
+  file replaces a placeholder mission's `.kmz` in
+  `Android/data/dji.go.v5/files/waypoint/<UUID>/<UUID>.kmz` (next to
+  `capability/`, `map_preview/`; names are NOT in the file, DJI Fly keeps
+  them elsewhere; its list shows length, waypoint count, date). The format
+  was copied from three missions made by the owner's RC 2 (kept OUT of the
+  repo: they hold real coordinates) and the builder reproduced all three
+  byte for byte: namespace `uav.com/wpmz/1.0.2`, droneEnumValue 68, heights
+  `relativeToStartPoint`, ONE global speed (waypointSpeed =
+  globalTransitionalSpeed; autoFlightSpeed is always 2.5), first/last points
+  "Stop" + headingAngleEnable 1, middle "Pass" (curves: DJI Fly has no
+  straight option; `useStraightLine=1` is an untested option), group 1 at a
+  point = gimbalRotate at wp0 then hover (hoverTime s), group 2 =
+  gimbalEvenlyRotate to the next point (none after the last), actionIds count
+  up, zip entries dated 1980. Finish: goHome/autoLand; signal lost:
+  goBack/landing (DJI Fly also has Hover/Back to Start/Continue: not seen in
+  a file yet). Plan: owner tests by hand first, then the dock copies missions
+  (map lists the RC 2's missions, owner picks the placeholder, dock backs up).
 - Old installs had an `update-ct.sh` that could not download its own
   replacement; the current one does `git pull` and restarts itself.

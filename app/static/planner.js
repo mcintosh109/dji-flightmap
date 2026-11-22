@@ -408,6 +408,79 @@ const Planner = (() => {
     }
   }
 
+  // ---------- "Download for DJI Fly" ----------
+  // The server makes the file from the SAVED plan (api/plans/<id>/djifly.kmz),
+  // so the plan must be saved first. DJI Fly has one speed for the whole
+  // route; every waypoint must have it, so the estimates above stay true.
+  const routeSpeed = (p) => {
+    const speeds = new Set(p.waypoints.map((w) => Math.round(w.speed * 100) / 100));
+    return speeds.size === 1 ? [...speeds][0] : null;
+  };
+  const MIN_HEIGHT = 5;   // m, the same as the server's
+
+  function djProblems() {
+    const out = [];
+    if (dirty || !plan.id) out.push('Save the plan first: the file is made from the saved plan.');
+    if (!plan.home) out.push('The plan has no take-off point.');
+    if (plan.waypoints.length < 2) out.push('DJI Fly needs at least 2 waypoints.');
+    plan.waypoints.forEach((w, i) => {
+      if (w.alt < MIN_HEIGHT) out.push(`Waypoint ${i + 1} is lower than ${fmt.height(MIN_HEIGHT)} above take-off: too close to the ground.`);
+    });
+    if (plan.waypoints.length && routeSpeed(plan) === null) out.push('Give every waypoint the same speed (below).');
+    for (const w of warnings(plan, measure(plan))) if (w.level === 'danger') out.push(`Fix this first: ${w.text}`);
+    return out;
+  }
+
+  function renderDjiFly() {
+    const problems = djProblems();
+    $('#dj-problems').innerHTML = problems.map((t) => `<li class="danger">⛔ ${esc(t)}</li>`).join('');
+    const speed = routeSpeed(plan);
+    const slowest = plan.waypoints.length ? Math.min(...plan.waypoints.map((w) => w.speed)) : plan.defaults.speed;
+    $('#dj-speed').innerHTML = speed !== null
+      ? `<p class="help ok">✓ The whole route flies at ${esc(fmt.speed(speed))}, as the estimates assume.</p>`
+      : `<p class="help warn">Your waypoints have different speeds, but DJI Fly uses one speed for the whole route.</p>
+         <label class="pl-inline">Use <input id="dj-speed-value" type="number" min="1" step="1" value="${SPD.toUser(slowest)}"> ${esc(SPD.unit())}
+         for every waypoint</label> <button type="button" class="chip" id="dj-speed-apply">Apply and save</button>`;
+    $('#dj-shape-note').textContent = $('#dj-shape').value === 'straight'
+      ? 'Test: asks for straight lines between the points. DJI Fly has no such setting itself, so check that its map shows straight lines before flying it.'
+      : 'Like DJI Fly: the drone flies smooth curves through the middle waypoints, so it cuts the corners and doesn\'t pass exactly over them. Leave room around them.';
+    const ticked = [...document.querySelectorAll('.dj-ok')].every((c) => c.checked);
+    $('#dj-download').disabled = problems.length > 0 || !ticked;
+  }
+
+  function openDjiFly() {
+    if (!plan) return;
+    for (const c of document.querySelectorAll('.dj-ok')) c.checked = false;
+    $('#dj-msg').textContent = '';
+    renderDjiFly();
+    $('#dj-dialog').showModal();
+  }
+
+  async function downloadDjiFly() {
+    const q = new URLSearchParams({ finish: $('#dj-finish').value, lost: $('#dj-lost').value, shape: $('#dj-shape').value });
+    $('#dj-msg').textContent = 'Making the file…';
+    $('#dj-msg').className = 'pl-save-msg';
+    try {
+      const res = await fetch(`api/plans/${plan.id}/djifly.kmz?${q}`, { cache: 'no-store' });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || `the server answered ${res.status}`);
+      }
+      const name = /filename="([^"]+)"/.exec(res.headers.get('Content-Disposition') || '')?.[1] || 'plan.kmz';
+      const url = URL.createObjectURL(await res.blob());
+      const a = Object.assign(document.createElement('a'), { href: url, download: name });
+      document.body.append(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 10000);
+      $('#dj-msg').textContent = `Downloaded "${name}" ✓`;
+      $('#dj-msg').className = 'pl-save-msg ok';
+    } catch (err) {
+      $('#dj-msg').textContent = `Couldn't make the file: ${err.message}`;
+      $('#dj-msg').className = 'pl-save-msg error';
+    }
+  }
+
   // ---------- the list in the sidebar ----------
   async function loadList() {
     try {
@@ -446,6 +519,20 @@ const Planner = (() => {
     $('#pl-close').addEventListener('click', () => close());
     $('#pl-save').addEventListener('click', save);
     $('#pl-delete').addEventListener('click', remove);
+    $('#pl-djifly').addEventListener('click', openDjiFly);
+    $('#dj-dialog').addEventListener('change', renderDjiFly);
+    $('#dj-download').addEventListener('click', downloadDjiFly);
+    $('#dj-dialog').addEventListener('click', async (e) => {
+      if (e.target.id !== 'dj-speed-apply') return;
+      const v = SPD.fromUser(Number($('#dj-speed-value').value) || 0);
+      if (!(v >= 1 && v <= 15)) { $('#dj-msg').textContent = `The speed must be ${fmt.speed(1)} to ${fmt.speed(15)}.`; return; }
+      plan.waypoints.forEach((w) => { w.speed = Math.round(v * 100) / 100; });
+      plan.defaults.speed = Math.round(v * 100) / 100;
+      changed();
+      renderPanel();
+      await save();
+      renderDjiFly();
+    });
     $('#pl-last-home').addEventListener('click', () => {
       const h = lastTakeoff();
       if (!h) return;
@@ -532,6 +619,6 @@ const Planner = (() => {
     isOpen: () => !!plan,
     // When units or settings change, show everything again in the new units.
     refresh: () => { renderList(); if (plan) { renderPanel(); draw(); } },
-    _measure: measure, _plan: () => plan,   // used by the tests
+    _measure: measure, _plan: () => plan, _routeSpeed: routeSpeed,   // used by the tests
   };
 })();

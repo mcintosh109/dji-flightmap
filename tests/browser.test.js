@@ -505,6 +505,43 @@ function fakeInternet(ctx, { github = null } = {}) {
     await page.waitForTimeout(400);
     check('saved plan opens again with its 4 waypoints', (await page.locator('#pl-wps tbody tr').count()) === 4);
     check('500 ft is still exactly 500 ft', (await page.inputValue(altBox)) === '500');
+    // ---- Download for DJI Fly ----
+    const djProblems = () => page.$$eval('#dj-problems li', (els) => els.map((e) => e.innerText).join(' | '));
+    const tickAll = async () => { for (const c of await page.$$('.dj-ok')) await c.check(); };
+    await page.click('#pl-djifly');
+    await tickAll();
+    check('DJI Fly: a waypoint above the height limit blocks the download, even with every box ticked',
+      (await djProblems()).includes('height limit') && await page.isDisabled('#dj-download'), await djProblems());
+    await page.keyboard.press('Escape');
+    await page.fill(altBox, '200');
+    await page.press(altBox, 'Tab');
+    const speedBox = '#pl-wps tr[data-i="1"] input[data-f=speed]';
+    await page.fill(speedBox, '25');
+    await page.press(speedBox, 'Tab');
+    await page.fill('#pl-when', '');
+    await page.$eval('#pl-when', (el) => el.dispatchEvent(new Event('change', { bubbles: true })));
+    await page.waitForTimeout(1200);   // the weather is looked up again (here: none) after a moment
+    await page.click('#pl-djifly');
+    check('DJI Fly: unsaved changes must be saved first', (await djProblems()).includes('Save the plan first'), await djProblems());
+    check('DJI Fly: different speeds are explained (DJI Fly has one speed)',
+      (await page.textContent('#dj-speed')).includes('one speed for the whole route') && await page.isVisible('#dj-speed-apply'));
+    await page.fill('#dj-speed-value', '18');
+    await page.click('#dj-speed-apply');
+    await page.waitForTimeout(600);
+    check('DJI Fly: "Apply and save" gives every waypoint one speed and saves the plan',
+      (await page.textContent('#dj-speed')).includes('The whole route flies at') && (await djProblems()) === ''
+      && (await page.textContent('#pl-save-msg')).includes('Saved'), await djProblems());
+    check('DJI Fly: the download waits until every safety box is ticked', await page.isDisabled('#dj-download'));
+    await tickAll();
+    await page.selectOption('#dj-shape', 'straight');
+    check('DJI Fly: the straight-line test option says to check DJI Fly\'s map', (await page.textContent('#dj-shape-note')).includes('check that its map shows straight lines'));
+    const [kmz] = await Promise.all([page.waitForEvent('download'), page.click('#dj-download')]);
+    const kmzBytes = fs.readFileSync(await kmz.path());
+    check('DJI Fly: downloads a .kmz (a ZIP file) named after the plan',
+      kmz.suggestedFilename() === 'Test loop (straight).kmz' && kmzBytes.subarray(0, 2).toString() === 'PK', kmz.suggestedFilename());
+    check('DJI Fly: the window explains how to put it on the RC 2, with a backup first',
+      (await page.textContent('#dj-dialog')).includes('Copy the .kmz that is already there to your PC first'));
+    await page.keyboard.press('Escape');
     page.once('dialog', (d) => d.accept());
     await page.click('#pl-delete');
     await page.waitForTimeout(400);

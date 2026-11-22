@@ -1,10 +1,12 @@
 {
-  "version": "4.3.0",
+  "version": "5.0.0",
   "released": "2026-11-15",
   "repo": "mcintosh109/dji-flightmap",
   "notes": [
-    "New: when the NAS restarts (planned or not), the map reconnects to the flight logs by itself, usually within a few minutes",
-    "Settings \u2192 Flight logs on the NAS checks the connection every time you open it: does the NAS answer, is its share connected, can the logs be read",
-    "A Reconnect now button there fixes it straight away if something is wrong (the map may restart itself, about 20 seconds)"
+    "New: Download for DJI Fly\u2026 in the flight planner makes a waypoint mission (.kmz) the Mini 4 Pro can fly by itself",
+    "It is written exactly like DJI Fly's own missions, and put on the RC 2 in place of a placeholder mission (steps in the window)",
+    "It won't download until the plan is saved, safe heights are used, no \u26d4 warning is left and the four safety boxes are ticked",
+    "DJI Fly has one speed per route: Apply and save gives every waypoint the same speed, so the estimates stay true",
+    "Test it by hand first: check the route on DJI Fly's map, then fly it low and short in an open field"
   ]
 }

@@ -284,6 +284,52 @@ Limits are in **⚙ Settings → Flight planner**.
 > permission you need, and the weather where you are. You are responsible for
 > every flight.
 
+### Sending a plan to DJI Fly (Mini 4 Pro, RC 2)
+
+**Download for DJI Fly…** in a saved plan makes a DJI Fly **waypoint mission**
+file (`.kmz`) that the drone flies **by itself**. (Research: *"DJI Fly
+waypoints"*, *"KMZ WPML"*.)
+
+**DJI Fly has no import button.** The file is put in place of a mission DJI Fly
+made itself (a *placeholder*). DJI doesn't support this officially, so a DJI Fly
+update could change it. The file is written exactly the way DJI Fly writes its
+own missions: it was checked against three missions made by a real RC 2.
+
+What the window does:
+
+- **Blocks the download** until the plan is saved, has at least 2 waypoints,
+  every waypoint is at least 5 m (16 ft) above take-off and under your height
+  limit, and no ⛔ warning is left (battery, wind, ...).
+- **One speed:** DJI Fly has one speed for the whole route. If your waypoints
+  have different speeds, **Apply and save** gives them all one speed, so the
+  planner's time and battery estimates stay true.
+- **At the end** and **if the signal is lost**: *Return to home* (the default)
+  or *Land*.
+- **Route shape:** DJI Fly flies **smooth curves** through the middle
+  waypoints, so it **cuts the corners**. *Straight lines* is a test option:
+  DJI Fly has no such setting, so only use it if DJI Fly's map shows straight
+  lines for that file.
+- **Four boxes to tick:** airspace checked, local laws checked, the route is
+  clear of trees, towers, power lines and buildings, and you'll keep the drone
+  in sight and take over if needed.
+
+**Putting it on the RC 2 by hand:**
+
+1. In DJI Fly, make a **placeholder** waypoint mission (any 2-3 points) and
+   save it. Note its date and number of waypoints in DJI Fly's list.
+2. Plug the RC 2 into your PC. In File Explorer open **DJI RC 2 → Internal
+   shared storage → Android → data → dji.go.v5 → files → waypoint**, then the
+   placeholder's folder (a long name of letters and numbers).
+3. **Copy the `.kmz` that is already there to your PC first**, as a backup.
+4. Rename the downloaded file to **exactly** the same name as that `.kmz`, copy
+   it into the folder and choose **Replace**.
+5. Unplug, open DJI Fly, open the placeholder mission and **check the route on
+   its map**: the points, the heights (H), the speed and the end and
+   signal-lost actions. The small picture in DJI Fly's list may still show the
+   old route.
+6. The first time, fly it **low and short, in an open field**, ready to press
+   **pause** or take over with the sticks.
+
 ---
 
 ## The settings page (⚙)
@@ -850,6 +896,7 @@ pct exec 105 -- systemctl restart dji-flightmap
 | `deploy/update-ct.sh` | Proxmox host: backs up settings, installs a newer version, puts settings back, undoes it if the map doesn't start | *"pct push"*, *"pct pull"* |
 | `deploy/restore-ct.sh` | Proxmox host: puts saved settings back into a container | |
 | `deploy/ct-backup.sh` | Shared save/restore steps used by the scripts above and below | *"bash source"* |
+| `app/flightmap/djifly.py` | A saved plan as a DJI Fly waypoint mission (.kmz), written exactly like DJI Fly's own | *"DJI WPML"*, *"KMZ"* |
 | `deploy/nas-watch.sh` | Proxmox host, every minute: reconnects the NAS share after the NAS restarts, restarts the container if it still sees the empty folder, tells the settings page what it found | *"systemd timer"*, *"cifs mount"* |
 | `deploy/nas-view.sh` | Run inside the container by `nas-watch.sh`: what the container sees of the logs folder | *"/proc/self/mountinfo"* |
 | `deploy/release-tags.sh` | Lists the released versions, newest first (tags like `v4.2.0`; `4.2.0` without the v counts too) | *"git tag"* |

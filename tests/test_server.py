@@ -1422,5 +1422,134 @@ class LiveNas(unittest.TestCase):
         self.assertTrue(self.srv.json('/api/nas')['pending'])
 
 
+# ------------------------------------------------------ DJI Fly missions (5.0.0)
+def central_park_plan(**extra):
+    """A made-up plan over Central Park (never the owner's real places)."""
+    wps = [
+        {'lat': 40.7812, 'lon': -73.9665, 'alt': 30, 'speed': 5, 'hold': 3},
+        {'lat': 40.7820, 'lon': -73.9650, 'alt': 45.5, 'speed': 5, 'hold': 0},
+        {'lat': 40.7830, 'lon': -73.9660, 'alt': 60, 'speed': 5, 'hold': 6},
+        {'lat': 40.7825, 'lon': -73.9675, 'alt': 50, 'speed': 5, 'hold': 2},
+    ]
+    return dict({'name': 'Park loop', 'home': {'lat': 40.7810, 'lon': -73.9670}, 'waypoints': wps}, **extra)
+
+
+class DjiFlyRules(unittest.TestCase):
+    """flightmap/djifly.py writes missions like DJI Fly does (it was checked
+    against three missions made by the owner's own RC 2, which are not in
+    this public project)."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = tempfile.mkdtemp(prefix='flightmap-djifly-')
+        load_server(cls.tmp)
+        cls.dj = importlib.import_module('flightmap.djifly')
+
+    @classmethod
+    def tearDownClass(cls):
+        shutil.rmtree(cls.tmp, ignore_errors=True)
+
+    def files(self, plan=None, **kw):
+        import io
+        import zipfile
+        data = self.dj.build_kmz(plan or central_park_plan(), 122, now=1795000000, **kw)
+        z = zipfile.ZipFile(io.BytesIO(data))
+        return z, {n: z.read(n).decode() for n in z.namelist()}
+
+    def test_zip_like_dji_fly(self):
+        z, files = self.files()
+        self.assertEqual(z.namelist(), ['wpmz/template.kml', 'wpmz/waylines.wpml'])
+        self.assertTrue(all(i.compress_type == 8 for i in z.infolist()), 'compressed, like DJI Fly')
+        import xml.etree.ElementTree as ET
+        for text in files.values():
+            ET.fromstring(text.encode())   # well-formed
+            self.assertIn('xmlns:wpml="http://www.uav.com/wpmz/1.0.2"', text)
+            self.assertIn('<wpml:droneEnumValue>68</wpml:droneEnumValue>', text, 'Mini 4 Pro')
+        self.assertIn('<wpml:createTime>1795000000000</wpml:createTime>', files['wpmz/template.kml'])
+
+    def test_route(self):
+        import re
+        _, files = self.files()
+        w = files['wpmz/waylines.wpml']
+        self.assertEqual(w.count('<Placemark>'), 4)
+        self.assertEqual(re.findall(r'<wpml:executeHeight>([^<]+)<', w), ['30', '45.5', '60', '50'])
+        self.assertEqual(set(re.findall(r'<wpml:waypointSpeed>([^<]+)<', w)), {'5'})
+        self.assertIn('<wpml:globalTransitionalSpeed>5</wpml:globalTransitionalSpeed>', w)
+        self.assertIn('<wpml:executeHeightMode>relativeToStartPoint</wpml:executeHeightMode>', w)
+        self.assertIn('-73.9665,40.7812', w, 'longitude first, like KML')
+        # Pauses are hovers (also at the first waypoint, after the gimbal).
+        self.assertEqual(re.findall(r'<wpml:hoverTime>(\d+)<', w), ['3', '6', '2'])
+        first = w.split('</Placemark>')[0]
+        self.assertLess(first.index('gimbalRotate'), first.index('<wpml:actionActuatorFunc>hover'))
+        ids = [int(i) for i in re.findall(r'<wpml:actionId>(\d+)<', w)]
+        self.assertEqual(ids, list(range(1, len(ids) + 1)), 'action numbers count up through the file')
+        last = w.split('<Placemark>')[-1]
+        self.assertNotIn('gimbalEvenlyRotate', last, 'nothing to level towards after the last point')
+        self.assertIn('<wpml:finishAction>goHome</wpml:finishAction>', w, 'return home by default')
+        self.assertIn('<wpml:executeRCLostAction>goBack</wpml:executeRCLostAction>', w)
+        self.assertEqual(set(re.findall(r'<wpml:useStraightLine>(\d)<', w)), {'0'})
+
+    def test_choices(self):
+        _, files = self.files(finish='autoLand', lost='landing', straight=True)
+        w = files['wpmz/waylines.wpml']
+        self.assertIn('<wpml:finishAction>autoLand</wpml:finishAction>', w)
+        self.assertIn('<wpml:executeRCLostAction>landing</wpml:executeRCLostAction>', w)
+        self.assertNotIn('<wpml:useStraightLine>0', w)
+        with self.assertRaises(self.dj.MissionError):
+            self.files(finish='gotoFirstWaypoint')
+
+    def test_refuses_unsafe_or_impossible_plans(self):
+        cases = {
+            'one speed': lambda p: p['waypoints'][1].update(speed=8),
+            'at least 2 waypoints': lambda p: p.update(waypoints=p['waypoints'][:1]),
+            'too close to the ground': lambda p: p['waypoints'][0].update(alt=2),
+            'height limit': lambda p: p['waypoints'][2].update(alt=130),
+            'take-off point': lambda p: p.update(home=None),
+        }
+        for words, change in cases.items():
+            plan = central_park_plan()
+            change(plan)
+            with self.assertRaises(self.dj.MissionError) as err:
+                self.files(plan)
+            self.assertIn(words, str(err.exception))
+
+
+class LiveDjiFly(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = tempfile.mkdtemp(prefix='flightmap-djifly-live-')
+        make_archive(os.path.join(cls.tmp, 'archive'))
+        os.makedirs(os.path.join(cls.tmp, 'state'))
+        cls.srv = LiveServer(os.path.join(cls.tmp, 'archive'), os.path.join(cls.tmp, 'state'))
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.srv.stop()
+        shutil.rmtree(cls.tmp, ignore_errors=True)
+
+    def save(self, plan):
+        status, _, body = self.srv.request('/api/plans/new', 'PUT', json.dumps(plan).encode(),
+                                           {'Content-Type': 'application/json', 'X-Requested-With': 'flightmap'})
+        self.assertEqual(status, 200, body)
+        return json.loads(body)['id']
+
+    def test_download(self):
+        plan_id = self.save(central_park_plan())
+        status, headers, body = self.srv.request(f'/api/plans/{plan_id}/djifly.kmz?finish=autoLand&lost=goBack')
+        self.assertEqual(status, 200)
+        self.assertEqual(headers['Content-Type'], 'application/vnd.google-earth.kmz')
+        self.assertIn('filename="Park loop.kmz"', headers['Content-Disposition'])
+        self.assertEqual(body[:2], b'PK')
+
+    def test_refusals(self):
+        plan = central_park_plan()
+        plan['waypoints'][0]['speed'] = 9
+        status, _, body = self.srv.request(f'/api/plans/{self.save(plan)}/djifly.kmz')
+        self.assertEqual(status, 400)
+        self.assertIn('one speed', json.loads(body)['error'])
+        self.assertEqual(self.srv.request('/api/plans/0123456789ab/djifly.kmz')[0], 404)
+        self.assertEqual(self.srv.request('/api/plans/../../etc/djifly.kmz')[0], 404)
+
+
 if __name__ == '__main__':
     unittest.main(verbosity=2)
