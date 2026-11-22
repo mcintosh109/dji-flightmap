@@ -470,9 +470,6 @@ const Planner = (() => {
       : `<p class="help warn">Your waypoints have different speeds, but DJI Fly uses one speed for the whole route.</p>
          <label class="pl-inline">Use <input id="dj-speed-value" type="number" min="1" step="1" value="${SPD.toUser(slowest)}"> ${esc(SPD.unit())}
          for every waypoint</label> <button type="button" class="chip" id="dj-speed-apply">Apply and save</button>`;
-    $('#dj-shape-note').textContent = $('#dj-shape').value === 'straight'
-      ? 'Test: asks for straight lines between the points. DJI Fly has no such setting itself, so check that its map shows straight lines before flying it.'
-      : 'Like DJI Fly: the drone flies smooth curves through the middle waypoints, so it cuts the corners and doesn\'t pass exactly over them. Leave room around them.';
     const ticked = [...document.querySelectorAll('.dj-ok')].every((c) => c.checked);
     $('#dj-download').disabled = problems.length > 0 || !ticked;
   }
@@ -486,7 +483,7 @@ const Planner = (() => {
   }
 
   async function downloadDjiFly() {
-    const q = new URLSearchParams({ finish: $('#dj-finish').value, lost: $('#dj-lost').value, shape: $('#dj-shape').value });
+    const q = new URLSearchParams({ finish: $('#dj-finish').value, lost: $('#dj-lost').value });
     $('#dj-msg').textContent = 'Making the file…';
     $('#dj-msg').className = 'pl-save-msg';
     try {

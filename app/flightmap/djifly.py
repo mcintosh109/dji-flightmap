@@ -12,6 +12,10 @@ missions made by the owner's own RC 2 (DJI Fly, November 2026):
   - a pause is a "hover" action; the camera stays level and the drone
     faces the way it flies (DJI Fly's defaults: gimbal 0°, Follow Course)
   - at the end and when the signal is lost: return home or land
+  - DJI Fly flies smooth curves through the middle waypoints (it has no
+    straight-line choice, and ignored useStraightLine=1 in a test)
+  - the take-off point is NOT in the file: heights count from wherever the
+    drone takes off
 
 Research: "DJI WPML", "KMZ waypoint mission", "DJI Fly waypoints".
 """
@@ -143,7 +147,7 @@ GIMBAL_EVENLY = """              <wpml:gimbalPitchRotateAngle>0</wpml:gimbalPitc
 """
 
 
-def _placemark(i, last, w, speed, straight, next_action):
+def _placemark(i, last, w, speed, next_action):
     """One waypoint, with the same actions DJI Fly adds:
        group 1 at the point itself (the first point sets the gimbal; a pause
        is a hover, after the gimbal at the first point), group 2 levels the
@@ -180,7 +184,7 @@ def _placemark(i, last, w, speed, straight, next_action):
           <wpml:waypointTurnMode>{turn}</wpml:waypointTurnMode>
           <wpml:waypointTurnDampingDist>0</wpml:waypointTurnDampingDist>
         </wpml:waypointTurnParam>
-        <wpml:useStraightLine>{1 if straight else 0}</wpml:useStraightLine>
+        <wpml:useStraightLine>0</wpml:useStraightLine>
 {groups}        <wpml:waypointGimbalHeadingParam>
           <wpml:waypointGimbalPitchAngle>0</wpml:waypointGimbalPitchAngle>
           <wpml:waypointGimbalYawAngle>0</wpml:waypointGimbalYawAngle>
@@ -189,14 +193,14 @@ def _placemark(i, last, w, speed, straight, next_action):
 """
 
 
-def _waylines(wps, finish, lost, speed, straight):
+def _waylines(wps, finish, lost, speed):
     counter = {"n": 0}
 
     def next_action():
         counter["n"] += 1
         return counter["n"]
 
-    marks = "".join(_placemark(i, len(wps) - 1, w, speed, straight, next_action) for i, w in enumerate(wps))
+    marks = "".join(_placemark(i, len(wps) - 1, w, speed, next_action) for i, w in enumerate(wps))
     return f"""<?xml version="1.0" encoding="UTF-8"?>
 <kml xmlns="http://www.opengis.net/kml/2.2" xmlns:wpml="{NAMESPACE}">
   <Document>
@@ -213,7 +217,7 @@ def _waylines(wps, finish, lost, speed, straight):
 """
 
 
-def build_kmz(plan, max_height, finish="goHome", lost="goBack", straight=False, now=None):
+def build_kmz(plan, max_height, finish="goHome", lost="goBack", now=None):
     """The .kmz file's bytes. Raises MissionError if the plan can't be sent."""
     if finish not in FINISH or lost not in LOST:
         raise MissionError("Unknown choice for the end of the flight or a lost signal.")
@@ -224,7 +228,7 @@ def build_kmz(plan, max_height, finish="goHome", lost="goBack", straight=False, 
     now_ms = int((now or time.time()) * 1000)
     files = {
         "wpmz/template.kml": _template(finish, lost, speed, now_ms),
-        "wpmz/waylines.wpml": _waylines(plan["waypoints"], finish, lost, speed, straight),
+        "wpmz/waylines.wpml": _waylines(plan["waypoints"], finish, lost, speed),
     }
     out = io.BytesIO()
     with zipfile.ZipFile(out, "w") as zf:

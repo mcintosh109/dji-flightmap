@@ -67,7 +67,7 @@ Web addresses it answers:
   /api/nas/reconnect    POST: ask the Proxmox server to reconnect the NAS share now
   /api/plans            GET: saved flight plans
   /api/plans/<id>       PUT: save a plan (id "new" makes one), DELETE: remove it
-  /api/plans/<id>/djifly.kmz?finish=&lost=&shape=
+  /api/plans/<id>/djifly.kmz?finish=&lost=
                         the plan as a DJI Fly waypoint mission (download)
   /flightmap-ca.crt     the private HTTPS certificate, to import on a device
   /login.html           the login page (only used when a login is set)
@@ -370,15 +370,12 @@ class Handler(SimpleHTTPRequestHandler):
             plan = load_plans().get(plan_id) if PLAN_ID_RE.match(plan_id) else None
         if plan is None:
             return self.send_json({"error": "plan not found"}, 404)
-        straight = choice("shape", "curved") == "straight"
         try:
             body = djifly.build_kmz(plan, current_settings()["plannerMaxHeight"],
-                                    finish=choice("finish", "goHome"), lost=choice("lost", "goBack"),
-                                    straight=straight)
+                                    finish=choice("finish", "goHome"), lost=choice("lost", "goBack"))
         except djifly.MissionError as exc:
             return self.send_json({"error": str(exc)}, 400)
         name = re.sub(r"[^A-Za-z0-9 _-]+", "", plan.get("name", "")).strip()[:40] or "plan"
-        name += " (straight)" if straight else ""
         log(f"{self.client_address[0]} downloaded plan {plan_id} for DJI Fly")
         self.send_response(200)
         self.send_header("Content-Type", "application/vnd.google-earth.kmz")

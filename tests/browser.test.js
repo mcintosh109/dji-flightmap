@@ -541,12 +541,13 @@ function fakeInternet(ctx, { github = null } = {}) {
       && (await page.textContent('#pl-save-msg')).includes('Saved'), await djProblems());
     check('DJI Fly: the download waits until every safety box is ticked', await page.isDisabled('#dj-download'));
     await tickAll();
-    await page.selectOption('#dj-shape', 'straight');
-    check('DJI Fly: the straight-line test option says to check DJI Fly\'s map', (await page.textContent('#dj-shape-note')).includes('check that its map shows straight lines'));
+    check('DJI Fly: says the drone flies curves and cuts the corners', (await page.textContent('#dj-dialog')).includes('cuts the corners'));
+    check('DJI Fly: a box to tick about taking off from the plan\'s take-off point',
+      (await page.textContent('#dj-dialog')).includes("take off from the plan's take-off point") && (await page.$$('.dj-ok')).length === 5);
     const [kmz] = await Promise.all([page.waitForEvent('download'), page.click('#dj-download')]);
     const kmzBytes = fs.readFileSync(await kmz.path());
     check('DJI Fly: downloads a .kmz (a ZIP file) named after the plan',
-      kmz.suggestedFilename() === 'Test loop (straight).kmz' && kmzBytes.subarray(0, 2).toString() === 'PK', kmz.suggestedFilename());
+      kmz.suggestedFilename() === 'Test loop.kmz' && kmzBytes.subarray(0, 2).toString() === 'PK', kmz.suggestedFilename());
     check('DJI Fly: the window explains how to put it on the RC 2, with a backup first',
       (await page.textContent('#dj-dialog')).includes('Copy the .kmz that is already there to your PC first'));
     await page.keyboard.press('Escape');

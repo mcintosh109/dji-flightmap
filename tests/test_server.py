@@ -1490,11 +1490,10 @@ class DjiFlyRules(unittest.TestCase):
         self.assertEqual(set(re.findall(r'<wpml:useStraightLine>(\d)<', w)), {'0'})
 
     def test_choices(self):
-        _, files = self.files(finish='autoLand', lost='landing', straight=True)
+        _, files = self.files(finish='autoLand', lost='landing')
         w = files['wpmz/waylines.wpml']
         self.assertIn('<wpml:finishAction>autoLand</wpml:finishAction>', w)
         self.assertIn('<wpml:executeRCLostAction>landing</wpml:executeRCLostAction>', w)
-        self.assertNotIn('<wpml:useStraightLine>0', w)
         with self.assertRaises(self.dj.MissionError):
             self.files(finish='gotoFirstWaypoint')
 

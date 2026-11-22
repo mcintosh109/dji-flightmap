@@ -280,12 +280,16 @@ owner confirms it works**, release it with a tag (`git tag -a vX.Y.Z` +
   `relativeToStartPoint`, ONE global speed (waypointSpeed =
   globalTransitionalSpeed; autoFlightSpeed is always 2.5), first/last points
   "Stop" + headingAngleEnable 1, middle "Pass" (curves: DJI Fly has no
-  straight option; `useStraightLine=1` is an untested option), group 1 at a
+  straight option, and its map still drew curves for `useStraightLine=1`,
+  so that option was removed), group 1 at a
   point = gimbalRotate at wp0 then hover (hoverTime s), group 2 =
   gimbalEvenlyRotate to the next point (none after the last), actionIds count
   up, zip entries dated 1980. Finish: goHome/autoLand; signal lost:
   goBack/landing (DJI Fly also has Hover/Back to Start/Continue: not seen in
-  a file yet). Plan: owner tests by hand first, then the dock copies missions
+  a file yet). The take-off point is NOT in the file (heights count from
+  wherever the drone takes off): a checklist box says so. The owner's hand
+  test (Nov 2026): DJI Fly opened our files, with the right waypoints and
+  heights. Plan: owner tests by hand first, then the dock copies missions
   (map lists the RC 2's missions, owner picks the placeholder, dock backs up).
 - Old installs had an `update-ct.sh` that could not download its own
   replacement; the current one does `git pull` and restarts itself.

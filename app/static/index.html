@@ -182,15 +182,14 @@
       <select id="dj-finish"><option value="goHome">Return to home (RTH)</option><option value="autoLand">Land where it ends</option></select></div>
     <div class="dj-field"><label for="dj-lost">If the signal is lost</label>
       <select id="dj-lost"><option value="goBack">Return to home (RTH)</option><option value="landing">Land where it is</option></select></div>
-    <div class="dj-field"><label for="dj-shape">Route shape</label>
-      <select id="dj-shape"><option value="curved">Curves through the points (like DJI Fly)</option><option value="straight">Straight lines (test)</option></select></div>
-    <p class="help" id="dj-shape-note"></p>
+    <p class="help">DJI Fly flies <b>smooth curves</b> through the middle waypoints, so the drone <b>cuts the corners</b> and doesn't pass exactly over them, unlike the straight lines in the planner. Leave room around them.</p>
 
     <h3>Before you download</h3>
     <ul class="dj-checks">
       <li><label class="check"><input type="checkbox" class="dj-ok"> <span>I checked the <b>airspace</b> (in the US: B4UFLY or Aloft) and I'm allowed to fly there.</span></label></li>
       <li><label class="check"><input type="checkbox" class="dj-ok"> <span>I checked my <b>local laws and regulations</b>, and have any permission I need.</span></label></li>
       <li><label class="check"><input type="checkbox" class="dj-ok"> <span>The route is clear of <b>trees, towers, power lines and buildings</b> at these heights. (Heights are measured from the take-off point, not from the ground under each waypoint.)</span></label></li>
+      <li><label class="check"><input type="checkbox" class="dj-ok"> <span>I'll <b>take off from the plan's take-off point (H)</b>. The file doesn't contain it: DJI Fly counts every height from wherever the drone takes off.</span></label></li>
       <li><label class="check"><input type="checkbox" class="dj-ok"> <span>I'll keep the drone <b>in sight</b> and take over (pause button or sticks) if anything looks wrong.</span></label></li>
     </ul>
     <div class="dialog-actions">

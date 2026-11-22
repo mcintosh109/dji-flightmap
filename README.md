@@ -306,13 +306,15 @@ What the window does:
   planner's time and battery estimates stay true.
 - **At the end** and **if the signal is lost**: *Return to home* (the default)
   or *Land*.
-- **Route shape:** DJI Fly flies **smooth curves** through the middle
-  waypoints, so it **cuts the corners**. *Straight lines* is a test option:
-  DJI Fly has no such setting, so only use it if DJI Fly's map shows straight
-  lines for that file.
-- **Four boxes to tick:** airspace checked, local laws checked, the route is
-  clear of trees, towers, power lines and buildings, and you'll keep the drone
-  in sight and take over if needed.
+- **Curves:** DJI Fly flies **smooth curves** through the middle waypoints,
+  so the drone **cuts the corners** instead of passing exactly over them
+  (DJI Fly has no straight-line choice). Leave room around them.
+- **The take-off point isn't in the file.** DJI Fly counts every height from
+  **wherever the drone takes off**, so take off from the plan's **H**.
+- **Five boxes to tick:** airspace checked, local laws checked, the route is
+  clear of trees, towers, power lines and buildings, you'll take off from the
+  plan's take-off point, and you'll keep the drone in sight and take over if
+  needed.
 
 **Putting it on the RC 2 by hand:**
 
