@@ -303,7 +303,9 @@ owner confirms it works**, release it with a tag (`git tag -a vX.Y.Z` +
   a file yet). The take-off point is NOT in the file (heights count from
   wherever the drone takes off): a checklist box says so. The owner's hand
   test (Nov 2026): DJI Fly opened our files, with the right waypoints and
-  heights. Plan: owner tests by hand first, then the dock copies missions
+  heights. First real flight (Nov 2026, 5.1.0 test version): the Mini 4 Pro
+  flew all 4 waypoints, reached the planned heights counted from take-off
+  (200 ft at the last point) and did Return to Home at the end. Plan: owner tests by hand first, then the dock copies missions
   (map lists the RC 2's missions, owner picks the placeholder, dock backs up).
 - Old installs had an `update-ct.sh` that could not download its own
   replacement; the current one does `git pull` and restarts itself.
