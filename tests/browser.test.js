@@ -83,6 +83,9 @@ async function startFakeAzure() {
           position: { lat: lat - 0.002, lon: lon + 0.002 } },
         { id: 'p3', poi: { name: '<img src=x onerror="window.HACKED=4">Evil store', classifications: [{ code: 'SHOP' }] },
           position: { lat: lat + 0.002, lon: lon - 0.002 } },
+        // An office right next to the gas station: zoomed out, only one of the two shows.
+        { id: 'p4', poi: { name: 'Bayou Offices', classifications: [{ code: 'COMPANY' }] },
+          position: { lat: lat + 0.00105, lon: lon + 0.00105 } },
       ] }));
     }
     if (u.pathname === '/map/tile') {
@@ -376,6 +379,16 @@ function fakeInternet(ctx, { github = null } = {}) {
         .filter((img) => img.src.includes(`/${k}.png`)).map((img) => img.complete && img.naturalWidth > 0), `microsoft.base.road/${z}/${tx}/${ty}`);
       check('a map square that failed is asked for again and shows (no black square)',
         azure.got.tileAsked[`${z}/${tx}/${ty}`] >= 3 && failed.length > 0 && failed.every(Boolean), JSON.stringify({ asked: azure.got.tileAsked[`${z}/${tx}/${ty}`], failed }));
+
+      const shown = () => apage.evaluate(() => [...document.querySelectorAll('.place-icon')]
+        .filter((el) => getComputedStyle(el).visibility !== 'hidden').map((el) => el.querySelector('.pin').textContent));
+      const far = await shown();
+      check('  ...zoomed out, an icon that would cover another is hidden (the gas station stays, the office goes)',
+        far.includes('⛽') && !far.includes('🏢') && (await apage.locator('.place-icon').count()) === 4, JSON.stringify(far));
+      await apage.evaluate(() => map.setZoom(16));
+      await apage.waitForTimeout(1500);
+      const near = await shown();
+      check('  ...zoomed in, every place shows again', near.includes('⛽') && near.includes('🏢'), JSON.stringify(near));
       // Azure refuses (e.g. Microsoft switched the old search off): OpenStreetMap's places instead.
       azure.got.placesFail = true;
       await apage.evaluate(() => map.setView([40.86, -73.88], 17));   // ~11 km away: a new search

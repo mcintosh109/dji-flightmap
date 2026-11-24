@@ -276,7 +276,9 @@ owner confirms it works**, release it with a tag (`git tag -a vX.Y.Z` +
   limit (`azurePlacesDailyLimit`, default 150, `azure-places-usage.json`).
   Azure's terms allow caching up to 6 months, so answers are kept 30 days in
   `azure-places-cache.json`, searches snapped to a 0.01° grid so nearby
-  views share one. Shown from zoom 14 (others 16). Classification codes ->
+  views share one. Shown from zoom 14 (others 16); below 16 `hideOverlappingIcons()`
+  draws icons at 75% and hides any covering another (ICON_ORDER: air, health,
+  school... work last), because 100 places at zoom 14 were too noisy (owner). Classification codes ->
   kinds by whole words (BARBER_SHOP must not be a bar).
 - **Black squares** (5.1.0): failed map pictures stayed empty. `azure.py`
   asks Azure twice (408/429/5xx or no answer); `retryFailedTiles()` in

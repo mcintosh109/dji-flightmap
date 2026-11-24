@@ -507,6 +507,9 @@ code, .cmd { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 1
   color: #fff; text-shadow: 0 0 3px #000, 0 0 3px #000, 0 0 2px #000; pointer-events: none;
 }
 #map.places-names .place-icon .nm { display: block; }
+/* Zoomed out (places.js hideOverlappingIcons): smaller icons, none covering another. */
+#map.places-small .place-icon .pin { transform: scale(0.75); }
+.place-icon.pin-off { visibility: hidden; }
 /* A name that would cover another name or icon (places.js hideOverlappingNames). */
 .place-icon .nm.nm-off { visibility: hidden; }
 /* While planning a flight, clicks go through places to the map (to add points). */

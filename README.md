@@ -237,7 +237,9 @@ with a coloured icon. Turn it on or off with **Places** in the layers panel
   style; otherwise its labels stay).
 - **With Azure Maps as the provider, the places come from Azure Maps**
   (its business search), which knows many small-town businesses that
-  OpenStreetMap misses. They appear from a little further out (zoom 14):
+  OpenStreetMap misses. They appear from a little further out (zoom 14, with
+  smaller icons; where two would overlap, only the more useful one shows,
+  e.g. a clinic before an office, until you zoom in to 16):
   each search shows the **100 places nearest the middle of the map**. New
   searches count towards a **daily limit** (Settings → Map, 150 by default),
   but answers are **remembered on your server for 30 days** (Azure's terms

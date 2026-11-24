@@ -32,6 +32,7 @@ const Places = (() => {
   const GRID = 15;          // the squares' zoom level (must match places.py)
   const MIN_ZOOM = 16;      // show places from this zoom (Azure: from 14, see minZoom())
   const NAMES_ZOOM = 17;    // show names under the icons from this zoom
+  const FULL_ZOOM = 16;     // further out (Azure places from 14): smaller icons that never overlap
   const MAX_SQUARES = 30;   // the server refuses more in one request
   // Same text as the free map's credit, so it is only shown once.
   const CREDIT = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
@@ -195,8 +196,44 @@ const Places = (() => {
       markers.set(p.id, marker);
       group.addLayer(marker);
     }
-    requestAnimationFrame(hideOverlappingNames);
+    requestAnimationFrame(declutter);
     return count;
+  }
+
+  // Do two boxes on screen overlap? gap > 0: they need that much space
+  // between them; gap < 0: they may touch by a pixel or two.
+  const hit = (a, b, gap) => a.left - gap < b.right && b.left - gap < a.right
+    && a.top - gap < b.bottom && b.top - gap < a.bottom;
+
+  // Zoomed out (zoom 14-15, Azure places), a town has more places than fit:
+  // icons are drawn smaller, and an icon that would cover another is hidden.
+  // The kinds most useful to a pilot win (airports, hospitals, schools...);
+  // zoom in and the hidden ones come back.
+  const ICON_ORDER = ['air', 'health', 'school', 'public', 'park', 'worship', 'car', 'food', 'shop', 'stay',
+    'sight', 'transport', 'fun', 'work'];
+  function hideOverlappingIcons() {
+    const small = map.getZoom() < FULL_ZOOM;
+    map.getContainer().classList.toggle('places-small', small);
+    const items = [...markers.values()].map((m) => ({ m, el: m.getElement() })).filter((it) => it.el);
+    if (!small) {
+      for (const it of items) it.el.classList.remove('pin-off');
+      return;
+    }
+    const rank = (m) => { const i = ICON_ORDER.indexOf(m.place?.kind); return i < 0 ? 99 : i; };
+    for (const it of items) it.box = it.el.querySelector('.pin')?.getBoundingClientRect();
+    // Same order every time (kind, then id), so icons don't swap while panning.
+    items.sort((a, b) => rank(a.m) - rank(b.m) || (a.m.place.id < b.m.place.id ? -1 : 1));
+    const kept = [];
+    for (const it of items) {
+      it.hide = !it.box || kept.some((k) => hit(it.box, k, 2));
+      if (!it.hide) kept.push(it.box);
+    }
+    for (const it of items) it.el.classList.toggle('pin-off', it.hide);
+  }
+
+  function declutter() {
+    hideOverlappingIcons();
+    hideOverlappingNames();
   }
 
   // Names that would cover another name or another place's icon are hidden
@@ -214,10 +251,8 @@ const Places = (() => {
       const name = el?.querySelector('.nm');
       return pin && name ? { m, name, pin: pin.getBoundingClientRect(), box: name.getBoundingClientRect() } : null;
     }).filter(Boolean).sort((a, b) => rank(a.m) - rank(b.m));
-    // gap > 0: names need that much space between them (touching names read
-    // as one); gap < 0: a name may touch an icon by a pixel or two.
-    const hit = (a, b, gap) => a.left - gap < b.right && b.left - gap < a.right
-      && a.top - gap < b.bottom && b.top - gap < a.bottom;
+    // Names need 6 px between them (touching names read as one); a name may
+    // touch an icon by a pixel or two.
     const kept = [];
     for (const it of items) {
       const covers = kept.some((k) => hit(it.box, k, 6)) || items.some((o) => o !== it && hit(it.box, o.pin, -2));
@@ -358,8 +393,8 @@ const Places = (() => {
   box.checked = on;
   box.addEventListener('change', () => setOn(box.checked));
   map.on('moveend', update);
-  map.on('zoomend', () => requestAnimationFrame(hideOverlappingNames));
+  map.on('zoomend', () => requestAnimationFrame(declutter));
   update();
 
-  return { setOn, isOn: () => on, status: () => status, update, hideOverlappingNames, googlePinsShown, KINDS };
+  return { setOn, isOn: () => on, status: () => status, update, hideOverlappingNames, declutter, googlePinsShown, KINDS };
 })();
