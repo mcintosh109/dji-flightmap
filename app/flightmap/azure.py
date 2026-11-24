@@ -26,6 +26,7 @@ from .upstream import Upstream
 
 AZURE_TILESETS = {"microsoft.base.road", "microsoft.base.darkgrey", "microsoft.imagery", "microsoft.base.hybrid.road"}
 AZURE = Upstream(AZURE_MAPS_URL, timeout=10)   # open connections to Azure, reused
+RETRY_STATUSES = (408, 429, 500, 502, 503, 504)  # worth asking once more
 CACHE_BYTES = int(os.environ.get("AZURE_CACHE_MB", "64")) * 1024 * 1024
 CACHE_MAX_SECONDS = 24 * 3600    # never remember an answer longer than this
 
@@ -95,11 +96,22 @@ def azure_request(path, params):
         return 200, ctype, body, {"Cache-Control": f"max-age={left}"}
 
     query = urlencode({"api-version": "2024-04-01", **params, "subscription-key": key}, quote_via=quote)
-    try:
-        status, ctype, body, cache_control = AZURE.request("GET", f"{path}?{query}")
-    except (http.client.HTTPException, OSError) as err:
-        log(f"Could not reach Azure Maps: {err}")
-        return 502, "application/json", b'{"error":"could not reach Azure Maps"}', {}
+    # A busy moment at Azure (no answer, "too many requests", 5xx) usually
+    # passes: ask once more before giving up. A failed picture would show as
+    # a black square on the map. (Azure doesn't bill these failed answers.)
+    for attempt in (1, 2):
+        try:
+            status, ctype, body, cache_control = AZURE.request("GET", f"{path}?{query}")
+        except (http.client.HTTPException, OSError) as err:
+            if attempt == 1:
+                time.sleep(0.5)
+                continue
+            log(f"Could not reach Azure Maps: {err}")
+            return 502, "application/json", b'{"error":"could not reach Azure Maps"}', {}
+        if status in RETRY_STATUSES and attempt == 1:
+            time.sleep(0.5)
+            continue
+        break
     if status != 200:
         # Don't pass Azure's error text on (it can echo the request); just the status.
         log(f"Azure Maps answered {status} for {path}")

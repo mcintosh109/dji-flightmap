@@ -85,6 +85,13 @@
           <p class="help">🔒 This key stays on your server: the map fetches Azure pictures through the server, so the key is never sent to your browser.</p>
           <p class="help">In the <a href="https://portal.azure.com/#create/Microsoft.Maps" target="_blank" rel="noopener">Azure portal</a>, create an <b>Azure Maps Account</b>, then open it and go to <b>Settings → Authentication</b> and copy the <b>Primary Key</b>.</p>
         </div>
+        <div class="provider-key" data-provider="azure">
+          <div class="field inline">
+            <label for="azurePlacesDailyLimit">Azure places searches per day</label>
+            <input id="azurePlacesDailyLimit" data-key="azurePlacesDailyLimit" data-number type="number" min="0" max="5000" step="1">
+          </div>
+          <p class="help">"Places" in the map's layers panel shows the 100 businesses, parks, schools... nearest the middle of the map, from Azure Maps. Each new search is one Azure transaction (Azure gives a free amount each month); answers are remembered on your server for 30 days, so looking at the same area again is free. 0 turns Azure places off (OpenStreetMap's places are shown instead, as they are if Azure ever refuses).</p>
+        </div>
 
         <div class="field provider-key" data-provider="google">
           <label for="googleMapsKey">Google Maps API key</label>

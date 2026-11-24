@@ -15,15 +15,22 @@
   to the middle of the screen and counts towards a daily limit (Settings),
   so we only search again after the map has moved a fair way.
 
-  Places are only shown when zoomed in (zoom 16 or closer); further out
-  there would be thousands. Names appear under the icons at zoom 17+.
+  With Azure Maps, the places come from AZURE (api/azure-places, see
+  app/flightmap/azplaces.py) the same way: the 100 nearest, from zoom 14,
+  remembered on the server. If Azure refuses (its old search may be
+  switched off one day) or today's searches are used up, OpenStreetMap's
+  places are shown instead.
+
+  Places are only shown when zoomed in (zoom 16 or closer; Azure 14);
+  further out there would be thousands. Names appear under the icons at
+  zoom 17+.
 
   SAFETY: this is not an airspace or no-fly map. It shows airports and
   schools when OpenStreetMap knows them, but never says where you may fly.
 */
 const Places = (() => {
   const GRID = 15;          // the squares' zoom level (must match places.py)
-  const MIN_ZOOM = 16;      // show places from this zoom
+  const MIN_ZOOM = 16;      // show places from this zoom (Azure: from 14, see minZoom())
   const NAMES_ZOOM = 17;    // show names under the icons from this zoom
   const MAX_SQUARES = 30;   // the server refuses more in one request
   // Same text as the free map's credit, so it is only shown once.
@@ -57,8 +64,9 @@ const Places = (() => {
   let on = loadSetting('mapPlaces', '1') === '1';
   let busy = false, again = false, timer = null;
   let status = '';
-  let source = '';             // 'osm' or 'google': where the places come from
-  let lastSearch = null;       // Google: { center, radius } of the last search
+  let source = '';             // 'osm', 'google' or 'azure': where the places come from
+  let lastSearch = null;       // Google/Azure: { center, radius } of the last search
+  let azureFailed = false;     // Azure refused (or today's searches are used up): use OpenStreetMap
   let credit = false;          // OpenStreetMap credit shown?
   let limitHit = false;        // Google: today's searches used up
   let pinsWere = null;         // last answer of googlePinsShown()
@@ -76,11 +84,23 @@ const Places = (() => {
   }
 
   // Google's places with the Google map (Google's rules: only on a Google
-  // map); OpenStreetMap otherwise.
+  // map), Azure's with the Azure map, OpenStreetMap otherwise (and when
+  // Azure refuses: its old search may be switched off one day).
   function currentSource() {
     const s = state.settings;
-    return s.mapProvider === 'google' && s.googleMapsKeySet && (s.googlePlacesDailyLimit ?? 150) > 0 ? 'google' : 'osm';
+    if (s.mapProvider === 'google' && s.googleMapsKeySet && (s.googlePlacesDailyLimit ?? 150) > 0) return 'google';
+    if (s.mapProvider === 'azure' && s.azureMapsKeySet && (s.azurePlacesDailyLimit ?? 150) > 0 && !azureFailed) return 'azure';
+    return 'osm';
   }
+  // Azure gives the nearest 100 businesses, so they are useful a little
+  // further out than OpenStreetMap's (which come square by square).
+  const minZoom = () => (source === 'azure' ? 14 : MIN_ZOOM);
+
+  // Searches around the middle of the screen (Google, Azure).
+  const NEARBY = {
+    google: { url: 'api/google-places', name: 'Google', maxRadius: 2000 },
+    azure: { url: 'api/azure-places', name: 'Azure Maps', maxRadius: 5000 },
+  };
 
   // The OpenStreetMap credit, only while its places are on the map.
   function showCredit(show) {
@@ -207,24 +227,36 @@ const Places = (() => {
     for (const it of items) it.name.classList.toggle('nm-off', it.hide);
   }
 
-  // ---------- Google: one search for the middle of the screen ----------
-  async function loadGoogle() {
+  // ---------- Google or Azure: one search for the middle of the screen ----------
+  async function loadNearby() {
     if (busy) { again = true; return; }
+    const from = NEARBY[source];
     const center = map.getCenter();
-    const radius = Math.min(2000, Math.max(50, center.distanceTo(map.getBounds().getNorthEast())));
+    const radius = Math.min(from.maxRadius, Math.max(50, center.distanceTo(map.getBounds().getNorthEast())));
     // Still near the last search, and not zoomed far out: no new search
     // (each search counts towards the daily limit).
     if (lastSearch && center.distanceTo(lastSearch.center) < lastSearch.radius * 0.5
         && radius <= lastSearch.radius * 1.5) {
-      setStatus(`${draw()} places here (from Google)${lastSearch.usage}`);
+      setStatus(`${draw()} places here (from ${from.name})${lastSearch.usage}`);
       return;
     }
     busy = true;
-    setStatus('Asking Google for places…');
+    setStatus(`Asking ${from.name} for places…`);
     try {
-      const res = await fetch(`api/google-places?lat=${center.lat.toFixed(6)}&lon=${center.lng.toFixed(6)}&radius=${Math.round(radius)}`);
+      const res = await fetch(`${from.url}?lat=${center.lat.toFixed(6)}&lon=${center.lng.toFixed(6)}&radius=${Math.round(radius)}`);
       const data = await res.json().catch(() => ({}));
-      const used = Number.isInteger(data.used) ? ` · ${data.used} of ${data.limit} Google searches used today` : '';
+      const used = Number.isInteger(data.used) ? ` · ${data.used} of ${data.limit} ${from.name} searches used today` : '';
+      if (!res.ok && source === 'azure') {
+        // Azure refused, is busy, or today's searches are used up: show
+        // OpenStreetMap's places instead (until the page is opened again).
+        azureFailed = true;
+        busy = false;
+        update();
+        setStatus(res.status === 429
+          ? `Today's ${data.limit ?? ''} Azure Maps places searches are used up: showing OpenStreetMap places instead.`
+          : 'Azure Maps places aren\'t available right now: showing OpenStreetMap places instead.');
+        return;
+      }
       if (!res.ok) {
         setStatus(data.limit === true || res.status === 429
           ? `Today's limit of ${data.limit ?? ''} Google places searches is used up. Places come back tomorrow (or raise the limit in Settings).`
@@ -238,10 +270,11 @@ const Places = (() => {
         return;
       }
       for (const p of data.places || []) known.set(p.id, p);
-      if (known.size > 600) known.clear();
+      if (known.size > 3000) known.clear();
       lastSearch = { center, radius, usage: used };
-      const count = on && map.getZoom() >= MIN_ZOOM ? draw() : 0;
-      setStatus(`${count} places here (from Google)${used}`);
+      if (source === 'google' && known.size > 600) known.clear();
+      const count = on && map.getZoom() >= minZoom() ? draw() : 0;
+      setStatus(`${count} places here (from ${from.name})${data.remembered ? ' · remembered, not a new search' : used}`);
     } catch {
       setStatus('Could not load places (is the map server running?)');
     } finally {
@@ -251,7 +284,7 @@ const Places = (() => {
   }
 
   async function load() {
-    if (source === 'google') return loadGoogle();
+    if (NEARBY[source]) return loadNearby();
     if (busy) { again = true; return; }
     const box = missingBox(squaresOnScreen());
     if (!box) { setStatus(`${draw()} places here`); return; }
@@ -280,8 +313,9 @@ const Places = (() => {
       }
       // Don't let memory grow forever when exploring far and wide.
       if (known.size > 20000) { known.clear(); loaded.clear(); }
-      const count = on && map.getZoom() >= MIN_ZOOM ? draw() : 0;
-      setStatus(data.truncated ? 'There are too many places here to show them all. Zoom in to see more.' : `${count} places here`);
+      const count = on && map.getZoom() >= minZoom() ? draw() : 0;
+      const why = azureFailed && state.settings.mapProvider === 'azure' ? ' (from OpenStreetMap: Azure Maps places aren\'t available right now)' : '';
+      setStatus(data.truncated ? 'There are too many places here to show them all. Zoom in to see more.' : `${count} places here${why}`);
     } catch {
       setStatus(stop.signal.aborted ? 'OpenStreetMap did not answer. Move the map again in a minute to retry.'
         : 'Could not load places (is the map server running?)');
@@ -300,7 +334,7 @@ const Places = (() => {
     refreshPictures();
     const zoom = map.getZoom();
     map.getContainer().classList.toggle('places-names', zoom >= NAMES_ZOOM);
-    if (!on || zoom < MIN_ZOOM) {
+    if (!on || zoom < minZoom()) {
       if (map.hasLayer(group)) map.removeLayer(group);
       showCredit(false);
       setStatus(on ? 'Zoom in closer to see places' : '');
@@ -309,8 +343,8 @@ const Places = (() => {
     if (!map.hasLayer(group)) group.addTo(map);
     showCredit(source === 'osm');
     draw();
-    // Wait until the map has stopped moving (longer for Google: searches count).
-    timer = setTimeout(load, source === 'google' ? 900 : 400);
+    // Wait until the map has stopped moving (longer for Google/Azure: searches count).
+    timer = setTimeout(load, NEARBY[source] ? 900 : 400);
   }
 
   function setOn(value) {

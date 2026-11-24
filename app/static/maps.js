@@ -342,9 +342,37 @@ window.MapStyles = (() => {
     return style.id === 'custom' ? (settings.customTileName || 'Custom map') : style.name;
   }
 
+  // A map square that failed to load (a busy moment at the map service)
+  // would stay empty: a black square. Ask for it again after 1, 3 and 9
+  // seconds. Our own server's addresses get "?r=1" etc., so the browser
+  // really asks again.
+  const RETRY_DELAYS = [1000, 3000, 9000];
+  function retryFailedTiles(layer) {
+    const layers = layer instanceof L.LayerGroup ? layer.getLayers() : [layer];
+    for (const tiles of layers) {
+      if (!(tiles instanceof L.TileLayer)) continue;
+      tiles.on('tileerror', (e) => {
+        const tries = Number(e.tile.dataset.retries || 0);
+        if (tries >= RETRY_DELAYS.length) return;
+        e.tile.dataset.retries = tries + 1;
+        setTimeout(() => {
+          if (!e.tile.isConnected || !tiles._map) return;   // scrolled away meanwhile
+          const url = tiles.getTileUrl(e.coords);
+          e.tile.src = /^(tiles|api)\//.test(url) ? `${url}${url.includes('?') ? '&' : '?'}r=${tries + 1}` : url;
+        }, RETRY_DELAYS[tries]);
+      });
+    }
+    return layer;
+  }
+
   // Build a Leaflet layer for a style. Returns null if it can't be used.
   // options.details: draw road/place names on the free satellite map.
   function build(id, settings, options = {}) {
+    const layer = buildLayer(id, settings, options);
+    return layer && retryFailedTiles(layer);
+  }
+
+  function buildLayer(id, settings, options) {
     const style = find(id);
     if (!usable(style, settings)) return null;
     if (style.azure) return buildAzure(style, settings);

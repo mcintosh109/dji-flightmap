@@ -22,6 +22,7 @@ rest lives in the flightmap/ folder, one file per job:
   google.py      Google Maps through this server (keeps the key private)
   places.py      shops, schools, parks... from OpenStreetMap
   gplaces.py     places from Google (with the Google map), with a daily limit
+  azplaces.py    places from Azure Maps (with the Azure map), daily limit, remembered
   upstream.py    reused connections to Azure and Google
   https.py       HTTPS (the padlock), set up by deploy/set-https.sh
   nas.py         checks the connection to the flight logs on the NAS
@@ -60,6 +61,9 @@ Web addresses it answers:
   /api/google-places?lat=&lon=&radius=
                         the 20 Google places closest to that point (counts
                         towards the daily limit set on the settings page)
+  /api/azure-places?lat=&lon=&radius=
+                        up to 100 Azure Maps places near that point (remembered
+                        for 30 days; new searches count towards a daily limit)
   /api/places?x0=&x1=&y0=&y1=
                         places (shops, schools, parks...) in those map
                         squares, from OpenStreetMap (see flightmap/places.py)
@@ -105,6 +109,7 @@ from flightmap.config import (APP_VERSION, AUTH_ENABLED, AUTH_PASSWORD_HASH, AUT
                               STATIC_DIR, VERSION_INFO, log)
 from flightmap import djifly, google, https, nas
 from flightmap.google import GOOGLE_SETS, google_credits, google_tile
+from flightmap.azplaces import search as azure_places_search
 from flightmap.gplaces import search as google_places_search
 from flightmap.library import FlightLibrary
 from flightmap.places import PlacesError, parse_range, places_in
@@ -248,6 +253,8 @@ class Handler(SimpleHTTPRequestHandler):
             return self.google_credits()
         if path == "/api/google-places":
             return self.google_places()
+        if path == "/api/azure-places":
+            return self.google_places(azure_places_search)
         if path == "/api/places":
             return self.places()
         if path == "/api/nas":
@@ -336,7 +343,8 @@ class Handler(SimpleHTTPRequestHandler):
         answer, status = google_credits(tileset, int(zoom), west, south, east, north)
         return self.send_json(answer, 200 if status == 404 else status)
 
-    def google_places(self):
+    def google_places(self, search=None):
+        """Google (or, with search=azure_places_search, Azure) places near a point."""
         q = parse_qs(urlparse(self.path).query)
         try:
             lat, lon, radius = (float((q.get(k) or [""])[0]) for k in ("lat", "lon", "radius"))
@@ -344,7 +352,7 @@ class Handler(SimpleHTTPRequestHandler):
             return self.send_json({"error": "bad request"}, 400)
         if not (-85 <= lat <= 85 and -180 <= lon <= 180 and 0 < radius <= 50000):
             return self.send_json({"error": "bad request"}, 400)
-        answer, status = google_places_search(lat, lon, radius)
+        answer, status = (search or google_places_search)(lat, lon, radius)
         return self.send_json(answer, status)
 
     # ---- places from OpenStreetMap ------------------------------------------

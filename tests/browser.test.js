@@ -64,11 +64,36 @@ const AZURE_KEY = 'TEST-AZURE-KEY-123';
 async function startFakeAzure() {
   const http = require('http');
   const port = await freePort();
-  const got = { tiles: 0, credits: 0, keys: new Set() };
+  // failTile: { key: 'z/x/y', left: n }: that picture fails n times (503).
+  // placesFail: places searches are refused (Azure switched the old search off).
+  const got = { tiles: 0, credits: 0, keys: new Set(), searches: 0, failTile: null, tileAsked: {}, placesFail: false };
   const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYGD4DwABBAEAwS2OUAAAAABJRU5ErkJggg==', 'base64');
   const server = http.createServer((req, res) => {
     const u = new URL(req.url, 'http://x');
     got.keys.add(u.searchParams.get('subscription-key'));
+    if (u.pathname === '/search/nearby/json') {
+      got.searches++;
+      if (got.placesFail) { res.writeHead(400); return res.end('{}'); }
+      const lat = Number(u.searchParams.get('lat')), lon = Number(u.searchParams.get('lon'));
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ results: [
+        { id: 'p1', poi: { name: 'Bayou Gas', classifications: [{ code: 'PETROL_STATION', names: [{ name: 'petrol station' }] }] },
+          position: { lat: lat + 0.001, lon: lon + 0.001 } },
+        { id: 'p2', poi: { name: 'Main St Clinic', classifications: [{ code: 'HOSPITAL_POLYCLINIC', names: [{ name: 'hospital polyclinic' }] }] },
+          position: { lat: lat - 0.002, lon: lon + 0.002 } },
+        { id: 'p3', poi: { name: '<img src=x onerror="window.HACKED=4">Evil store', classifications: [{ code: 'SHOP' }] },
+          position: { lat: lat + 0.002, lon: lon - 0.002 } },
+      ] }));
+    }
+    if (u.pathname === '/map/tile') {
+      const key = `${u.searchParams.get('zoom')}/${u.searchParams.get('x')}/${u.searchParams.get('y')}`;
+      got.tileAsked[key] = (got.tileAsked[key] || 0) + 1;
+      if (got.failTile && got.failTile.key === key && got.failTile.left > 0) {
+        got.failTile.left--;
+        res.writeHead(503);
+        return res.end();
+      }
+    }
     if (u.pathname === '/map/attribution') {
       got.credits++;
       res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -237,7 +262,8 @@ function fakeInternet(ctx, { github = null } = {}) {
   try {
     // ---- 1. map page ----
     console.log('Map page');
-    await putSettings(app.base, { mapProvider: 'azure', mapLayer: 'road', azureMapsKey: AZURE_KEY, satelliteLabels: true, checkUpdates: false });
+    // (Azure places off here: the OpenStreetMap places are tested first; Azure's after.)
+    await putSettings(app.base, { mapProvider: 'azure', mapLayer: 'road', azureMapsKey: AZURE_KEY, satelliteLabels: true, checkUpdates: false, azurePlacesDailyLimit: 0 });
     let ctx = await browser.newContext({ viewport: { width: 1400, height: 860 } });
     let seen = await fakeInternet(ctx);
     let page = await ctx.newPage();
@@ -324,6 +350,43 @@ function fakeInternet(ctx, { github = null } = {}) {
     await page.waitForTimeout(600);
     check('...and on again', (await page.locator('.place-icon').count()) >= 4);
     await page.mouse.click(800, 600);
+
+    // ---- 2b2. Azure places, and map squares that fail ----
+    console.log('Azure places');
+    await putSettings(app.base, { azurePlacesDailyLimit: 150 });
+    {
+      // The Azure picture of Central Park at zoom 14 fails twice (the server
+      // tries twice, then the page tries again after a second).
+      const z = 14, n = 2 ** z, lat0 = 40.7812, lon0 = -73.9665;
+      const tx = Math.floor((lon0 + 180) / 360 * n);
+      const ty = Math.floor((1 - Math.log(Math.tan(lat0 * Math.PI / 180) + 1 / Math.cos(lat0 * Math.PI / 180)) / Math.PI) / 2 * n);
+      azure.got.failTile = { key: `${z}/${tx}/${ty}`, left: 2 };
+      const actx = await browser.newContext({ viewport: { width: 1400, height: 860 } });
+      await fakeInternet(actx);
+      const apage = await actx.newPage();
+      await apage.goto(app.base, { waitUntil: 'networkidle' });
+      await apage.evaluate(([la, lo]) => map.setView([la, lo], 14), [lat0, lon0]);
+      await apage.waitForTimeout(3500);
+      const status = await apage.textContent('#places-status');
+      check('Azure map: places come from Azure Maps, from zoom 14', status.includes('from Azure Maps')
+        && await apage.isVisible('.place-icon >> text=⛽'), status);
+      check('  ...through our server (one search), with the key added there', azure.got.searches === 1 && !(await apage.content()).includes(AZURE_KEY));
+      check('  ...a name with code in it does not run', !(await apage.evaluate(() => window.HACKED)));
+      const failed = await apage.evaluate((k) => [...document.querySelectorAll('img.leaflet-tile')]
+        .filter((img) => img.src.includes(`/${k}.png`)).map((img) => img.complete && img.naturalWidth > 0), `microsoft.base.road/${z}/${tx}/${ty}`);
+      check('a map square that failed is asked for again and shows (no black square)',
+        azure.got.tileAsked[`${z}/${tx}/${ty}`] >= 3 && failed.length > 0 && failed.every(Boolean), JSON.stringify({ asked: azure.got.tileAsked[`${z}/${tx}/${ty}`], failed }));
+      // Azure refuses (e.g. Microsoft switched the old search off): OpenStreetMap's places instead.
+      azure.got.placesFail = true;
+      await apage.evaluate(() => map.setView([40.86, -73.88], 17));   // ~11 km away: a new search
+      await apage.waitForTimeout(3000);
+      const status2 = await apage.textContent('#places-status');
+      check('Azure refuses: OpenStreetMap places are shown instead, and it says so',
+        status2.includes('OpenStreetMap') && (await apage.locator('.place-icon').count()) > 0, status2);
+      azure.got.placesFail = false;
+      await actx.close();
+    }
+    await putSettings(app.base, { azurePlacesDailyLimit: 0 });
 
     // ---- 2c. Google Maps ----
     console.log('Google Maps');
@@ -615,7 +678,7 @@ function fakeInternet(ctx, { github = null } = {}) {
     await page.click('label:has([name=httpsMode][value=off])');
     check('Off hides the name, port and DNS boxes', await page.isHidden('#httpsName') && await page.isHidden('#cred-gdk'));
     await page.reload({ waitUntil: 'networkidle' });
-    const shownKeys = () => page.$$eval('.provider-key', (els) => els.filter((e) => !e.classList.contains('hidden')).map((e) => e.dataset.provider).join());
+    const shownKeys = () => page.$$eval('.provider-key', (els) => [...new Set(els.filter((e) => !e.classList.contains('hidden')).map((e) => e.dataset.provider))].join());
     check('only the Azure key box is shown', (await shownKeys()) === 'azure', await shownKeys());
     check('saved Azure key is shown as hidden, not filled in', (await page.inputValue('#azureMapsKey')) === ''
       && (await page.textContent('#azure-key-status')).includes('saved'));

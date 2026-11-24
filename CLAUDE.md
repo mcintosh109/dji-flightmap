@@ -165,8 +165,8 @@ owner confirms it works**, release it with a tag (`git tag -a vX.Y.Z` +
 - **Places** (2.4.0): from OpenStreetMap's Overpass API, through the server
   (`/api/places?x0=&x1=&y0=&y1=`, zoom-15 tile numbers, at most 30). One
   Overpass question at a time, per-tile memory cache for a week; a cut-off
-  answer (>= 4000 places) is never cached. Azure was ruled out: its new
-  Search 2026-01-01 has **no POI search**, only the superseded v1 does.
+  answer (>= 4000 places) is never cached. Azure's new Search 2026-01-01
+  has **no POI search**; the superseded v1 does (see "Azure places").
   Shown from zoom 16, names from 17, in a pane under the flight paths;
   `#map.planning` makes them click-through. Never call it a no-fly map.
   Tests use `OVERPASS_URL` to point at a fake.
@@ -268,6 +268,20 @@ owner confirms it works**, release it with a tag (`git tag -a vX.Y.Z` +
   Leaflet's CRLF files stay as published) and `.editorconfig`. Their commits
   may now come from Windows: before building on them, check scripts still
   have LF endings and run the full tests.
+- **Azure places** (5.1.0): with the Azure provider, Places come from Azure
+  Search **v1** `GET /search/nearby/json?api-version=1.0` (100 nearest,
+  radius 1/2/5 km) via `/api/azure-places` (`flightmap/azplaces.py`). v1 is
+  "superseded" but "continues to function", no end date (Microsoft Learn,
+  Nov 2026); places.js falls back to OpenStreetMap on ANY error or the daily
+  limit (`azurePlacesDailyLimit`, default 150, `azure-places-usage.json`).
+  Azure's terms allow caching up to 6 months, so answers are kept 30 days in
+  `azure-places-cache.json`, searches snapped to a 0.01° grid so nearby
+  views share one. Shown from zoom 14 (others 16). Classification codes ->
+  kinds by whole words (BARBER_SHOP must not be a bar).
+- **Black squares** (5.1.0): failed map pictures stayed empty. `azure.py`
+  asks Azure twice (408/429/5xx or no answer); `retryFailedTiles()` in
+  maps.js retries a failed square after 1, 3, 9 s (own-server URLs get
+  `?r=n`). Tests: FakeAzure `fail_next`, browser `failTile`.
 - **DJI Fly missions** (5.0.0): `flightmap/djifly.py` + `/api/plans/<id>/djifly.kmz`
   (Download for DJI Fly… in the planner). DJI Fly (RC 2) has NO import: the
   file replaces a placeholder mission's `.kmz` in

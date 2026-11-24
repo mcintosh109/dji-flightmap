@@ -235,6 +235,17 @@ with a coloured icon. Turn it on or off with **Places** in the layers panel
   While Google's places show as pins, Google's own place labels are left out
   of the map pictures, so each place shows once (where Google allows that
   style; otherwise its labels stay).
+- **With Azure Maps as the provider, the places come from Azure Maps**
+  (its business search), which knows many small-town businesses that
+  OpenStreetMap misses. They appear from a little further out (zoom 14):
+  each search shows the **100 places nearest the middle of the map**. New
+  searches count towards a **daily limit** (Settings → Map, 150 by default),
+  but answers are **remembered on your server for 30 days** (Azure's terms
+  allow it), so looking at the same area again costs nothing. If Azure ever
+  refuses, or the day's searches are used up, the map shows OpenStreetMap's
+  places instead and says so. (Azure's business search is its older
+  "Search 1.0": Microsoft's newest search has none. Microsoft says 1.0
+  keeps working and hasn't announced an end date.)
 - With every other provider, places come from **OpenStreetMap** (research:
   *"OpenStreetMap"*, *"Overpass API"*), the free map made by volunteers. It is very good in
   towns and can be thin in the countryside. If something is missing, anyone
@@ -799,6 +810,19 @@ Check that the container can see the files:
 pct exec 105 -- ls /srv/dji-logs
 ```
 
+**Black squares on the satellite map**
+
+A square of the map picture didn't load (a busy moment at the map
+service), so the dark background shows through, sometimes with road names
+on top. The map asks again by itself: the server tries twice, then the page
+tries again after 1, 3 and 9 seconds, so squares fill in after a moment. If
+a square stays black, look at the map's log for lines starting
+`Azure Maps answered`:
+
+```bash
+pct exec $(pct list | awk '/dji-flightmap/{print $1; exit}') -- journalctl -u dji-flightmap -n 100 --no-pager
+```
+
 **The map was empty after the Proxmox server (or the NAS) restarted**
 
 The container probably started before TrueNAS was reachable. The map fixes
@@ -899,6 +923,7 @@ pct exec 105 -- systemctl restart dji-flightmap
 | `deploy/update-ct.sh` | Proxmox host: backs up settings, installs a newer version, puts settings back, undoes it if the map doesn't start | *"pct push"*, *"pct pull"* |
 | `deploy/restore-ct.sh` | Proxmox host: puts saved settings back into a container | |
 | `deploy/ct-backup.sh` | Shared save/restore steps used by the scripts above and below | *"bash source"* |
+| `app/flightmap/azplaces.py` | Places from Azure Maps (with the Azure map): 100 nearest, daily limit, remembered 30 days | *"Azure Maps Get Search Nearby"* |
 | `app/flightmap/djifly.py` | A saved plan as a DJI Fly waypoint mission (.kmz), written exactly like DJI Fly's own | *"DJI WPML"*, *"KMZ"* |
 | `deploy/nas-watch.sh` | Proxmox host, every minute: reconnects the NAS share after the NAS restarts, restarts the container if it still sees the empty folder, tells the settings page what it found | *"systemd timer"*, *"cifs mount"* |
 | `deploy/nas-view.sh` | Run inside the container by `nas-watch.sh`: what the container sees of the logs folder | *"/proc/self/mountinfo"* |

@@ -348,6 +348,8 @@ class FakeAzure:
         self.key, self.seen = key, []
         self.connections = set()      # each connection our server opened to "Azure"
         self.cache_control = None     # Cache-Control header to send with pictures
+        self.fail_next = 0            # answer this many requests with 503 first (a busy moment)
+        self.search_status = 200      # answer for places searches (e.g. 400: switched off)
         outer = self
 
         class Handler(http.server.BaseHTTPRequestHandler):
@@ -362,6 +364,31 @@ class FakeAzure:
                 if q.get('subscription-key', [''])[0] != outer.key:
                     body = b'bad key ' + q.get('subscription-key', [''])[0].encode()
                     self.send_response(401)
+                    self.send_header('Content-Length', str(len(body)))
+                    self.end_headers()
+                    self.wfile.write(body)
+                    return
+                if outer.fail_next > 0:
+                    outer.fail_next -= 1
+                    self.send_response(503)
+                    self.send_header('Content-Length', '0')
+                    self.end_headers()
+                    return
+                if u.path == '/search/nearby/json':
+                    # Places around Central Park (made up), like Search v1 answers.
+                    results = [
+                        {'id': 'US/POI/p0/1', 'poi': {'name': 'Corner Gas', 'classifications': [
+                            {'code': 'PETROL_STATION', 'names': [{'nameLocale': 'en-US', 'name': 'petrol station'}]}]},
+                         'address': {'streetNumber': '1', 'streetName': 'Park Ave', 'municipality': 'New York'},
+                         'position': {'lat': 40.7812, 'lon': -73.9665}},
+                        {'id': 'US/POI/p0/2', 'poi': {'name': 'Town Clinic', 'classifications': [
+                            {'code': 'HOSPITAL_POLYCLINIC', 'names': [{'nameLocale': 'en-US', 'name': 'hospital polyclinic'}]}]},
+                         'position': {'lat': 40.7820, 'lon': -73.9650}},
+                        {'id': 'US/POI/p0/3', 'poi': {'name': '<b>Evil</b>'}, 'position': {'lat': 'x', 'lon': 1}},
+                    ]
+                    body = json.dumps({'results': results}).encode()
+                    self.send_response(outer.search_status)
+                    self.send_header('Content-Type', 'application/json')
                     self.send_header('Content-Length', str(len(body)))
                     self.end_headers()
                     self.wfile.write(body)
@@ -465,6 +492,63 @@ class LiveAzureKey(unittest.TestCase):
             self.srv.request('/tiles/azure/microsoft.imagery/12/301/301.png')
             self.assertEqual(self.tile_count(), before + 2, header)
         self.azure.cache_control = None
+
+    def test_a_busy_moment_is_retried(self):
+        # Azure answers 503 once: the server asks again instead of leaving a
+        # black square on the map.
+        self.srv.put_settings({'azureMapsKey': self.KEY})
+        self.azure.fail_next = 1
+        status, _, body = self.srv.request('/tiles/azure/microsoft.imagery/14/4824/6159.png')
+        self.assertEqual((status, body), (200, b'\x89PNG fake tile'))
+        self.azure.fail_next = 2        # still busy the second time: an error the page will retry
+        self.assertEqual(self.srv.request('/tiles/azure/microsoft.imagery/14/4824/6160.png')[0], 502)
+        self.azure.fail_next = 0
+
+    def places(self, lat=40.7812, lon=-73.9665, radius=1500):
+        return self.srv.request(f'/api/azure-places?lat={lat}&lon={lon}&radius={radius}')
+
+    def searches(self):
+        return sum(1 for path, _ in self.azure.seen if path == '/search/nearby/json')
+
+    def test_places_from_azure(self):
+        self.srv.put_settings({'mapProvider': 'azure', 'azureMapsKey': self.KEY, 'azurePlacesDailyLimit': 150})
+        before = self.searches()
+        status, _, body = self.places()
+        data = json.loads(body)
+        self.assertEqual(status, 200, data)
+        self.assertEqual([(p['name'], p['kind']) for p in data['places']],
+                         [('Corner Gas', 'car'), ('Town Clinic', 'health')], 'broken entries are skipped')
+        self.assertEqual(data['places'][0]['label'], 'Petrol station')
+        self.assertEqual(data['places'][0]['addr'], '1 Park Ave, New York')
+        self.assertIn(('/search/nearby/json', self.KEY), self.azure.seen, 'the key is added by the server')
+        self.assertNotIn(self.KEY.encode(), body)
+        # A view nearby (same ~1 km square, same size) uses the remembered answer:
+        # Azure isn't asked again and it doesn't count.
+        used = data['used']
+        status, _, body = self.places(lat=40.7814, lon=-73.9663, radius=1800)
+        again = json.loads(body)
+        self.assertTrue(again.get('remembered'))
+        self.assertEqual((self.searches(), again['used']), (before + 1, used))
+
+    def test_azure_places_rules(self):
+        self.srv.put_settings({'mapProvider': 'azure', 'azureMapsKey': self.KEY, 'azurePlacesDailyLimit': 0})
+        status, _, body = self.places(lat=41.5)
+        self.assertEqual(status, 403)
+        self.assertTrue(json.loads(body)['off'])
+        self.srv.put_settings({'azurePlacesDailyLimit': 1})
+        self.places(lat=42.5)                               # may use up today's one search
+        status, _, body = self.places(lat=43.5)
+        self.assertEqual(status, 429, 'over the daily limit')
+        self.srv.put_settings({'azurePlacesDailyLimit': 150, 'mapProvider': 'free'})
+        self.assertEqual(self.places(lat=44.5)[0], 400, 'only with the Azure map')
+        # Azure refuses (e.g. the old search was switched off): an error the page
+        # answers by showing OpenStreetMap places.
+        self.srv.put_settings({'mapProvider': 'azure'})
+        self.azure.search_status = 400
+        status, _, body = self.places(lat=45.5)
+        self.azure.search_status = 200
+        self.assertEqual(status, 502)
+        self.assertNotIn(self.KEY.encode(), body)
 
     def test_remembered_pictures_need_a_key(self):
         self.srv.put_settings({'azureMapsKey': self.KEY})
@@ -1432,6 +1516,35 @@ def central_park_plan(**extra):
         {'lat': 40.7825, 'lon': -73.9675, 'alt': 50, 'speed': 5, 'hold': 2},
     ]
     return dict({'name': 'Park loop', 'home': {'lat': 40.7810, 'lon': -73.9670}, 'waypoints': wps}, **extra)
+
+
+class AzurePlaceKinds(unittest.TestCase):
+    """Azure's place codes become the map's kinds (icons)."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = tempfile.mkdtemp(prefix='flightmap-azkinds-')
+        load_server(cls.tmp)
+        cls.az = importlib.import_module('flightmap.azplaces')
+
+    @classmethod
+    def tearDownClass(cls):
+        shutil.rmtree(cls.tmp, ignore_errors=True)
+
+    def test_kinds(self):
+        for code, kind in (('PETROL_STATION', 'car'), ('OPEN_PARKING_AREA', 'car'), ('HOSPITAL_POLYCLINIC', 'health'),
+                           ('PHARMACY', 'health'), ('SCHOOL', 'school'), ('RESTAURANT', 'food'), ('CAFE_PUB', 'food'),
+                           ('PLACE_OF_WORSHIP', 'worship'), ('POLICE_STATION', 'public'), ('BANK', 'public'),
+                           ('PARK_RECREATION_AREA', 'park'), ('HOTEL_MOTEL', 'stay'), ('MUSEUM', 'sight'),
+                           ('CINEMA', 'fun'), ('RAILWAY_STATION', 'transport'), ('SHOP', 'shop'),
+                           ('AIRPORT', 'air'), ('HELIPAD_HELICOPTER_LANDING', 'air'), ('BARBER_SHOP', 'shop'),
+                           ('COMPANY', 'work'), ('', 'work')):
+            self.assertEqual(self.az.kind_of(code), kind, code)
+
+    def test_nearby_views_share_one_search(self):
+        self.assertEqual(self.az.snap(40.78123, -73.96121, 1500), self.az.snap(40.7838, -73.9641, 1900))
+        self.assertEqual(self.az.snap(40.78, -73.96, 300)[2], 1000)
+        self.assertEqual(self.az.snap(40.78, -73.96, 90000)[2], 5000)
 
 
 class DjiFlyRules(unittest.TestCase):
