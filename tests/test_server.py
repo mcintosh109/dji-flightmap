@@ -1066,7 +1066,7 @@ class LiveHttps(unittest.TestCase):
             fh.write(f"""#!/bin/bash
 echo "$* | token:${{CF_Token:+given}}" >> {cls.acme_log}
 case " $* " in
-  *" --issue "*) [ -f {cls.tmp}/fail ] && {{ echo "error: Cloudflare refused token $CF_Token"; exit 1; }}; exit 0;;
+  *" --issue "*) [ -f {cls.tmp}/fail ] && {{ echo "error: Cloudflare refused token $CF_Token"; echo "[Tue Nov 24] invalid domain"; exit 1; }}; exit 0;;
   *" --install-cert "*) while [ $# -gt 0 ]; do
       case "$1" in --key-file) cp {key} "$2";; --fullchain-file) cp {cert} "$2";; esac; shift; done;;
 esac
@@ -1232,6 +1232,8 @@ exit 0
         self.wait_for(lambda: json.loads(self.https('/api/settings', ctx=ctx)[1])['info']['https']['state'] == 'error')
         message = json.loads(self.https('/api/settings', ctx=ctx)[1])['info']['https']['message']
         self.assertIn('Cloudflare refused token <hidden>', message)
+        self.assertIn('spelled exactly like your domain', message, 'a plain hint for "invalid domain"')
+        self.assertLess(message.index('spelled exactly'), message.index('Details:'), 'the hint comes first')
         with open(self.log.name) as fh:
             self.assertNotIn('SECRET-CF-TOKEN', fh.read())
         os.remove(os.path.join(self.tmp, 'fail'))

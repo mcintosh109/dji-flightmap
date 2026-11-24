@@ -171,6 +171,25 @@ def _acme(args, creds, timeout=600):
     return result.returncode, out
 
 
+# acme.sh's messages are technical: for the common ones, a plain sentence
+# goes first, then the details.
+ACME_HINTS = (
+    ("invalid domain",
+     "Your DNS company could not find this name's domain. Check the name is spelled exactly like your "
+     "domain there (letter by letter), and that the API key may read that domain "
+     "(Cloudflare: Zone → Zone → Read and Zone → DNS → Edit)."),
+)
+
+
+def _acme_failure(out):
+    """The error message for a failed --issue: a plain hint if we know one, then acme.sh's last lines."""
+    lines = " | ".join([ln for ln in out.splitlines() if ln.strip()][-6:])[-600:]
+    hint = next((text for needle, text in ACME_HINTS if needle in out.lower()), "")
+    if hint:
+        return f"Let's Encrypt did not give a certificate. {hint} Details: {lines}"
+    return "Let's Encrypt did not give a certificate: " + lines
+
+
 def letsencrypt_certificate(name, dns_api, creds, force=False):
     """Get (or keep) a Let's Encrypt certificate for name. Raises CertError."""
     info = cert_info()
@@ -186,8 +205,7 @@ def letsencrypt_certificate(name, dns_api, creds, force=False):
     code, out = _acme(["--issue", "--dns", dns_api, "-d", name, "--keylength", "ec-256"]
                       + (["--force"] if force else []), creds)
     if code not in (0, 2):   # 2 = the one we have is still fine
-        lines = [ln for ln in out.splitlines() if ln.strip()][-6:]
-        raise CertError("Let's Encrypt did not give a certificate: " + " | ".join(lines)[-600:])
+        raise CertError(_acme_failure(out))
     code, out = _acme(["--install-cert", "-d", name, "--ecc", "--key-file", KEY, "--fullchain-file", CERT], {})
     if code != 0:
         raise CertError("Could not copy the certificate: " + out.strip()[-300:])

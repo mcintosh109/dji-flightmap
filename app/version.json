@@ -3,6 +3,7 @@
   "released": "2026-11-24",
   "repo": "mcintosh109/dji-flightmap",
   "notes": [
-    "Settings \u2192 Secure connection: the Cloudflare help now lists both permissions the token needs (Zone \u2192 Zone \u2192 Read and Zone \u2192 DNS \u2192 Edit). With only the second, Let's Encrypt said \"invalid domain\""
+    "Let's Encrypt: when your DNS company can't find the name's domain (often a spelling mistake), the settings page now says so in plain words, before the technical details",
+    "The Cloudflare help lists both permissions the token needs: Zone \u2192 Zone \u2192 Read and Zone \u2192 DNS \u2192 Edit"
   ]
 }

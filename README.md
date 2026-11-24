@@ -544,9 +544,9 @@ each device.
      Token → *Create Custom Token*, with **two** permissions:
      *Zone → Zone → Read* and *Zone → DNS → Edit*, and your domain under
      *Zone Resources*. (acme.sh first looks your domain up in your Cloudflare
-     account: without *Zone → Zone → Read* it can't, and says "invalid domain".
-     That message also appears when the name is spelled differently from the
-     domain in Cloudflare.)
+     account. If it can't find it, it says "invalid domain": usually the
+     name is spelled differently from the domain in Cloudflare, or the token
+     can't read the domain.)
    - **DuckDNS:** the token at the top of duckdns.org after signing in.
    - **GoDaddy:** developer.godaddy.com/keys (a *Production* key). GoDaddy may
      only allow its DNS API for larger accounts; if it is refused, move the
