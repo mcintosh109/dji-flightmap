@@ -230,12 +230,17 @@ window.MapStyles = (() => {
     layer.on('remove', () => { clearTimeout(timer); if (map) { map.off('moveend', update); show(''); } map = null; });
   }
 
+  // Azure draws road names on satellite pictures in thick white letters with
+  // a dark outline; the owner found them too heavy, so the road + name layer
+  // is drawn slightly see-through.
+  const AZURE_LABELS_OPACITY = 0.8;
+
   function buildAzure(style, settings) {
     const key = String(settings.azureMapsKey || '').trim();   // only set while typing a new key in Settings
     const opts = { maxZoom: 22, ...style.opts, attribution: '&copy; Microsoft Azure Maps' };
     const base = L.tileLayer(azureUrl(style.azure, settings), opts);
     const layer = style.overlay
-      ? L.layerGroup([base, L.tileLayer(azureUrl(style.overlay, settings), { maxZoom: 22, maxNativeZoom: 22 })])
+      ? L.layerGroup([base, L.tileLayer(azureUrl(style.overlay, settings), { maxZoom: 22, maxNativeZoom: 22, opacity: AZURE_LABELS_OPACITY })])
       : base;
     azureCredits(layer, style.azure, key, style.opts.maxNativeZoom);
     return layer;

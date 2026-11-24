@@ -377,6 +377,9 @@ function fakeInternet(ctx, { github = null } = {}) {
       check('  ...a name with code in it does not run', !(await apage.evaluate(() => window.HACKED)));
       const failed = await apage.evaluate((k) => [...document.querySelectorAll('img.leaflet-tile')]
         .filter((img) => img.src.includes(`/${k}.png`)).map((img) => img.complete && img.naturalWidth > 0), `microsoft.base.road/${z}/${tx}/${ty}`);
+      const opacities = await apage.evaluate(() => MapStyles.build('azure-hybrid', state.settings).getLayers().map((l) => l.options.opacity));
+      check('Azure satellite + roads: the picture is solid, the road + name layer a little see-through',
+        JSON.stringify(opacities) === '[1,0.8]', JSON.stringify(opacities));
       check('a map square that failed is asked for again and shows (no black square)',
         azure.got.tileAsked[`${z}/${tx}/${ty}`] >= 3 && failed.length > 0 && failed.every(Boolean), JSON.stringify({ asked: azure.got.tileAsked[`${z}/${tx}/${ty}`], failed }));
 

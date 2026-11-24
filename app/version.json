@@ -13,6 +13,7 @@
     "With Azure Maps, Places now come from Azure: many more businesses (gas stations, stores, clinics...), shown from a little further out with smaller icons that never cover each other",
     "Azure places are remembered on your server for 30 days, so looking at the same area again costs nothing; a daily limit is in Settings",
     "If Azure ever refuses, OpenStreetMap's places are shown instead",
-    "Fixed: black squares on the satellite map. A picture that fails to load is now asked for again"
+    "Fixed: black squares on the satellite map. A picture that fails to load is now asked for again",
+    "Azure satellite + roads: the road names and lines are a little lighter, so they don't look so bold"
   ]
 }

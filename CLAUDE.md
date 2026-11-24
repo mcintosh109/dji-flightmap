@@ -284,6 +284,11 @@ owner confirms it works**, release it with a tag (`git tag -a vX.Y.Z` +
   asks Azure twice (408/429/5xx or no answer); `retryFailedTiles()` in
   maps.js retries a failed square after 1, 3, 9 s (own-server URLs get
   `?r=n`). Tests: FakeAzure `fail_next`, browser `failTile`.
+- **Azure road names look bold** (5.1.0): Azure's hybrid labels are thick white
+  with a dark outline (owner: Windows 100%, browser 100%, so not stretching).
+  The overlay is drawn at opacity 0.8 (`AZURE_LABELS_OPACITY` in maps.js), the
+  owner's choice. Most Azure raster tilesets only come as 256 px
+  (Microsoft Q&A), so 512-px tiles are no way to fewer requests.
 - **DJI Fly missions** (5.0.0): `flightmap/djifly.py` + `/api/plans/<id>/djifly.kmz`
   (Download for DJI Fly… in the planner). DJI Fly (RC 2) has NO import: the
   file replaces a placeholder mission's `.kmz` in
