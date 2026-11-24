@@ -10,6 +10,9 @@ Two kinds of test:
   - "live" tests start the real server on a free port and talk to it over
     HTTP, the same way the web page does.
 """
+import base64
+import hashlib
+import io
 import http.cookiejar
 import importlib
 import json
@@ -24,6 +27,7 @@ import types
 import unittest
 import urllib.error
 import urllib.request
+import zipfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
@@ -1663,6 +1667,186 @@ class LiveDjiFly(unittest.TestCase):
         self.assertIn('one speed', json.loads(body)['error'])
         self.assertEqual(self.srv.request('/api/plans/0123456789ab/djifly.kmz')[0], 404)
         self.assertEqual(self.srv.request('/api/plans/../../etc/djifly.kmz')[0], 404)
+
+
+def placeholder_kmz(points, update_ms=1700000000000):
+    """A made-up DJI Fly mission like the ones on an RC 2 (Central Park, never real places)."""
+    marks = ''.join(f"""<Placemark><Point><coordinates>{lon},{lat}</coordinates></Point>
+<wpml:index>{i}</wpml:index><wpml:executeHeight>{h}</wpml:executeHeight></Placemark>"""
+                    for i, (lat, lon, h) in enumerate(points))
+    wpml = f"""<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2" xmlns:wpml="http://www.uav.com/wpmz/1.0.2">
+<Document><Folder>{marks}</Folder></Document></kml>"""
+    template = f"""<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2" xmlns:wpml="http://www.uav.com/wpmz/1.0.2">
+<Document><wpml:updateTime>{update_ms}</wpml:updateTime></Document></kml>"""
+    out = io.BytesIO()
+    with zipfile.ZipFile(out, 'w') as zf:
+        zf.writestr('wpmz/template.kml', template)
+        zf.writestr('wpmz/waylines.wpml', wpml)
+    return out.getvalue()
+
+
+PNG = base64.b64decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYGD4DwABBAEAwS2OUAAAAABJRU5ErkJggg==')
+UUID_A = '0A1B2C3D-0000-4000-8000-00000000000A'
+UUID_B = '0A1B2C3D-0000-4000-8000-00000000000B'
+
+
+class LiveRc2(unittest.TestCase):
+    """Send to RC 2: the map's side of the dock (dji-rc2-dock)."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = tempfile.mkdtemp(prefix='flightmap-rc2-')
+        make_archive(os.path.join(cls.tmp, 'archive'))
+        cls.state = os.path.join(cls.tmp, 'state')
+        os.makedirs(cls.state)
+        cls.srv = LiveServer(os.path.join(cls.tmp, 'archive'), cls.state)
+        cls.page = {'Content-Type': 'application/json', 'X-Requested-With': 'flightmap'}
+        cls.key = None
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.srv.stop()
+        shutil.rmtree(cls.tmp, ignore_errors=True)
+
+    def call(self, path, method='GET', data=None, key=None, page=True):
+        headers = dict(self.page) if page else {}
+        if key:
+            headers['Authorization'] = f'Bearer {key}'
+        body = json.dumps(data).encode() if data is not None else None
+        status, headers, raw = self.srv.request(path, method, body, headers)
+        try:
+            return status, json.loads(raw)
+        except ValueError:
+            return status, raw
+
+    def dock(self, path, method='GET', data=None):
+        return self.call(path, method, data, key=self.key, page=False)
+
+    def report(self, missions):
+        return self.dock('/api/dock/missions', 'PUT', {'missions': missions})
+
+    def mission(self, uuid, points, preview=True):
+        item = {'uuid': uuid, 'kmz': base64.b64encode(placeholder_kmz(points)).decode(), 'modified': '2026-11-20 10:00'}
+        if preview:
+            item['preview'] = base64.b64encode(PNG).decode()
+        return item
+
+    def save_plan(self, plan):
+        status, body = self.call('/api/plans/new', 'PUT', plan)
+        self.assertEqual(status, 200, body)
+        return body['id']
+
+    def test_1_dock_key(self):
+        self.assertEqual(self.call('/api/dock/queue', page=False)[0], 401, 'no key: refused')
+        self.assertFalse(self.call('/api/rc2')[1]['keySet'])
+        self.assertEqual(self.call('/api/rc2/key', 'POST', {}, page=False)[0], 403, 'only from our own page')
+        status, body = self.call('/api/rc2/key', 'POST', {})
+        self.assertEqual(status, 200)
+        old = body['key']
+        self.assertTrue(old.startswith('dock_') and len(old) > 40)
+        status, body = self.call('/api/rc2/key', 'POST', {})
+        type(self).key = body['key']
+        self.assertEqual(self.call('/api/dock/queue', key=old, page=False)[0], 401, 'a new key replaces the old one')
+        status, body = self.dock('/api/dock/hello')
+        self.assertEqual((status, body['ok']), (200, True))
+        stored = read_text(os.path.join(self.state, 'dock-key.json'))
+        self.assertNotIn(self.key, stored, 'only a hash of the key is kept')
+        status, body = self.call('/api/rc2')
+        self.assertTrue(body['keySet'] and body['dockSeen'])
+        self.assertNotIn(self.key, json.dumps(body))
+
+    def test_2_missions_and_send(self):
+        status, body = self.dock('/api/dock/queue')
+        self.assertEqual(status, 200)
+        self.assertEqual(body, {'send': [], 'wantList': True}, 'no list yet: the dock is asked for one')
+        a = self.mission(UUID_A, [(40.7812, -73.9665, 30), (40.7830, -73.9660, 40)])
+        b = self.mission(UUID_B, [(40.7790, -73.9690, 20), (40.7795, -73.9700, 25), (40.7800, -73.9690, 30)], preview=False)
+        bad = [{'uuid': '../etc', 'kmz': a['kmz']}, {'uuid': UUID_A.replace('A', 'C'), 'kmz': 'bm90IGEgemlw'}]
+        status, body = self.report([a, b] + bad)
+        self.assertEqual((status, body['missions']), (200, 2), body)
+        self.assertEqual(len(body['problems']), 2)
+        self.assertFalse(self.dock('/api/dock/queue')[1]['wantList'])
+        status, page = self.call('/api/rc2')
+        listed = {m['uuid']: m for m in page['missions']}
+        self.assertEqual(listed[UUID_A]['waypoints'], 2)
+        self.assertEqual(listed[UUID_B]['waypoints'], 3)
+        self.assertAlmostEqual(listed[UUID_A]['lengthM'], 205, delta=10)
+        self.assertEqual(listed[UUID_A]['points'][0], [40.7812, -73.9665, 30.0])
+        self.assertTrue(listed[UUID_A]['updated'].startswith('2023-11-14'))
+        self.assertEqual((listed[UUID_A]['preview'], listed[UUID_B]['preview']), ('png', False))
+        status, headers, raw = self.srv.request(f'/api/rc2/preview/{UUID_A}')
+        self.assertEqual((status, headers['Content-Type'], raw), (200, 'image/png', PNG))
+        self.assertEqual(self.srv.request('/api/rc2/preview/..%2Fdock-key.json')[0], 404)
+
+        # Send a plan in place of mission A.
+        plan_id = self.save_plan(central_park_plan())
+        self.assertEqual(self.call(f'/api/plans/{plan_id}/rc2', 'POST', {'uuid': UUID_A}, page=False)[0], 403)
+        self.assertEqual(self.call(f'/api/plans/{plan_id}/rc2', 'POST', {'uuid': UUID_A.replace('A', 'F')})[0], 409,
+                         'only a mission the dock reported')
+        bad_plan = self.save_plan(central_park_plan(waypoints=central_park_plan()['waypoints'][:1]))
+        status, body = self.call(f'/api/plans/{bad_plan}/rc2', 'POST', {'uuid': UUID_A})
+        self.assertEqual(status, 400)
+        self.assertIn('2 waypoints', body['error'], 'the same checks as the DJI Fly download')
+        status, body = self.call(f'/api/plans/{plan_id}/rc2', 'POST', {'uuid': UUID_A, 'finish': 'autoLand'})
+        self.assertEqual(status, 200, body)
+        send = body['send']
+        self.assertEqual((send['state'], send['expectSha256']), ('waiting', listed[UUID_A]['sha256']))
+
+        # The dock picks it up.
+        status, queue = self.dock('/api/dock/queue')
+        self.assertEqual([s['id'] for s in queue['send']], [send['id']])
+        item = queue['send'][0]
+        self.assertEqual((item['uuid'], item['expectSha256'], item['planName']), (UUID_A, listed[UUID_A]['sha256'], 'Park loop'))
+        status, headers, kmz = self.srv.request(item['url'], headers={'Authorization': f'Bearer {self.key}'})
+        self.assertEqual((status, kmz[:2]), (200, b'PK'))
+        self.assertEqual(hashlib.sha256(kmz).hexdigest(), item['sha256'])
+        self.assertIn(b'autoLand', zipfile.ZipFile(io.BytesIO(kmz)).read('wpmz/waylines.wpml'))
+        self.assertEqual(self.srv.request(item['url'])[0], 401, 'the file needs the dock key')
+        status, body = self.dock(f"/api/dock/result/{send['id']}", 'POST',
+                                 {'ok': True, 'message': 'written and checked', 'backup': 'mission-backups/x.kmz'})
+        self.assertEqual((status, body['state']), (200, 'done'))
+        self.assertEqual(self.dock('/api/dock/queue')[1]['send'], [])
+        self.assertEqual(self.srv.request(item['url'], headers={'Authorization': f'Bearer {self.key}'})[0], 404)
+        status, page = self.call('/api/rc2')
+        listed = {m['uuid']: m for m in page['missions']}
+        self.assertEqual(listed[UUID_A]['fromMap'], 'Park loop', 'the mission now holds our plan')
+        self.assertEqual(page['sends'][0]['state'], 'done')
+
+        # Cancel a waiting send; a failed send keeps the dock's message.
+        status, body = self.call(f'/api/plans/{plan_id}/rc2', 'POST', {'uuid': UUID_B})
+        first = body['send']['id']
+        status, body = self.call(f'/api/plans/{plan_id}/rc2', 'POST', {'uuid': UUID_B})
+        second = body['send']['id']
+        states = {s['id']: s['state'] for s in self.call('/api/rc2')[1]['sends']}
+        self.assertEqual((states[first], states[second]), ('cancelled', 'waiting'), 'a newer send replaces the older')
+        self.assertEqual(self.call(f'/api/rc2/send/{second}', 'DELETE')[0], 200)
+        self.assertEqual(self.call(f'/api/rc2/send/{second}', 'DELETE')[0], 409)
+        self.assertEqual(self.dock('/api/dock/queue')[1]['send'], [])
+        status, body = self.call(f'/api/plans/{plan_id}/rc2', 'POST', {'uuid': UUID_B})
+        third = body['send']['id']
+        self.dock(f'/api/dock/result/{third}', 'POST', {'ok': False, 'message': 'The mission changed on the RC 2 <b>'})
+        sends = {s['id']: s for s in self.call('/api/rc2')[1]['sends']}
+        self.assertEqual(sends[third]['state'], 'failed')
+        self.assertNotIn('<', sends[third]['message'])
+
+        # A mission deleted in DJI Fly: a send still waiting for it fails.
+        status, body = self.call(f'/api/plans/{plan_id}/rc2', 'POST', {'uuid': UUID_B})
+        fourth = body['send']['id']
+        self.report([a])
+        sends = {s['id']: s for s in self.call('/api/rc2')[1]['sends']}
+        self.assertEqual(sends[fourth]['state'], 'failed')
+        self.assertIn('no longer on the RC 2', sends[fourth]['message'])
+
+        # "Refresh the list" on the page.
+        self.call('/api/rc2/refresh', 'POST', {})
+        self.assertTrue(self.dock('/api/dock/queue')[1]['wantList'])
+
+    def test_3_remove_key(self):
+        self.assertEqual(self.call('/api/rc2/key', 'DELETE')[0], 200)
+        self.assertEqual(self.dock('/api/dock/queue')[0], 401)
+        self.assertFalse(self.call('/api/rc2')[1]['keySet'])
 
 
 if __name__ == '__main__':

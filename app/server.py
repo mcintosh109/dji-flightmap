@@ -27,6 +27,7 @@ rest lives in the flightmap/ folder, one file per job:
   https.py       HTTPS (the padlock), set up by deploy/set-https.sh
   nas.py         checks the connection to the flight logs on the NAS
   djifly.py      a saved plan as a DJI Fly waypoint mission (.kmz)
+  rc2.py         sending plans to the RC 2 through the dock (dji-rc2-dock)
 
 Settings are read from environment variables (see deploy/dji-flightmap.env):
   DATA_DIR      folder that holds the flight logs     (default: /srv/dji-logs)
@@ -73,6 +74,14 @@ Web addresses it answers:
   /api/plans/<id>       PUT: save a plan (id "new" makes one), DELETE: remove it
   /api/plans/<id>/djifly.kmz?finish=&lost=
                         the plan as a DJI Fly waypoint mission (download)
+  /api/plans/<id>/rc2   POST {uuid, finish, lost}: send the plan to the RC 2 (via the dock)
+  /api/rc2              the RC 2's missions (as the dock last saw them) and the sends
+  /api/rc2/preview/<uuid>  DJI Fly's preview picture of one of those missions
+  /api/rc2/key          POST: make a new dock key (shown once), DELETE: remove it
+  /api/rc2/refresh      POST: ask the dock to report the RC 2's missions again
+  /api/rc2/send/<id>    DELETE: cancel a send that is still waiting
+  /api/dock/...         for the dock only (with its key, see flightmap/rc2.py):
+                        missions (PUT), queue, kmz/<id>, result/<id> (POST)
   /flightmap-ca.crt     the private HTTPS certificate, to import on a device
   /login.html           the login page (only used when a login is set)
   /logout               signs you out
@@ -107,7 +116,7 @@ from flightmap.auth import (COOKIE_NAME, PUBLIC_PATHS, hash_password, make_sessi
 from flightmap.azure import AZURE_TILESETS, azure_request, html_to_text
 from flightmap.config import (APP_VERSION, AUTH_ENABLED, AUTH_PASSWORD_HASH, AUTH_USER, DATA_DIR, HOST, PORT,
                               STATIC_DIR, VERSION_INFO, log)
-from flightmap import djifly, google, https, nas
+from flightmap import djifly, google, https, nas, rc2
 from flightmap.google import GOOGLE_SETS, google_credits, google_tile
 from flightmap.azplaces import search as azure_places_search
 from flightmap.gplaces import search as google_places_search
@@ -233,6 +242,8 @@ class Handler(SimpleHTTPRequestHandler):
                                  + ("; Secure" if self.secure else ""))
         if path == "/login.html" and not AUTH_ENABLED:
             return self.redirect("/")
+        if path.startswith("/api/dock/"):
+            return self.dock_request("GET", path)
         if not self.allowed(path):
             return
         if path == "/api/health":
@@ -261,6 +272,14 @@ class Handler(SimpleHTTPRequestHandler):
             return self.send_json(nas.status(len(LIBRARY.listing()["flights"])))
         if path.startswith("/api/plans/") and path.endswith("/djifly.kmz"):
             return self.djifly_kmz(path)
+        if path == "/api/rc2":
+            return self.send_json(rc2.page_status())
+        if path.startswith("/api/rc2/preview/"):
+            found = rc2.preview(path[len("/api/rc2/preview/"):])
+            if found is None:
+                return self.send_json({"error": "no preview"}, 404)
+            self.cache_control = "private, max-age=60"
+            return self.send_raw(200, *found)
         if path == "/api/plans":
             with PLANS_LOCK:
                 plans = [dict(p, id=k) for k, p in load_plans().items()]
@@ -392,6 +411,77 @@ class Handler(SimpleHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def send_to_rc2(self, path):
+        """Planner "Send to RC 2": queue the plan for the dock."""
+        if not self.allowed(path) or not self.from_our_page():
+            return
+        plan_id = path[len("/api/plans/"):-len("/rc2")]
+        incoming = self.read_json_body()
+        if incoming is None:
+            return
+        with PLANS_LOCK:
+            plan = load_plans().get(plan_id) if PLAN_ID_RE.match(plan_id) else None
+        if plan is None:
+            return self.send_json({"error": "plan not found"}, 404)
+        try:
+            kmz = djifly.build_kmz(plan, current_settings()["plannerMaxHeight"],
+                                   finish=incoming.get("finish", "goHome"), lost=incoming.get("lost", "goBack"))
+        except djifly.MissionError as exc:
+            return self.send_json({"error": str(exc)}, 400)
+        answer, status = rc2.queue_send(plan_id, plan, incoming.get("uuid"), kmz)
+        return self.send_json(answer, status)
+
+    def rc2_change(self, method, path):
+        """The settings page and planner: dock key, refresh, cancel a send."""
+        if not self.allowed(path) or not self.from_our_page():
+            return
+        if path == "/api/rc2/key" and method == "POST":
+            log(f"{self.client_address[0]} made a new dock key")
+            return self.send_json({"key": rc2.new_key(), **rc2.page_status()})
+        if path == "/api/rc2/key" and method == "DELETE":
+            rc2.remove_key()
+            return self.send_json(rc2.page_status())
+        if path == "/api/rc2/refresh" and method == "POST":
+            rc2.ask_for_list()
+            return self.send_json(rc2.page_status())
+        if path.startswith("/api/rc2/send/") and method == "DELETE":
+            if not rc2.cancel(path[len("/api/rc2/send/"):]):
+                return self.send_json({"error": "That send isn't waiting any more."}, 409)
+            return self.send_json(rc2.page_status())
+        return self.send_json({"error": "unknown address"}, 404)
+
+    def dock_request(self, method, path):
+        """Requests from the RC 2 dock (the Pi), which sends the dock key instead of signing in."""
+        ip = self.client_address[0]
+        if too_many_failures(ip):
+            return self.send_json({"error": "too many wrong keys, wait a while"}, 429)
+        if not rc2.dock_allowed(self.headers.get("Authorization", ""), ip):
+            record_failure(ip)
+            log(f"{ip} used a wrong or old dock key")
+            return self.send_json({"error": "wrong dock key: make a new one in Settings and run sudo dji-map-link on the Pi"}, 401)
+        if method == "GET" and path == "/api/dock/queue":
+            return self.send_json(rc2.dock_queue())
+        if method == "GET" and path.startswith("/api/dock/kmz/"):
+            body = rc2.outbox_kmz(path[len("/api/dock/kmz/"):])
+            if body is None:
+                return self.send_json({"error": "not waiting any more"}, 404)
+            return self.send_raw(200, "application/vnd.google-earth.kmz", body)
+        if method == "PUT" and path == "/api/dock/missions":
+            incoming = self.read_json_body(limit=24 * 1024 * 1024)
+            if incoming is None:
+                return
+            answer, status = rc2.report_missions(incoming)
+            return self.send_json(answer, status)
+        if method == "POST" and path.startswith("/api/dock/result/"):
+            incoming = self.read_json_body()
+            if incoming is None:
+                return
+            answer, status = rc2.dock_result(path[len("/api/dock/result/"):], incoming)
+            return self.send_json(answer, status)
+        if method == "GET" and path == "/api/dock/hello":
+            return self.send_json({"ok": True, "app": "DJI Flight Map", "version": APP_VERSION})
+        return self.send_json({"error": "unknown address"}, 404)
+
     def send_raw(self, status, ctype, body):
         self.send_response(status)
         self.send_header("Content-Type", ctype)
@@ -464,6 +554,8 @@ class Handler(SimpleHTTPRequestHandler):
 
     def do_DELETE(self):
         path = urlparse(self.path).path
+        if path.startswith("/api/rc2/"):
+            return self.rc2_change("DELETE", path)
         if not path.startswith("/api/plans/"):
             return self.send_json({"error": "unknown address"}, 404)
         if not self.allowed(path) or not self.from_our_page():
@@ -480,6 +572,8 @@ class Handler(SimpleHTTPRequestHandler):
 
     def do_PUT(self):
         path = urlparse(self.path).path
+        if path.startswith("/api/dock/"):
+            return self.dock_request("PUT", path)
         if path.startswith("/api/plans/"):
             return self.put_plan(path)
         if path != "/api/settings":
@@ -543,6 +637,12 @@ class Handler(SimpleHTTPRequestHandler):
 
     def do_POST(self):
         path = urlparse(self.path).path
+        if path.startswith("/api/dock/"):
+            return self.dock_request("POST", path)
+        if path.startswith("/api/rc2/"):
+            return self.rc2_change("POST", path)
+        if path.startswith("/api/plans/") and path.endswith("/rc2"):
+            return self.send_to_rc2(path)
         if path == "/api/https/renew":
             # "Make a new certificate now" on the settings page.
             if not self.allowed(path) or not self.from_our_page():

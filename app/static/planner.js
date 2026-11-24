@@ -472,14 +472,158 @@ const Planner = (() => {
          for every waypoint</label> <button type="button" class="chip" id="dj-speed-apply">Apply and save</button>`;
     const ticked = [...document.querySelectorAll('.dj-ok')].every((c) => c.checked);
     $('#dj-download').disabled = problems.length > 0 || !ticked;
+    if (rc2) updateRc2Button();
   }
 
   function openDjiFly() {
     if (!plan) return;
     for (const c of document.querySelectorAll('.dj-ok')) c.checked = false;
     $('#dj-msg').textContent = '';
+    $('#dj-rc2-msg').textContent = '';
+    rc2Choice = null;
     renderDjiFly();
     $('#dj-dialog').showModal();
+    loadRc2();
+    // While the window is open, look every 5 seconds for the dock's news.
+    clearInterval(rc2Timer);
+    rc2Timer = setInterval(() => { if ($('#dj-dialog').open) loadRc2(); else clearInterval(rc2Timer); }, 5000);
+  }
+
+  // ---------- "Send to RC 2" (through the RC 2 dock, see app/flightmap/rc2.py) ----------
+  // The dock (the Raspberry Pi the RC 2 plugs into) tells the map which
+  // missions are on the RC 2. The owner picks one to REPLACE (a placeholder
+  // made in DJI Fly); the dock backs it up, writes this plan in its place,
+  // checks it, and reports back.
+  let rc2 = null;          // the last answer of api/rc2
+  let rc2Choice = null;    // the uuid of the picked mission
+  let rc2Timer = null;
+
+  async function loadRc2() {
+    try {
+      const res = await fetch('api/rc2', { cache: 'no-store' });
+      if (!res.ok) throw new Error(`the server answered ${res.status}`);
+      rc2 = await res.json();
+    } catch (err) {
+      rc2 = { error: err.message };
+    }
+    renderRc2();
+  }
+
+  // A small drawing of a mission's route (its points, scaled to fit).
+  function routeSketch(points) {
+    const w = 72, h = 54, pad = 6;
+    if (!points || points.length === 0) return `<svg class="rc2-sketch" viewBox="0 0 ${w} ${h}" aria-hidden="true"></svg>`;
+    const lats = points.map((p) => p[0]), lons = points.map((p) => p[1]);
+    const kx = Math.cos((Math.min(...lats) + Math.max(...lats)) / 2 * Math.PI / 180);
+    const spanX = (Math.max(...lons) - Math.min(...lons)) * kx || 1e-6, spanY = (Math.max(...lats) - Math.min(...lats)) || 1e-6;
+    const s = Math.min((w - 2 * pad) / spanX, (h - 2 * pad) / spanY);
+    const xy = points.map((p) => [pad + ((p[1] - Math.min(...lons)) * kx) * s, h - pad - (p[0] - Math.min(...lats)) * s]);
+    const line = xy.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(' ');
+    const dots = xy.map(([x, y], i) => `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${i === 0 ? 3 : 2}"/>`).join('');
+    return `<svg class="rc2-sketch" viewBox="0 0 ${w} ${h}" aria-hidden="true"><polyline points="${line}"/>${dots}</svg>`;
+  }
+
+  const ago = (iso) => {
+    if (!iso) return '';
+    const s = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000);
+    if (s < 90) return 'just now';
+    if (s < 5400) return `${Math.round(s / 60)} minutes ago`;
+    if (s < 129600) return `${Math.round(s / 3600)} hours ago`;
+    return fmt.date(iso);
+  };
+
+  function sendLine(s) {
+    if (s.state === 'waiting') {
+      return `<li>⏳ Waiting for the dock: plug the RC 2 into the dock and unlock it (it checks every minute or two).
+        <button type="button" class="chip small" data-cancel="${esc(s.id)}">Cancel</button></li>`;
+    }
+    if (s.state === 'done') {
+      return `<li class="ok">✓ On the RC 2 since ${esc(ago(s.finished))}. Open DJI Fly, open the mission and <b>check the route on its map</b> before flying.</li>`;
+    }
+    if (s.state === 'failed') return `<li class="warn">⚠️ Not sent: ${esc(s.message || 'the dock reported a problem')}</li>`;
+    return `<li class="muted">Cancelled (${esc(s.message || '')})</li>`;
+  }
+
+  function renderRc2() {
+    const box = $('#dj-rc2');
+    const actions = $('#dj-rc2-actions');
+    if (!rc2 || rc2.error) {
+      box.innerHTML = `<p class="help warn">Couldn't ask the map about the RC 2${rc2 ? ` (${esc(rc2.error)})` : ''}.</p>`;
+      actions.classList.add('hidden');
+      return;
+    }
+    if (!rc2.keySet) {
+      box.innerHTML = `<p class="help">The <b>RC 2 dock</b> (the Raspberry Pi your RC 2 plugs into) can put this route on the RC 2 for you.
+        Set it up once in <a href="settings.html#dock">Settings → RC 2 dock</a>. Until then, download the file and copy it by hand (below).</p>`;
+      actions.classList.add('hidden');
+      return;
+    }
+    actions.classList.remove('hidden');
+    const parts = [];
+    if (!rc2.missions.length) {
+      parts.push(`<p class="help">${rc2.listReported ? 'The dock found no waypoint missions on the RC 2.' : "The dock hasn't sent the RC 2's list of missions yet."}
+        Make a placeholder mission in DJI Fly (any 2 points), then plug the RC 2 into the dock and unlock it. The list arrives within about 2 minutes.</p>`);
+    } else {
+      if (rc2Choice && !rc2.missions.some((m) => m.uuid === rc2Choice)) rc2Choice = null;
+      parts.push(`<p class="help">Pick the <b>placeholder</b> to <b>replace</b> (compare the waypoints, length and date with DJI Fly's list).
+        Its old file is backed up first. List from the RC 2: ${esc(ago(rc2.listReported))}${rc2.listWanted ? ' (a new list was asked for)' : ''}.</p>`);
+      parts.push('<ul class="rc2-missions">' + rc2.missions.map((m) => {
+        const picture = m.preview ? `<img class="rc2-preview" alt="" src="api/rc2/preview/${encodeURIComponent(m.uuid)}?v=${esc(m.sha256.slice(0, 8))}">` : routeSketch(m.points);
+        const holds = m.fromMap ? ` · holds <b>${esc(m.fromMap)}</b> from the map` : '';
+        const when = m.updated ? `saved in DJI Fly ${esc(fmt.date(m.updated))}` : (m.modified ? `file date ${esc(m.modified)}` : '');
+        return `<li><label class="rc2-mission">
+          <input type="radio" name="rc2-mission" value="${esc(m.uuid)}"${m.uuid === rc2Choice ? ' checked' : ''}>
+          ${picture}
+          <span><b>${m.waypoints} waypoints · ${esc(fmt.dist(m.lengthM))}</b><br>
+          <span class="muted">${when}${holds}</span></span></label></li>`;
+      }).join('') + '</ul>');
+    }
+    const mine = (rc2.sends || []).filter((s) => s.planId === plan?.id).slice(0, 3);
+    if (mine.length) parts.push(`<ul class="checks rc2-sends">${mine.map(sendLine).join('')}</ul>`);
+    if (!rc2.dockSeen) parts.push('<p class="help warn">The dock has never checked in. On the Pi, run <code>sudo dji-map-link</code> (see Settings → RC 2 dock).</p>');
+    box.innerHTML = parts.join('');
+    updateRc2Button();
+  }
+
+  function updateRc2Button() {
+    const ticked = [...document.querySelectorAll('.dj-ok')].every((c) => c.checked);
+    $('#dj-rc2-send').disabled = !(rc2?.keySet && rc2Choice && ticked && djProblems().length === 0);
+  }
+
+  async function sendToRc2() {
+    const msg = $('#dj-rc2-msg');
+    msg.textContent = 'Sending to the map…';
+    msg.className = 'pl-save-msg';
+    try {
+      const res = await fetch(`api/plans/${plan.id}/rc2`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'flightmap' },
+        body: JSON.stringify({ uuid: rc2Choice, finish: $('#dj-finish').value, lost: $('#dj-lost').value }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || `the server answered ${res.status}`);
+      msg.textContent = 'Waiting for the dock ✓';
+      msg.className = 'pl-save-msg ok';
+    } catch (err) {
+      msg.textContent = `Not sent: ${err.message}`;
+      msg.className = 'pl-save-msg error';
+    }
+    loadRc2();
+  }
+
+  async function rc2Post(url, method = 'POST') {
+    try {
+      const res = await fetch(url, { method, headers: { 'X-Requested-With': 'flightmap' } });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || `the server answered ${res.status}`);
+      rc2 = data;
+      renderRc2();
+      return true;
+    } catch (err) {
+      $('#dj-rc2-msg').textContent = err.message;
+      $('#dj-rc2-msg').className = 'pl-save-msg error';
+      return false;
+    }
   }
 
   async function downloadDjiFly() {
@@ -548,6 +692,23 @@ const Planner = (() => {
     $('#pl-djifly').addEventListener('click', openDjiFly);
     $('#dj-dialog').addEventListener('change', renderDjiFly);
     $('#dj-download').addEventListener('click', downloadDjiFly);
+    $('#dj-rc2-send').addEventListener('click', sendToRc2);
+    $('#dj-rc2-refresh').addEventListener('click', async () => {
+      if (await rc2Post('api/rc2/refresh')) {
+        $('#dj-rc2-msg').textContent = 'Asked the dock for a new list (it arrives when the RC 2 is plugged in) ✓';
+        $('#dj-rc2-msg').className = 'pl-save-msg ok';
+      }
+    });
+    $('#dj-rc2').addEventListener('change', (e) => {
+      if (e.target.name !== 'rc2-mission') return;
+      rc2Choice = e.target.value;
+      updateRc2Button();
+    });
+    $('#dj-rc2').addEventListener('click', (e) => {
+      const id = e.target.dataset?.cancel;
+      if (id) rc2Post(`api/rc2/send/${encodeURIComponent(id)}`, 'DELETE');
+    });
+    $('#dj-dialog').addEventListener('close', () => clearInterval(rc2Timer));
     $('#dj-dialog').addEventListener('click', async (e) => {
       if (e.target.id !== 'dj-speed-apply') return;
       const v = SPD.fromUser(Number($('#dj-speed-value').value) || 0);

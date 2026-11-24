@@ -392,6 +392,55 @@ async function reconnectNas() {
 }
 
 // ---------- start ----------
+// ---------- RC 2 dock (app/flightmap/rc2.py) ----------
+const ago = (iso) => {
+  const s = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000);
+  if (s < 90) return 'just now';
+  if (s < 5400) return `${Math.round(s / 60)} minutes ago`;
+  if (s < 129600) return `${Math.round(s / 3600)} hours ago`;
+  return new Date(iso).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' });
+};
+
+function renderDock(d) {
+  const items = [];
+  if (!d.keySet) {
+    items.push('<li class="muted">No dock key yet: make one below.</li>');
+  } else {
+    items.push(`<li class="ok">✓ Dock key made ${esc(ago(d.keyCreated))}</li>`);
+    items.push(d.dockSeen
+      ? `<li class="ok">✓ The dock last checked in ${esc(ago(d.dockSeen))}</li>`
+      : '<li class="warn">⚠️ The dock hasn\'t checked in yet: run <code>sudo dji-map-link</code> on the Pi (steps below the key).</li>');
+    items.push(d.listReported
+      ? `<li class="ok">✓ The RC 2's missions were reported ${esc(ago(d.listReported))} (${d.missions.length} mission${d.missions.length === 1 ? '' : 's'})</li>`
+      : '<li class="muted">No list of the RC 2\'s missions yet: plug the RC 2 into the dock and unlock it.</li>');
+  }
+  $('#dock-checks').innerHTML = items.join('');
+  $('#dock-make').textContent = d.keySet ? 'Make a new dock key' : 'Make a dock key';
+  $('#dock-remove').classList.toggle('hidden', !d.keySet);
+}
+
+async function loadDock() {
+  try {
+    const res = await fetch('api/rc2', { cache: 'no-store' });
+    if (res.ok) renderDock(await res.json());
+  } catch { /* the card keeps "Checking…" */ }
+}
+
+async function dockKey(method) {
+  if (method === 'POST' && $('#dock-remove').offsetParent !== null
+      && !confirm('Make a new dock key? The old one stops working, so the dock needs the new one (sudo dji-map-link).')) return;
+  if (method === 'DELETE' && !confirm('Remove the dock key? The dock can no longer reach the map until you make a new one.')) return;
+  const res = await fetch('api/rc2/key', { method, headers: { 'X-Requested-With': 'flightmap' } });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) { alert(data.error || `The server answered ${res.status}`); return; }
+  renderDock(data);
+  $('#dock-new').classList.toggle('hidden', !data.key);
+  if (data.key) {
+    $('#dock-key').textContent = data.key;
+    $('#dock-url').textContent = location.origin;
+  }
+}
+
 async function start() {
   try {
     const res = await fetch('api/settings', { cache: 'no-store' });
@@ -428,6 +477,15 @@ async function start() {
     if (res.ok) followHttps(httpsTarget(saved, (await res.json()).info.https));
   });
   if (location.hash === '#https') $('#https').scrollIntoView();
+  $('#dock-make').addEventListener('click', () => dockKey('POST'));
+  $('#dock-remove').addEventListener('click', () => dockKey('DELETE'));
+  $('#dock-key-copy').addEventListener('click', async () => {
+    const ok = await Updates.copy($('#dock-key').textContent);
+    $('#dock-key-copy').textContent = ok ? 'Copied ✓' : 'Select the key and copy it';
+    setTimeout(() => { $('#dock-key-copy').textContent = 'Copy the key'; }, 2500);
+  });
+  loadDock();
+  if (location.hash === '#dock') $('#dock').scrollIntoView();
   $('#nas-check').addEventListener('click', checkNas);
   $('#nas-reconnect').addEventListener('click', reconnectNas);
   checkNas();   // check the NAS every time the settings page opens

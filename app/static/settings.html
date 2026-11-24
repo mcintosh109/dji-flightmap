@@ -36,6 +36,31 @@
           restarts itself, which takes about 20 seconds.</p>
       </section>
 
+      <!-- ================= RC 2 DOCK ================= -->
+      <section class="card" id="dock">
+        <h2>RC 2 dock</h2>
+        <p class="help">The <b>RC 2 dock</b> (<a href="https://github.com/mcintosh109/dji-rc2-dock" target="_blank" rel="noopener">dji-rc2-dock</a>,
+          the Raspberry Pi your RC 2 plugs into) can put planned routes on the RC 2 for you: <b>Send to RC 2</b> in the flight
+          planner's DJI Fly window. To talk to the map, the dock needs a <b>dock key</b>.</p>
+        <ul id="dock-checks" class="checks"><li class="muted">Checking…</li></ul>
+        <div id="dock-new" class="hidden">
+          <p class="help warn"><b>Copy this key now: it is shown only once.</b> It works like a password for the dock, so don't share it.</p>
+          <pre class="cmd" id="dock-key"></pre>
+          <button type="button" class="chip" id="dock-key-copy">Copy the key</button>
+          <ol class="steps">
+            <li>Open the Pi's terminal (for example with SSH from your PC).</li>
+            <li>Run <code>sudo dji-map-link</code> (it comes with the newest dji-rc2-dock: update it first with <code>git pull</code> and <code>sudo ./redeploy.sh</code> in its folder).</li>
+            <li>When it asks for the map's address, type <code id="dock-url"></code></li>
+            <li>When it asks for the key, paste the key above (nothing shows while you paste: that's normal) and press Enter.</li>
+            <li>It says <b>"Connected to DJI Flight Map"</b>. Within a minute or two, this card says the dock checked in.</li>
+          </ol>
+        </div>
+        <p>
+          <button type="button" class="chip" id="dock-make">Make a dock key</button>
+          <button type="button" class="chip hidden" id="dock-remove">Remove the key</button>
+        </p>
+      </section>
+
       <!-- ================= MAP ================= -->
       <section class="card">
         <h2>Map</h2>

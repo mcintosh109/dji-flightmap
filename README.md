@@ -329,6 +329,31 @@ What the window does:
   plan's take-off point, and you'll keep the drone in sight and take over if
   needed.
 
+**Sending it to the RC 2 through the dock (automatic):**
+
+If your RC 2 plugs into the [RC 2 dock](https://github.com/mcintosh109/dji-rc2-dock)
+(the Raspberry Pi that copies its flight logs to the NAS), the dock can put the
+route on the RC 2 for you. (Research: *"bearer token"*, *"SHA-256 checksum"*.)
+
+- **Once:** on the map, **Settings → RC 2 dock → Make a dock key**. On the Pi,
+  update dji-rc2-dock (`git pull`, then `sudo ./redeploy.sh` in its folder) and
+  run `sudo dji-map-link`: type the map's address, paste the key. The key works
+  like a password for the dock; the map only keeps a scrambled copy of it.
+- **In DJI Fly:** make one or more **placeholder** missions (any 2 points).
+- **Each time:** in the DJI Fly window, under **Send it to the RC 2**, pick the
+  placeholder to **replace** (the list shows each mission's waypoints, length,
+  date and a picture of its route, as the dock last saw them), tick the five
+  boxes and press **Send to RC 2**. Plug the RC 2 into the dock and unlock it:
+  the dock does it on plug-in, and checks every 2 minutes while it is plugged in.
+- **Safety nets:** the dock only replaces the placeholder if it is **exactly**
+  the file you picked (a mission edited in DJI Fly since is never overwritten),
+  backs the old file up first (on the Pi in `/var/lib/dji-dock/mission-backups`
+  and on the NAS in `mission-backups`), reads the new file back to check it,
+  and puts the old one back if writing fails. The window then says **"On the RC
+  2"** or why not.
+- **Then:** open DJI Fly, open the mission and **check the route on its map**
+  before flying, as below.
+
 **Putting it on the RC 2 by hand:**
 
 1. In DJI Fly, make a **placeholder** waypoint mission (any 2-3 points) and
@@ -931,6 +956,7 @@ pct exec 105 -- systemctl restart dji-flightmap
 | `deploy/restore-ct.sh` | Proxmox host: puts saved settings back into a container | |
 | `deploy/ct-backup.sh` | Shared save/restore steps used by the scripts above and below | *"bash source"* |
 | `app/flightmap/azplaces.py` | Places from Azure Maps (with the Azure map): 100 nearest, daily limit, remembered 30 days | *"Azure Maps Get Search Nearby"* |
+| `app/flightmap/rc2.py` | Send to RC 2: the dock key, the RC 2's missions (as the dock saw them) and the sends waiting for the dock | *"bearer token"*, *"SHA-256"* |
 | `app/flightmap/djifly.py` | A saved plan as a DJI Fly waypoint mission (.kmz), written exactly like DJI Fly's own | *"DJI WPML"*, *"KMZ"* |
 | `deploy/nas-watch.sh` | Proxmox host, every minute: reconnects the NAS share after the NAS restarts, restarts the container if it still sees the empty folder, tells the settings page what it found | *"systemd timer"*, *"cifs mount"* |
 | `deploy/nas-view.sh` | Run inside the container by `nas-watch.sh`: what the container sees of the logs folder | *"/proc/self/mountinfo"* |

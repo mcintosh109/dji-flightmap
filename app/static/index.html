@@ -171,7 +171,7 @@
   <dialog id="dj-dialog" class="dialog" aria-labelledby="dj-title">
     <form method="dialog" class="dialog-close"><button class="icon-btn" aria-label="Close">✕</button></form>
     <h2 id="dj-title">Download for DJI Fly</h2>
-    <p class="help">Makes a waypoint mission file (.kmz) of this plan for DJI Fly on the RC 2. The drone will fly it <b>by itself</b>, so check everything below first.</p>
+    <p class="help">Makes a waypoint mission (.kmz) of this plan for DJI Fly on the RC 2: sent through the RC 2 dock, or downloaded to copy by hand. The drone will fly it <b>by itself</b>, so check everything below first.</p>
     <ul id="dj-problems" class="pl-warnings"></ul>
 
     <h3>Speed</h3>
@@ -184,7 +184,7 @@
       <select id="dj-lost"><option value="goBack">Return to home (RTH)</option><option value="landing">Land where it is</option></select></div>
     <p class="help">DJI Fly flies <b>smooth curves</b> through the middle waypoints, so the drone <b>cuts the corners</b> and doesn't pass exactly over them, unlike the straight lines in the planner. Leave room around them.</p>
 
-    <h3>Before you download</h3>
+    <h3>Before you send or download</h3>
     <ul class="dj-checks">
       <li><label class="check"><input type="checkbox" class="dj-ok"> <span>I checked the <b>airspace</b> (in the US: B4UFLY or Aloft) and I'm allowed to fly there.</span></label></li>
       <li><label class="check"><input type="checkbox" class="dj-ok"> <span>I checked my <b>local laws and regulations</b>, and have any permission I need.</span></label></li>
@@ -192,12 +192,22 @@
       <li><label class="check"><input type="checkbox" class="dj-ok"> <span>I'll <b>take off from the plan's take-off point (H)</b>. The file doesn't contain it: DJI Fly counts every height from wherever the drone takes off.</span></label></li>
       <li><label class="check"><input type="checkbox" class="dj-ok"> <span>I'll keep the drone <b>in sight</b> and take over (pause button or sticks) if anything looks wrong.</span></label></li>
     </ul>
-    <div class="dialog-actions">
-      <span id="dj-msg" class="pl-save-msg" role="status"></span>
-      <button type="button" class="chip accent" id="dj-download" disabled>Download .kmz</button>
+    <h3>Send it to the RC 2 (through the dock)</h3>
+    <div id="dj-rc2" aria-live="polite"><p class="help">Asking the map for the RC 2's missions…</p></div>
+    <div class="dialog-actions" id="dj-rc2-actions">
+      <span id="dj-rc2-msg" class="pl-save-msg" role="status"></span>
+      <button type="button" class="chip" id="dj-rc2-refresh">Refresh the list</button>
+      <button type="button" class="chip accent" id="dj-rc2-send" disabled>Send to RC 2</button>
     </div>
 
-    <h3>Putting it on the RC 2 (by hand)</h3>
+    <h3>Or download the file</h3>
+    <div class="dialog-actions">
+      <span id="dj-msg" class="pl-save-msg" role="status"></span>
+      <button type="button" class="chip" id="dj-download" disabled>Download .kmz</button>
+    </div>
+
+    <details class="dj-byhand">
+    <summary>Putting the file on the RC 2 by hand</summary>
     <ol class="steps">
       <li>In DJI Fly, make (or keep) a <b>placeholder</b> waypoint mission. Note its date and number of waypoints in DJI Fly's list.</li>
       <li>Plug the RC 2 into your PC. In File Explorer open <b>DJI RC 2 → Internal shared storage → Android → data → dji.go.v5 → files → waypoint</b>, then the placeholder's folder (the long name).</li>
@@ -205,6 +215,7 @@
       <li>Rename the downloaded file to <b>exactly</b> the same name as that .kmz, then copy it into the folder and choose <b>Replace</b>.</li>
       <li>Unplug, open DJI Fly, open the placeholder mission, and <b>check the route on its map</b>: the points, the heights (H), the speed, and the end and signal-lost actions. The small picture in DJI Fly's list may still show the old route; that's normal.</li>
     </ol>
+    </details>
   </dialog>
 
   <!-- "Updates" window (opened from the version number or the update notice) -->

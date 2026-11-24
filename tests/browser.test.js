@@ -629,6 +629,41 @@ function fakeInternet(ctx, { github = null } = {}) {
       kmz.suggestedFilename() === 'Test loop.kmz' && kmzBytes.subarray(0, 2).toString() === 'PK', kmz.suggestedFilename());
     check('DJI Fly: the window explains how to put it on the RC 2, with a backup first',
       (await page.textContent('#dj-dialog')).includes('Copy the .kmz that is already there to your PC first'));
+    // ---- Send to RC 2 (through the RC 2 dock; here the test plays the dock) ----
+    await page.waitForTimeout(300);
+    check('RC 2: without a dock key, the window points to Settings → RC 2 dock',
+      (await page.textContent('#dj-rc2')).includes('Settings → RC 2 dock') && await page.isHidden('#dj-rc2-send'));
+    const pageHeaders = { 'X-Requested-With': 'flightmap', 'Content-Type': 'application/json' };
+    const dockKey = (await (await fetch(`${app.base}/api/rc2/key`, { method: 'POST', headers: pageHeaders })).json()).key;
+    const dockCall = (p, method = 'GET', data) => fetch(`${app.base}${p}`, {
+      method, headers: { Authorization: `Bearer ${dockKey}`, 'Content-Type': 'application/json' },
+      body: data ? JSON.stringify(data) : undefined,
+    }).then((r) => r.json());
+    const RC2_UUID = '0A1B2C3D-0000-4000-8000-0000000000AA';
+    // The "placeholder" on the pretend RC 2 is the file just downloaded (4 waypoints).
+    await dockCall('/api/dock/missions', 'PUT', { missions: [{ uuid: RC2_UUID, kmz: kmzBytes.toString('base64'), modified: '2026-11-20' }] });
+    await page.keyboard.press('Escape');
+    await page.click('#pl-djifly');
+    await tickAll();
+    await page.waitForTimeout(600);
+    check('RC 2: the missions the dock reported are listed (waypoints, length, a sketch of the route)',
+      (await page.locator('.rc2-mission').count()) === 1 && (await page.textContent('#dj-rc2')).includes('4 waypoints')
+      && await page.isVisible('.rc2-sketch'), await page.textContent('#dj-rc2'));
+    check('RC 2: Send waits until a mission to replace is picked', await page.isDisabled('#dj-rc2-send'));
+    await page.check('input[name=rc2-mission]');
+    check('RC 2: ...then it can be sent', await page.isEnabled('#dj-rc2-send'));
+    await page.click('#dj-rc2-send');
+    await page.waitForTimeout(800);
+    check('RC 2: the send waits for the dock', (await page.textContent('#dj-rc2')).includes('Waiting for the dock'),
+      await page.textContent('#dj-rc2'));
+    const rc2Queue = await dockCall('/api/dock/queue');
+    check("RC 2: the dock gets it, with the placeholder's fingerprint",
+      rc2Queue.send.length === 1 && rc2Queue.send[0].uuid === RC2_UUID && /^[0-9a-f]{64}$/.test(rc2Queue.send[0].expectSha256), JSON.stringify(rc2Queue));
+    await dockCall(`/api/dock/result/${rc2Queue.send[0].id}`, 'POST', { ok: true, message: 'written and checked' });
+    await page.waitForTimeout(5600);   // the window looks again every 5 seconds
+    check('RC 2: when the dock is done, the window says to check the route in DJI Fly before flying',
+      (await page.textContent('#dj-rc2')).includes('check the route on its map')
+      && (await page.textContent('#dj-rc2')).includes('holds Test loop from the map'), await page.textContent('#dj-rc2'));
     await page.keyboard.press('Escape');
     page.once('dialog', (d) => d.accept());
     await page.click('#pl-delete');
@@ -649,6 +684,16 @@ function fakeInternet(ctx, { github = null } = {}) {
     await page.waitForSelector('#nas-checks li', { timeout: 15000 }).catch(() => {});
     check('the NAS card checks the logs when the page opens', (await page.textContent('#nas-summary')).includes('can be read')
       && await page.isHidden('#nas-reconnect'), await page.textContent('#nas-summary'));
+    check('the RC 2 dock card shows the dock checked in and sent the list',
+      (await page.textContent('#dock-checks')).includes('last checked in') && (await page.textContent('#dock-checks')).includes('1 mission'),
+      await page.textContent('#dock-checks'));
+    page.once('dialog', (d) => d.accept());
+    await page.click('#dock-make');
+    await page.waitForTimeout(500);
+    check('a new dock key is shown once, with the map address and the command for the Pi',
+      (await page.textContent('#dock-key')).startsWith('dock_') && (await page.textContent('#dock-url')).startsWith('http')
+      && (await page.textContent('#dock-new')).includes('sudo dji-map-link') && (await page.textContent('#dock-checks')).includes("hasn't checked in"),
+      await page.textContent('#dock-checks'));
     {
       // A lost NAS share (the server's answers are pretend ones here).
       const nctx = await browser.newContext({ viewport: { width: 1280, height: 900 } });

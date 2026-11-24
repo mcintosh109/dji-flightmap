@@ -70,7 +70,7 @@ another third-party library is ever bundled, add its notice there.
 | Path | What |
 |---|---|
 | `app/server.py` | Python, standard library only. Entry point: the `Handler` class (every web address) and start-up. |
-| `app/flightmap/` | One module per job: `config` (env + paths), `flightlogs` (read one log), `library` (all flights), `settings`, `plans`, `auth` (login), `azure` / `google` (key-hiding proxies), `upstream` (shared connection pool), `places` (OpenStreetMap places). Modules read the environment at import, so tests set env vars first and re-import. |
+| `app/flightmap/` | One module per job: `config` (env + paths), `flightlogs` (read one log), `library` (all flights), `settings`, `plans`, `auth` (login), `azure` / `google` (key-hiding proxies), `upstream` (shared connection pool), `places` (OpenStreetMap places), `djifly` (DJI Fly .kmz), `rc2` (Send to RC 2 via the dock). Modules read the environment at import, so tests set env vars first and re-import. |
 | `app/version.json` | Version number + "what's new" notes. The page compares it with GitHub to show the update notice. |
 | `app/static/` | Classic scripts sharing globals, loaded in this order by `index.html`: `common.js` (helpers), `updates.js`, `maps.js` (providers/layers), `app.js` (state, formatting, map, icons), `layers.js`, `places.js` (shops/schools/parks layer), `overview.js` (sidebar + all flights), `flight.js` (open flight + replay), `update-notice.js`, `main.js` (refresh + start), `planner.js`. Each file wires its own buttons at the bottom. Also `settings.*`, `login.html` (self-contained), `style.css`, `vendor/leaflet` (1.9.4). |
 | `deploy/` | `easy-install.sh` (host, the one-command install that runs the others), `nas-watch.sh` (host, every minute, reconnects the NAS) + `nas-view.sh`, `setup-truenas-mount.sh`, `create-ct.sh` (host), `install.sh` (in container), `update-ct.sh` + `restore-ct.sh` + `ct-backup.sh` (host), `set-login.sh` (container). |
@@ -318,5 +318,23 @@ owner confirms it works**, release it with a tag (`git tag -a vX.Y.Z` +
   flew all 4 waypoints, reached the planned heights counted from take-off
   (200 ft at the last point) and did Return to Home at the end. Plan: owner tests by hand first, then the dock copies missions
   (map lists the RC 2's missions, owner picks the placeholder, dock backs up).
+- **Send to RC 2** (5.2.0): `flightmap/rc2.py` + dji-rc2-dock's `dji-missions.py`.
+  The owner chose: the DOCK ASKS THE MAP (the map stays read-only on the NAS),
+  routes go on plug-in AND every 2 min while docked, and the owner picks the
+  placeholder each time. Dock key `dock_...` made in Settings → RC 2 dock,
+  shown once, only its SHA-256 kept (`dock-key.json`); the Pi sends it as
+  `Authorization: Bearer` to `/api/dock/*` (bypasses the login, counts as a
+  failed login when wrong). The Pi reports each mission's whole .kmz + DJI
+  Fly's `map_preview/` picture (PUT /api/dock/missions); the map reads the
+  points itself. A send stores the .kmz made at send time (`rc2-outbox/`) and
+  `expectSha256` = the placeholder as last reported: the Pi refuses if the
+  file on the RC 2 differs (edited in DJI Fly since). Pi side: backup on the
+  Pi (must work) + NAS `mission-backups/`, write over MTP (jmtpfs), read back,
+  put the old one back on failure, POST /api/dock/result/<id>. Setup on the
+  Pi: `sudo dji-map-link` (/etc/dji-map-link.conf 0600; a private-cert map's
+  CA is fetched from :8080/flightmap-ca.crt after confirming its
+  fingerprint). Tests: LiveRc2, browser "RC 2:", dock `tests/test-missions.py`
+  + `tests/test-sync.sh`. NOT yet tried on a real RC 2 over MTP (Nov 2026):
+  overwriting over jmtpfs is the untested part.
 - Old installs had an `update-ct.sh` that could not download its own
   replacement; the current one does `git pull` and restarts itself.
