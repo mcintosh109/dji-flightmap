@@ -312,7 +312,7 @@
           <div class="field dns-for" data-dns="dns_cf">
             <label for="cred-cf">Cloudflare API token</label>
             <input id="cred-cf" data-cred="CF_Token" type="password" spellcheck="false" autocomplete="off">
-            <p class="help">dash.cloudflare.com → My Profile → API Tokens → Create Token with <b>Zone → DNS → Edit</b> for your domain.</p>
+            <p class="help">dash.cloudflare.com → My Profile → API Tokens → Create Token → "Create Custom Token" with <b>two</b> permissions: <b>Zone → Zone → Read</b> and <b>Zone → DNS → Edit</b>, and under Zone Resources your domain. (Without Zone → Zone → Read, Let's Encrypt says "invalid domain".)</p>
           </div>
           <div class="field dns-for" data-dns="dns_duckdns">
             <label for="cred-duck">DuckDNS token</label>

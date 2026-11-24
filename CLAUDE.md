@@ -214,6 +214,9 @@ owner confirms it works**, release it with a tag (`git tag -a vX.Y.Z` +
   The old PORT only redirects (301/308), answers /api/health (with
   `httpsPort`) and serves /flightmap-ca.crt. Anything failing = plain http
   and an error on the settings page. Recovery: `set-https.sh --off`.
+  Cloudflare (5.1.1): acme.sh's dns_cf finds the zone with `GET zones?name=`,
+  so the token needs **Zone.Zone:Read + Zone.DNS:Edit**; with Edit only it
+  says "invalid domain" (the help text used to list only Edit).
   Tests start servers with DEFAULT_HTTPS=off; FLIGHTMAP_IP fixes the address.
 - **Release tags**: in Claude's sandbox, pushing a tag was blocked by the
   safety check (a public action). The owner then makes the release on

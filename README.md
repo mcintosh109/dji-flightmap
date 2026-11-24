@@ -540,8 +540,13 @@ each device.
 2. In **Settings → Secure connection**, choose **Let's Encrypt**, type the
    name, choose who runs its DNS, and paste that company's API key. It is
    kept on your server like the map keys, and only handed to acme.sh.
-   - **Cloudflare:** dash.cloudflare.com → My Profile → API Tokens → a token
-     with *Zone → DNS → Edit*.
+   - **Cloudflare:** dash.cloudflare.com → My Profile → API Tokens → Create
+     Token → *Create Custom Token*, with **two** permissions:
+     *Zone → Zone → Read* and *Zone → DNS → Edit*, and your domain under
+     *Zone Resources*. (acme.sh first looks your domain up in your Cloudflare
+     account: without *Zone → Zone → Read* it can't, and says "invalid domain".
+     That message also appears when the name is spelled differently from the
+     domain in Cloudflare.)
    - **DuckDNS:** the token at the top of duckdns.org after signing in.
    - **GoDaddy:** developer.godaddy.com/keys (a *Production* key). GoDaddy may
      only allow its DNS API for larger accounts; if it is refused, move the
