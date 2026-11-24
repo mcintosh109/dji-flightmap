@@ -3,6 +3,13 @@
   "released": "2026-11-24",
   "repo": "mcintosh109/dji-flightmap",
   "notes": [
+    "New: Download for DJI Fly\u2026 in the flight planner makes a waypoint mission (.kmz) the Mini 4 Pro can fly by itself",
+    "It is written exactly like DJI Fly's own missions, and put on the RC 2 in place of a placeholder mission (steps in the window)",
+    "It won't download until the plan is saved, safe heights are used, no \u26d4 warning is left and the five safety boxes are ticked",
+    "DJI Fly has one speed per route: Apply and save gives every waypoint the same speed, so the estimates stay true",
+    "The take-off point isn't in the file: take off from the plan's H, because DJI Fly counts heights from where the drone takes off. DJI Fly flies curves, so it cuts the corners",
+    "Test it by hand first: check the route on DJI Fly's map, then fly it low and short in an open field",
+    "In the flight planner, right-click a waypoint (or press and hold on a phone) to delete it",
     "With Azure Maps, Places now come from Azure: many more businesses (gas stations, stores, clinics...), shown from a little further out",
     "Azure places are remembered on your server for 30 days, so looking at the same area again costs nothing; a daily limit is in Settings",
     "If Azure ever refuses, OpenStreetMap's places are shown instead",
