@@ -148,6 +148,7 @@ document.querySelectorAll('.tabs button').forEach((btn) => btn.addEventListener(
   state.tab = btn.dataset.tab;
   document.querySelectorAll('.tabs button').forEach((b) => b.classList.toggle('active', b === btn));
   document.querySelectorAll('#panel .tab-body').forEach((el) => el.classList.toggle('hidden', el.id !== `tab-${state.tab}`));
+  if (typeof Planner !== 'undefined') Planner.showBlips({ fit: true });   // the plans' markers: only on the Plans tab
 }));
 
 $('#search').addEventListener('input', (e) => { state.filter = e.target.value; renderFlights(state.lastData); });

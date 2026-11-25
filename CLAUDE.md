@@ -376,6 +376,13 @@ owner confirms it works**, release it with a tag (`git tag -a vX.Y.Z` +
   `home` on that spot; with a plan: take-off, then "Add a waypoint here"
   (`addPoint`, shared with map clicks). Waypoint markers call
   `L.DomEvent.stopPropagation(e)` so their own menu wins. Phones: long press.
+- **Plan flags** (5.3.0, owner's wish: "a blip on the map ... when you are in
+  the plans module"): `showBlips()` in planner.js, a purple flag per saved
+  plan at its `home`, only while `state.tab === 'plans'` and no plan is open
+  (overview.js's tab click calls `Planner.showBlips({ fit: true })`: if none
+  is on screen, fit them). Tooltip = name, waypoints, distance; click opens;
+  hovering a plan card lights its flag. zIndexOffset 3000: plans often start
+  where the last flight took off, under the drone icon (500).
 - **README pictures** (5.3.0): `docs/images/*.png`, made by
   `node docs/make-pictures.js` from the test flights (Central Park, fake
   serials) with pretend places/addresses/weather; the map underneath is

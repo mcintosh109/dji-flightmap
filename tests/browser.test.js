@@ -709,7 +709,24 @@ function fakeInternet(ctx, { github = null } = {}) {
     // Reload: the plan is still there, with exact values.
     page.once('dialog', (d) => d.accept());
     await page.reload({ waitUntil: 'networkidle' });
+    check('no plan markers on the map outside the Plans tab', (await page.locator('.plan-blip').count()) === 0);
     await page.click('[data-tab=plans]');
+    await page.waitForTimeout(300);
+    check('the Plans tab puts a marker on the map at each saved plan\'s take-off point',
+      (await page.locator('.plan-blip').count()) === 1 && await page.isVisible('.plan-blip'));
+    await page.hover('.plan-card');
+    check('  ...pointing at a plan in the list lights up its marker', await page.locator('.plan-blip.active').count() === 1);
+    await page.click('[data-tab=aircraft]');
+    check('  ...and the markers go when you leave the Plans tab', (await page.locator('.plan-blip').count()) === 0);
+    await page.click('[data-tab=plans]');
+    await page.waitForTimeout(300);
+    await page.click('.plan-blip');
+    await page.waitForTimeout(400);
+    check('  ...clicking a marker opens that plan (and the markers hide while it is open)',
+      await page.isVisible('#planner') && (await page.inputValue('#pl-name')) === 'Test loop' && (await page.locator('.plan-blip').count()) === 0);
+    await page.click('#pl-close');
+    await page.waitForTimeout(300);
+    check('  ...closing it brings them back', (await page.locator('.plan-blip').count()) === 1);
     await page.click('.plan-card');
     await page.waitForTimeout(400);
     check('saved plan opens again with its 4 waypoints', (await page.locator('#pl-wps tbody tr').count()) === 4);

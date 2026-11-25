@@ -60,6 +60,8 @@ plan here**. More in [Finding an address](#finding-an-address).
 Click the map to add waypoints. The planner works out the **distance, flight
 time and battery** (from your own past flights), warns about height,
 distance and battery, and shows the **weather forecast** for the planned time.
+In the **Plans** tab, a purple flag on the map marks where each saved plan
+takes off: click one to open it.
 
 > ⚠️ **It's a planning aid only.** It checks height, distance, battery and
 > weather. It does **not** check airspace, obstacles or local rules: always
@@ -433,7 +435,11 @@ waypoint where you clicked.
    chance, temperature, sunrise and sunset. It comes from
    [Open-Meteo](https://open-meteo.com), free with no key.
 6. **Compare with a past flight** draws one of your flights in grey dashes.
-7. **Save plan**. Saved plans are listed in the Plans tab and kept on the server
+7. **Save plan**. While the **Plans** tab is open, each saved plan shows on
+   the map as a **purple flag** at its take-off point, so you can see where
+   your plans are at a glance. Point at a flag for the plan's name, click it
+   to open the plan. (If none is on screen, the map moves to show them.)
+   Saved plans are listed in the Plans tab and kept on the server
    (`/var/lib/dji-flightmap/plans.json`, included in the update backups).
 
 Limits are in **⚙ Settings → Flight planner**.
