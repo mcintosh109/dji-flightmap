@@ -463,5 +463,23 @@ owner confirms it works**, release it with a tag (`git tag -a vX.Y.Z` +
   is fixed strings via textContent, no X-Forwarded-For trust. Not done
   (offered to the owner): "sign out everywhere" (a copied cookie stays valid
   until it expires; changing the password signs everyone out).
+  How big the race was depends on timing: with the REAL strength (600,000
+  rounds) the old code let 11 (curl) to 30 of 30 (Python threads) guesses
+  through; with a test hash of 1000 rounds the gap was too short to show it,
+  so `LiveLoginLockout` uses 600_000 (and records broken connections instead
+  of stopping, so both bugs fail separately on the old code).
+- **Security check** (5.4.2, owner: "a test on the security vulnerabilities
+  so we can test to see if it works" on the live server):
+  `deploy/security-check.sh`, run on the Proxmox host; finds the container
+  (`pct list` name dji-flightmap, or CTID=), asks :8080/api/health for
+  `httpsPort`; `MAP_URL=` / `HTTP_PORT=` override. curl -k (checks the map,
+  not trust). Order matters: login pages, dock key (2 failures), sneaky
+  requests incl. Content-Length -1 via openssl s_client or /dev/tcp (must
+  run BEFORE the lock-out, or the old code answers "locked" and hides the
+  hang), then 30 parallel guesses (pass if checked <= 10 - USED, no broken
+  connections), then headers/redirect/TLS 1.1 refused. Never uses the real
+  password. Leaves the host's IP locked out 15 min (in memory: a restart
+  clears it). Verified against the new code (30/30 pass, https, real
+  rounds), http + login, no login, and v5.3.0 (fails: 11 checked, hang).
 - Old installs had an `update-ct.sh` that could not download its own
   replacement; the current one does `git pull` and restarts itself.

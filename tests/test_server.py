@@ -1623,7 +1623,10 @@ class LiveLogin(unittest.TestCase):
 
 class LiveLoginLockout(unittest.TestCase):
     """10 wrong passwords in 15 minutes lock an address out, even when the
-    guesses are sent all at once (they used to be checked before any was counted)."""
+    guesses are sent all at once (each one used to be counted only after its
+    check, so the guesses arriving during a check got through too). The
+    real password strength (600,000 rounds, ~0.5 s a check) is used: with a
+    fast check the gap is too short to show the problem."""
 
     @classmethod
     def setUpClass(cls):
@@ -1632,7 +1635,7 @@ class LiveLoginLockout(unittest.TestCase):
         make_archive(os.path.join(cls.tmp, 'archive'))
         server = load_server(cls.tmp)
         cls.srv = LiveServer(os.path.join(cls.tmp, 'archive'), os.path.join(cls.tmp, 'state'),
-                             AUTH_USER='tester', AUTH_PASSWORD_HASH=server.hash_password('testpass123', rounds=1000))
+                             AUTH_USER='tester', AUTH_PASSWORD_HASH=server.hash_password('testpass123', rounds=600_000))
 
     @classmethod
     def tearDownClass(cls):
@@ -1645,10 +1648,16 @@ class LiveLoginLockout(unittest.TestCase):
 
     def test_guesses_sent_at_once_are_still_limited(self):
         from concurrent.futures import ThreadPoolExecutor
+        def guess(i):
+            try:
+                return self.login(f'guess-{i}')[1].get('Location')
+            except (ConnectionError, urllib.error.URLError):
+                return 'broken connection'
         with ThreadPoolExecutor(30) as pool:
-            answers = list(pool.map(lambda i: self.login(f'guess-{i}')[1].get('Location'), range(30)))
+            answers = list(pool.map(guess, range(30)))
         checked = answers.count('/login.html?error=1')
         self.assertLessEqual(checked, 10, f'{checked} of 30 guesses were checked')
+        self.assertEqual(answers.count('broken connection'), 0, 'a locked-out guess must get the "locked" answer')
         self.assertEqual(answers.count('/login.html?error=locked'), 30 - checked)
         # Locked out now: even the right password isn't checked.
         self.assertEqual(self.login('testpass123')[1].get('Location'), '/login.html?error=locked')
