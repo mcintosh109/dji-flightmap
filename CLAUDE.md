@@ -485,9 +485,14 @@ owner confirms it works**, release it with a tag (`git tag -a vX.Y.Z` +
   addresses (anyone else could fake it). `auth.lockout_group()` counts IPv6
   per /64 (a phone can rotate inside its block). The request log uses
   `client_ip()` too. Confirmed on the owner's server (Nov 2026): the log
-  showed the phone's address, not cloudflared's. Cloudflare Access (email
-  one-time PIN, already an identity provider on their account) was
-  recommended in front of the map; the owner gave Claude READ-ONLY Cloudflare
-  access: never change anything there. Tests: `LiveTunnelVisitors`.
+  showed the phone's address, not cloudflared's. Cloudflare Access is in
+  front of the map since Nov 2026 (owner set it up with Claude's steps): a
+  self-hosted app on the PUBLIC hostname (their first try used a private
+  destination, which protects nothing here), an Allow policy for their own
+  M365 email, Microsoft Entra ID sign-in. cloudflared's address has a DHCP
+  reservation. The owner chose to leave the WARP device-enrollment rule
+  (any @gmail.com) as is: WARP routing is off. The owner gave Claude
+  READ-ONLY Cloudflare access: never change anything there.
+  Tests: `LiveTunnelVisitors`.
 - Old installs had an `update-ct.sh` that could not download its own
   replacement; the current one does `git pull` and restarts itself.
