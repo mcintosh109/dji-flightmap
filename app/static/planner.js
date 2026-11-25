@@ -231,6 +231,7 @@ const Planner = (() => {
       // Right-click (or a long press on a phone): a small menu with "Delete".
       m.on('contextmenu', (e) => {
         L.DomEvent.preventDefault(e.originalEvent);
+        L.DomEvent.stopPropagation(e);   // the map's own right-click menu must not open too
         select(i);
         waypointMenu(i);
       });
@@ -253,6 +254,43 @@ const Planner = (() => {
       removeWaypoint(i);
     });
     menu.openOn(map);
+  }
+
+  // Right-click on the map (a long press on a phone): "Create a flight plan
+  // here" makes a new plan with its take-off point on that spot. With a plan
+  // open, the same menu puts the take-off there, or adds a waypoint.
+  function mapMenu(e) {
+    L.DomEvent.preventDefault(e.originalEvent);
+    const pos = { lat: e.latlng.lat, lon: e.latlng.lng };
+    const [title, action] = !plan ? ['This spot', 'Create a flight plan here']
+      : !plan.home ? ['This spot', 'Put the take-off here'] : [`Waypoint ${plan.waypoints.length + 1}`, 'Add a waypoint here'];
+    const box = L.DomUtil.create('div', 'wp-menu map-menu');
+    box.innerHTML = `<b>${esc(title)}</b><span>${pos.lat.toFixed(5)}, ${pos.lon.toFixed(5)}</span>`
+      + `<button type="button" class="chip accent map-menu-go">${esc(action)}</button>`;
+    L.DomEvent.disableClickPropagation(box);   // a click here must not add a waypoint underneath
+    const menu = L.popup({ closeButton: false, className: 'wp-menu-popup', offset: [0, -4] }).setLatLng(e.latlng).setContent(box);
+    box.querySelector('button').addEventListener('click', () => {
+      menu.close();
+      if (!plan) {
+        open({ ...emptyPlan(), home: pos });
+        changed({ weather: true });   // a new take-off point: get its weather, and say it isn't saved yet
+      } else {
+        addPoint(pos);
+      }
+    });
+    menu.openOn(map);
+  }
+
+  // The take-off point first, then waypoints (a click on the map, or the right-click menu).
+  function addPoint(pos) {
+    if (!plan.home) {
+      plan.home = pos;
+      changed({ weather: true });
+      return;
+    }
+    plan.waypoints.push({ ...pos, alt: plan.defaults.alt, speed: plan.defaults.speed, hold: 0 });
+    selected = plan.waypoints.length - 1;
+    changed();
   }
 
   function removeWaypoint(i) {
@@ -716,18 +754,8 @@ const Planner = (() => {
     });
 
     // Clicking the map: first the take-off point, then waypoints.
-    map.on('click', (e) => {
-      if (!plan) return;
-      const pos = { lat: e.latlng.lat, lon: e.latlng.lng };
-      if (!plan.home) {
-        plan.home = pos;
-        changed({ weather: true });
-        return;
-      }
-      plan.waypoints.push({ ...pos, alt: plan.defaults.alt, speed: plan.defaults.speed, hold: 0 });
-      selected = plan.waypoints.length - 1;
-      changed();
-    });
+    map.on('click', (e) => { if (plan) addPoint({ lat: e.latlng.lat, lon: e.latlng.lng }); });
+    map.on('contextmenu', mapMenu);
 
     $('#pl-name').addEventListener('input', (e) => { plan.name = e.target.value; dirty = true; setSaveMsg('Unsaved changes', 'warn'); });
     $('#pl-notes').addEventListener('input', (e) => { plan.notes = e.target.value; dirty = true; setSaveMsg('Unsaved changes', 'warn'); });

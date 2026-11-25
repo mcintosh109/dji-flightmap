@@ -7,10 +7,13 @@ Where the answers come from:
     (research: "Azure Maps Get Geocoding"). It is the current Search API
     (not the old v1 that Azure places use). Each search is one billable
     transaction after Azure's free monthly amount, so there is a daily limit
-    (DAILY_LIMIT). Azure knows streets, towns and counties, but hardly any
-    outdoor spots (a waterfall, a trail): Microsoft says it returns no
-    "points of interest". So OpenStreetMap is asked as well, and the two
-    lists are put together, best match first (see _merge).
+    (DAILY_LIMIT). It knows streets, towns and counties, but hardly any
+    named places: Microsoft says it returns no "points of interest". So
+    Azure's place search is asked too (the old Search v1 "Get Search POI",
+    the same family the Azure places on the map use, and it knew a waterfall
+    the address search didn't), and OpenStreetMap as well. The lists are put
+    together, best match first (see _merge). One search counts once towards
+    the daily limit, though it is two Azure requests.
   - Always: OpenStreetMap's free Nominatim server
         GET https://nominatim.openstreetmap.org/search?q=...&format=jsonv2
     (research: "Nominatim usage policy"). Its rules (as found in Nov 2026;
@@ -79,6 +82,12 @@ def search(query, lat=None, lon=None):
         except _Skip as why:
             note, complete = str(why), False
             log(f"Address search: {why}; only OpenStreetMap is asked")
+        if azure is not None:
+            try:
+                azure = _azure_places(query, near, settings["azureMapsKey"]) + azure
+            except _Skip as why:
+                complete = False          # Search v1 may be switched off one day: the rest still works
+                log(f"Address search: Azure's place search: {why}")
     try:
         osm = _osm(query, near)
     except _Skip as why:
@@ -146,6 +155,47 @@ def _azure_result(feature):
     box = feature.get("bbox")
     if isinstance(box, list) and len(box) == 4 and all(isinstance(c, (int, float)) for c in box):
         result["box"] = [round(box[1], 6), round(box[0], 6), round(box[3], 6), round(box[2], 6)]   # S, W, N, E
+    return result
+
+
+def _azure_places(query, near, key):
+    """Named places (a waterfall, a park, a shop) from Azure's Search v1 "Get Search POI"."""
+    params = {"api-version": "1.0", "query": query, "limit": TOP, "language": "en-US", "subscription-key": key}
+    if near:
+        params.update(lat=near[0], lon=near[1])      # answers near the map's middle first
+    try:
+        status, _, body, _ = AZURE.request("GET", "/search/poi/json?" + urlencode(params, quote_via=quote))
+    except OSError:
+        raise _Skip("could not reach Azure Maps") from None
+    if status != 200:
+        raise _Skip(f"Azure Maps answered {status}")
+    try:
+        found = json.loads(body).get("results") or []
+    except (ValueError, AttributeError):
+        raise _Skip("Azure Maps sent something unexpected") from None
+    return [r for r in (_azure_place(p) for p in found) if r][:TOP]
+
+
+def _azure_place(r):
+    if not isinstance(r, dict):
+        return None
+    poi, pos, addr = r.get("poi") or {}, r.get("position") or {}, r.get("address") or {}
+    lat, lon = pos.get("lat"), pos.get("lon")
+    name = str(poi.get("name", "")).strip()
+    if not name or not isinstance(lat, (int, float)) or not isinstance(lon, (int, float)):
+        return None
+    where = str(addr.get("freeformAddress") or addr.get("municipality") or "").strip()
+    classes = poi.get("classifications") or [{}]
+    label = str(((classes[0] or {}).get("names") or [{}])[0].get("name", "") or "Place").strip()
+    result = {"name": (f"{name}, {where}" if where else name)[:150], "detail": (label[:1].upper() + label[1:])[:40],
+              "lat": round(lat, 6), "lon": round(lon, 6), "from": "azure"}
+    view = r.get("viewport") or {}
+    try:
+        top, bottom = view["topLeftPoint"], view["btmRightPoint"]
+        result["box"] = [round(float(bottom["lat"]), 6), round(float(top["lon"]), 6),
+                         round(float(top["lat"]), 6), round(float(bottom["lon"]), 6)]   # S, W, N, E
+    except (KeyError, TypeError, ValueError):
+        pass
     return result
 
 
@@ -288,19 +338,34 @@ def _words(text):
     return {w for w in re.split(r"[^0-9a-z]+", str(text).lower()) if len(w) >= 2}
 
 
+ROAD_KINDS = {"Road", "Street", "Highway", "Dirt road", "Crossroads", "Bike path"}
+ROAD_WORDS = {"road", "rd", "street", "st", "avenue", "ave", "highway", "hwy", "lane", "ln", "drive", "dr", "route",
+              "rte", "fs", "way", "blvd", "boulevard", "parkway", "pkwy", "court", "ct", "circle", "cir", "pike",
+              "trail", "tr", "loop", "us", "sr", "cr", "interstate"}
+
+
 def _merge(query, azure, osm):
-    """Azure's answers, then OpenStreetMap's, best match first: an answer
-    whose name has more of the searched words comes first ("Bow Bridge" before
-    "Bridge County"). Equal ones keep their order (each company lists
-    its best first). The same place from both companies is shown once."""
+    """Azure's answers, then OpenStreetMap's, best match first:
+      1. more of the searched words in the name ("Bow Bridge" before "Bridge County"),
+      2. then a name that is exactly what was typed,
+      3. then roads last, unless a road word was typed: "Bow Bridge" is
+         the bridge, not "Bow Bridge Road" (the owner searched for a
+         waterfall and the road named after it came first).
+    Equal ones keep their order (each company lists its best first). The
+    same place from both companies is shown once."""
     wanted = _words(query)
+    roads_wanted = bool(wanted & ROAD_WORDS)
     shown = []
     for r in azure + osm:
         first = _words(r["name"].split(",")[0])
         if any(_close(r, o) and first == _words(o["name"].split(",")[0]) for o in shown):
             continue
         shown.append(r)
-    shown.sort(key=lambda r: -len(wanted & _words(r["name"])))   # sort() keeps equal ones in order
+    def rank(r):
+        exact = _words(r["name"].split(",")[0]) == wanted
+        road = not roads_wanted and r.get("detail", "").split(",")[0] in ROAD_KINDS
+        return (-len(wanted & _words(r["name"])), not exact, road)
+    shown.sort(key=rank)   # sort() keeps equal ones in order
     return shown[:SHOWN]
 
 

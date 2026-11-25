@@ -88,6 +88,10 @@ async function startFakeAzure() {
       ] }));
     }
     got.keys.add(u.searchParams.get('subscription-key'));
+    if (u.pathname === '/search/poi/json') {   // Azure's place search: knows nothing here
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ results: [] }));
+    }
     if (u.pathname === '/search/nearby/json') {
       got.searches++;
       if (got.placesFail) { res.writeHead(400); return res.end('{}'); }
@@ -609,6 +613,35 @@ function fakeInternet(ctx, { github = null } = {}) {
     await page.click('[data-tab=plans]');
     check('Plans tab is empty at first', (await page.textContent('#plan-list')).includes('No saved plans'));
     check('Plans tab shows the local-laws reminder', (await page.textContent('#tab-plans')).includes('local laws and regulations'));
+    // Right-click the map: "Create a flight plan here".
+    await page.mouse.click(800, 250, { button: 'right' });
+    await page.waitForTimeout(250);
+    const spotClicked = await page.evaluate(() => map.containerPointToLatLng([800, 250]));
+    check('right-clicking the map offers "Create a flight plan here"', await page.isVisible('.map-menu')
+      && (await page.textContent('.map-menu')).includes('Create a flight plan here') && await page.isHidden('#planner'));
+    await page.click('.map-menu-go');
+    await page.waitForTimeout(400);
+    const made = await page.evaluate(() => Planner._plan());
+    check('  ...it opens a new plan with the take-off point on that spot', await page.isVisible('#planner') && made?.home
+      && Math.abs(made.home.lat - spotClicked.lat) < 1e-6 && Math.abs(made.home.lon - spotClicked.lng) < 1e-6
+      && made.waypoints.length === 0 && (await page.textContent('#pl-save-msg')).includes('Unsaved'), JSON.stringify(made?.home));
+    await page.mouse.click(900, 200, { button: 'right' });
+    await page.waitForTimeout(250);
+    check('  ...with a plan open, right-click offers "Add a waypoint here"', (await page.textContent('.map-menu')).includes('Add a waypoint here'));
+    await page.click('.map-menu-go');
+    await page.waitForTimeout(300);
+    check('  ...which adds waypoint 1 there (not 2: the menu click does not also count as a map click)',
+      (await page.evaluate(() => Planner._plan().waypoints.length)) === 1);
+    await page.locator('.wp-icon', { hasText: '1' }).click({ button: 'right' });
+    await page.waitForTimeout(250);
+    check("  ...right-clicking a waypoint still opens the waypoint's own menu only",
+      await page.isVisible('.wp-menu-delete') && (await page.locator('.map-menu').count()) === 0);
+    await page.keyboard.press('Escape');
+    page.once('dialog', (d) => d.accept());
+    await page.click('#pl-close');
+    await page.waitForTimeout(300);
+    check('  ...and the plan closes without saving (nothing in the Plans tab)', await page.isHidden('#planner')
+      && (await page.textContent('#plan-list')).includes('No saved plans'));
     await page.click('#btn-new-plan');
     check('new plan asks for the take-off point', (await page.textContent('#pl-hint')).includes('take-off'));
     await page.click('#pl-last-home');

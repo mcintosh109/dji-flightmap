@@ -356,6 +356,8 @@ class FakeAzure:
         self.search_status = 200      # answer for places searches (e.g. 400: switched off)
         self.geocode_status = 200     # answer for address searches
         self.geocodes = []            # the address searches asked (their query parameters)
+        self.poi_searches = []        # the place (POI) searches asked
+        self.poi_status = 200
         outer = self
 
         class Handler(http.server.BaseHTTPRequestHandler):
@@ -397,6 +399,22 @@ class FakeAzure:
                     body = json.dumps({'type': 'FeatureCollection', 'features': features}).encode()
                     self.send_response(outer.geocode_status)
                     self.send_header('Content-Type', 'application/geo+json')
+                    self.send_header('Content-Length', str(len(body)))
+                    self.end_headers()
+                    self.wfile.write(body)
+                    return
+                if u.path == '/search/poi/json':
+                    # Search v1 "Get Search POI": knows the castle (made up), nothing else.
+                    outer.poi_searches.append({k: v[0] for k, v in q.items()})
+                    found = [{'type': 'POI', 'poi': {'name': 'Belvedere Castle', 'classifications': [
+                        {'code': 'TOURIST_ATTRACTION', 'names': [{'nameLocale': 'en-US', 'name': 'tourist attraction'}]}]},
+                        'address': {'freeformAddress': 'Central Park, NY'}, 'position': {'lat': 40.7794, 'lon': -73.9691},
+                        'viewport': {'topLeftPoint': {'lat': 40.7799, 'lon': -73.9697},
+                                     'btmRightPoint': {'lat': 40.7789, 'lon': -73.9685}}},
+                        {'poi': {'name': 'No position'}}] if 'castle' in q.get('query', [''])[0].lower() else []
+                    body = json.dumps({'results': found}).encode()
+                    self.send_response(outer.poi_status)
+                    self.send_header('Content-Type', 'application/json')
                     self.send_header('Content-Length', str(len(body)))
                     self.end_headers()
                     self.wfile.write(body)
@@ -691,6 +709,8 @@ class FakeNominatim:
                 outer.asked.append((time.monotonic(), {k: v[0] for k, v in parse_qs(u.query).items()},
                                     self.headers.get('User-Agent', '')))
                 places = [
+                    {'lat': '40.7830', 'lon': '-73.9700', 'display_name': 'Bow Bridge Road, Central Park, New York, United States',
+                     'category': 'highway', 'type': 'tertiary', 'addresstype': 'road'},
                     {'lat': '40.7812', 'lon': '-73.9665', 'display_name': '<b>Bow</b> Bridge, Central Park, New York, United States',
                      'addresstype': 'bridge', 'boundingbox': ['40.7810', '40.7814', '-73.9668', '-73.9662']},
                     {'lat': '40.78123', 'lon': '-73.96652', 'display_name': '1 Park Loop, Manhattan, New York, United States',
@@ -748,13 +768,14 @@ class LiveGeocode(unittest.TestCase):
         status, answer, body = self.find('1 Park Loop, New York')
         self.assertEqual((status, answer['source']), (200, 'azure+osm'), 'Azure, and OpenStreetMap as well')
         self.assertNotIn(self.KEY.encode(), body, 'the key stays on the server')
-        first, bridge, town = answer['results']
+        first, bridge = answer['results'][:2]
         self.assertEqual((first['name'], first['lat'], first['lon'], first['from']),
                          ('1 Park Loop, New York, NY 10024', 40.7812, -73.9665, 'azure'))
         self.assertEqual(first['box'], [40.7808, -73.967, 40.7816, -73.966], 'south, west, north, east')
         self.assertEqual(first['detail'], 'Address, United States')
-        self.assertEqual((bridge['from'], town['detail']), ('osm', 'Town or city'),
+        self.assertEqual((bridge['from'], answer['results'][-1]['detail']), ('osm', 'Town or city'),
                          'more of the searched words (park, new, york) comes before fewer (new, york)')
+        self.assertEqual(self.azure.poi_searches[-1]['query'], '1 Park Loop, New York', "Azure's place search is asked too")
         self.assertNotIn('1 Park Loop, Manhattan, New York, United States', [r['name'] for r in answer['results']],
                          "the same place from both is shown once; Azure's answer without a point is left out")
         asked = self.azure.geocodes[-1]
@@ -775,6 +796,43 @@ class LiveGeocode(unittest.TestCase):
         self.assertEqual([r['from'] for r in answer['results']][:1], ['osm'])
         self.assertTrue(answer['results'][0]['name'].endswith('Bridge, Central Park, New York, United States'))
 
+    def test_azure_place_search_finds_named_places(self):
+        self.srv.put_settings({'mapProvider': 'azure', 'azureMapsKey': self.KEY})
+        before = time.strftime('%Y-%m-%d')
+        status, answer, body = self.find('Belvedere Castle')
+        castle = answer['results'][0]
+        self.assertEqual((status, castle['name'], castle['detail'], castle['from']),
+                         (200, 'Belvedere Castle, Central Park, NY', 'Tourist attraction', 'azure'))
+        self.assertEqual(castle['box'], [40.7789, -73.9697, 40.7799, -73.9685], 'south, west, north, east')
+        self.assertNotIn(b'No position', body)
+        asked = self.azure.poi_searches[-1]
+        self.assertEqual((asked['lat'], asked['lon'], asked['subscription-key']), ('40.8', '-74.0', self.KEY))
+        with open(os.path.join(self.state, 'azure-geocode-usage.json')) as fh:
+            usage = json.load(fh)
+        self.assertEqual(usage['day'], before)
+        count = usage['count']
+        self.find('Belvedere Castle again')
+        with open(os.path.join(self.state, 'azure-geocode-usage.json')) as fh:
+            self.assertEqual(json.load(fh)['count'], count + 1, 'one search counts once, though it is two Azure requests')
+
+    def test_azure_place_search_failing_leaves_the_rest(self):
+        self.srv.put_settings({'mapProvider': 'azure', 'azureMapsKey': self.KEY})
+        self.azure.poi_status = 400
+        try:
+            status, answer, _ = self.find('Castle when v1 is off')
+        finally:
+            self.azure.poi_status = 200
+        self.assertEqual((status, answer['source']), (200, 'azure+osm'))
+        self.assertIn('1 Park Loop, New York, NY 10024', [r['name'] for r in answer['results']])
+
+    def test_roads_last_unless_a_road_is_searched(self):
+        self.srv.put_settings({'mapProvider': 'free'})
+        names = [r['name'] for r in self.find('Bow Bridge')[1]['results']]
+        self.assertTrue(names[0].endswith('Bridge, Central Park, New York, United States') and names[1].startswith('Bow Bridge Road'),
+                        names)
+        names = [r['name'] for r in self.find('Bow Bridge Road')[1]['results']]
+        self.assertTrue(names[0].startswith('Bow Bridge Road'), names)
+
     def test_openstreetmap_failing_still_shows_azure(self):
         self.srv.put_settings({'mapProvider': 'azure', 'azureMapsKey': self.KEY})
         self.osm.status = 503
@@ -782,7 +840,8 @@ class LiveGeocode(unittest.TestCase):
             status, answer, _ = self.find('Only Azure today')
         finally:
             self.osm.status = 200
-        self.assertEqual((status, answer['source'], len(answer['results'])), (200, 'azure', 2))
+        self.assertEqual((status, answer['source']), (200, 'azure'))
+        self.assertEqual([r['from'] for r in answer['results']], ['azure', 'azure'], 'the address and the town')
         before = len(self.osm.asked)
         self.find('Only Azure today')
         self.assertEqual(len(self.osm.asked), before + 1, 'not remembered, so OpenStreetMap is asked again')
@@ -814,7 +873,7 @@ class LiveGeocode(unittest.TestCase):
         self.assertEqual(answer['results'][0], {'name': '<b>Bow</b> Bridge, Central Park, New York, United States',
                                                 'detail': 'Bridge', 'lat': 40.7812, 'lon': -73.9665, 'from': 'osm',
                                                 'box': [40.781, -73.9668, 40.7814, -73.9662]})
-        self.assertEqual(len(answer['results']), 2, 'broken answers are left out (the page shows names as text, not HTML)')
+        self.assertEqual(len(answer['results']), 3, 'broken answers are left out (the page shows names as text, not HTML)')
         _, params, agent = self.osm.asked[-1]
         self.assertTrue(agent.startswith('dji-flightmap/'), 'Nominatim wants a User-Agent naming the app')
         self.assertEqual((params['q'], params['format'], params['viewbox']), ('Bow Bridge', 'jsonv2', '-75.0,41.8,-73.0,39.8'))

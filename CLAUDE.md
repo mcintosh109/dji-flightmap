@@ -356,9 +356,13 @@ owner confirms it works**, release it with a tag (`git tag -a vX.Y.Z` +
   (no type-ahead). Why both: the owner searched for a waterfall (a hiking
   spot; its name stays out of this public repo) and Azure only matched
   words (a forest, a town, a county):
-  Get Geocoding has hardly any POIs. `_merge` lists Azure then OSM, sorted
-  by how many searched words the name has, same place (~50 m + same first
-  words) once, max 8; each result has `from`. Answers remembered in memory
+  Get Geocoding has hardly any POIs. So also Azure Search v1 **Get Search
+  POI** (`/search/poi/json`, lat/lon bias; the owner's Azure Places icon knew
+  the waterfall) - one daily count for both Azure requests; if v1 fails the
+  rest still shows. `_merge`: Azure POIs, Azure addresses, then OSM, sorted
+  by (searched words in the name, exact first part, road last unless a road
+  word was typed: the owner picked "... Falls Road" over the falls), same
+  place (~50 m + same first words) once, max 8; each result has `from`. Answers remembered in memory
   a day, unless a company failed. Coordinates (decimal, N/S/E/W, deg/min/sec,
   from Google Maps' right-click) are read in the page (`readCoordinates`)
   and go straight there, nothing sent. OSM's category/type words
@@ -366,5 +370,11 @@ owner confirms it works**, release it with a tag (`git tag -a vX.Y.Z` +
   "Waterfall"): the owner saw "Tertiary". The pin is `interactive: false` so waypoints
   can go on it. The Nominatim policy page was not reachable from Claude's
   sandbox (Nov 2026): rules taken from search results.
+- **Right-click the map** (5.3.0, owner's wish: "right click then create
+  flight plan here"): `mapMenu` in planner.js, a Leaflet popup like the
+  waypoint menu. No plan open: "Create a flight plan here" = a new plan with
+  `home` on that spot; with a plan: take-off, then "Add a waypoint here"
+  (`addPoint`, shared with map clicks). Waypoint markers call
+  `L.DomEvent.stopPropagation(e)` so their own menu wins. Phones: long press.
 - Old installs had an `update-ct.sh` that could not download its own
   replacement; the current one does `git pull` and restarts itself.

@@ -225,17 +225,23 @@ To plan a flight somewhere new, go there on the map by its address:
    You can also paste **coordinates** (see below).
 3. Click the right answer in the list. The map goes there, close up, and puts
    a **red pin** with the name on it.
-4. Plan as usual: the pin lets clicks through, so you can put a waypoint
-   right on it. **Remove the pin** (in the search box) takes it away.
+4. **Right-click** the pin and choose **Create a flight plan here** to start
+   a plan with its take-off point there. Or plan as usual: the pin lets
+   clicks through, so you can put a waypoint right on it. **Remove the pin**
+   (in the search box) takes it away.
 
 - Answers near the part of the map you're looking at come first. If the
   right one isn't listed, add the town or the state.
-- **With Azure Maps as the provider, both Azure Maps and OpenStreetMap are
-  asked**, and their answers are listed together, the best match first. Each
-  answer says which company found it. Why both: Azure knows streets, towns
-  and counties very well, but hardly any outdoor spots (a waterfall, a
-  trail, a boat ramp); OpenStreetMap often knows those. Your Azure key stays
-  on the server. At most 200 searches a day are sent to Azure; searching the
+- **With Azure Maps as the provider, Azure's address search, Azure's place
+  search and OpenStreetMap are all asked**, and their answers are listed
+  together, the best match first: a name that is exactly what you typed
+  comes first, and roads go last unless you typed a road word ("Road",
+  "St", "FS"...). Each answer says which company found it. Why all three:
+  Azure's address search knows streets, towns and counties very well, but
+  hardly any named places; its place search (the same one the Places icons
+  use) and OpenStreetMap know waterfalls, trails, parks and boat ramps. Your Azure key stays
+  on the server. At most 200 searches a day are sent to Azure (each is two
+  Azure requests: addresses and places); searching the
   same thing again within a day costs nothing. After that, or if Azure
   doesn't answer, only OpenStreetMap is asked, and the box says so.
 - **With the other providers, the addresses come from OpenStreetMap** (its
@@ -302,7 +308,11 @@ with a coloured icon. Turn it on or off with **Places** in the layers panel
 
 ## Planning a flight
 
-Open the **Plans** tab in the sidebar and press **New plan**.
+Open the **Plans** tab in the sidebar and press **New plan**. Or, quicker:
+**right-click** the map where you'll take off (or press and hold on a phone)
+and choose **Create a flight plan here**: the plan opens with its take-off
+point on that spot. With a plan open, the same right-click menu adds a
+waypoint where you clicked.
 
 1. **Take-off point:** click the map where you'll take off, or press
    *Use the take-off point of my last flight*. It shows as **H**.
