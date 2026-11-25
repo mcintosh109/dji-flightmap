@@ -95,6 +95,11 @@ function renderDetail() {
     ['Battery', used],
     ['Photos / video', `${s.photoNum} / ${fmt.dur(s.videoTime)}`],
   ];
+  // Which battery: told apart by its size (Standard 2590 mAh, Plus 3850 mAh, a bit less as they age).
+  if (s.batteryCapacity) {
+    const kind = { standard: 'Standard', plus: 'Plus' }[s.batteryKind];
+    stats.push(['Battery pack', kind ? `${kind} · ${s.batteryCapacity} mAh` : `${s.batteryCapacity} mAh`]);
+  }
   if (s.last) stats.push(['Last position', fmt.coord(s.last.lat, s.last.lon)]);
   $('#d-stats').innerHTML = stats.map(([k, v]) => `<div class="stat"><span>${esc(k)}</span><b>${esc(v)}</b></div>`).join('');
 

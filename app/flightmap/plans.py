@@ -100,6 +100,10 @@ def clean_plan(incoming):
     if not number(battery, 10, 100):
         problems.append("Battery at take-off must be 10 to 100 percent.")
         battery = 100
+    kind = incoming.get("battery", "standard")
+    if kind not in ("standard", "plus"):
+        problems.append("The battery must be the standard one or the Plus one.")
+        kind = "standard"
     return_home = incoming.get("returnHome", True)
     if not isinstance(return_home, bool):
         problems.append("Return to take-off must be on or off.")
@@ -114,6 +118,7 @@ def clean_plan(incoming):
         "plannedFor": planned,
         "compareFlight": compare,
         "batteryStart": int(battery),
+        "battery": kind,
         "returnHome": return_home,
     }
     return plan, problems

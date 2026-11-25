@@ -1,13 +1,12 @@
 {
-  "version": "5.3.0",
+  "version": "5.4.0",
   "released": "2026-11-25",
   "repo": "mcintosh109/dji-flightmap",
   "notes": [
-    "New: find an address. Click the magnifying glass at the top right (it takes no room on the map until you do), type an address, a town or a place and press Enter: the map goes there and puts a pin on it, ready to plan a flight",
-    "With Azure Maps, Azure's addresses, Azure's places and OpenStreetMap are all asked and listed together, best match first (roads last unless you search for a road). With the other maps, the addresses come from OpenStreetMap",
-    "Can't find a spot by name? Paste its coordinates (in Google Maps: right-click the spot and click the numbers at the top) and the map goes straight there",
-    "New: right-click the map (or press and hold on a phone) and choose \"Create a flight plan here\": a new plan starts with its take-off point on that spot. With a plan open, the same menu adds a waypoint",
-    "New: in the Plans tab, a purple flag on the map shows where each saved plan takes off. Point at one for its name, click it to open the plan",
-    "The flight planner is less crowded on a computer: what you change (name, Save, waypoints, When, Notes) is in the left sidebar while a plan is open, and a short strip at the bottom shows the distance, time, battery, warnings and weather"
+    "New: choose the battery in the flight planner: Standard (2590 mAh) or Plus (3850 mAh). The battery estimate then learns only from your flights with that battery, so a Plus-battery plan isn't judged by standard-battery flights (and the other way round)",
+    "The map tells the two batteries apart by itself: every flight log records the battery's size. Open a flight to see which one it used (\"Battery pack\")",
+    "Haven't flown one of them yet? The estimate is worked out from your flights with the other one and DJI's flight times (34 min standard, 45 min Plus)",
+    "With the Plus battery the drone weighs more than 249 g: the planner reminds you that the rules for heavier drones apply (in the US: FAA registration and Remote ID)",
+    "New plans start with the battery of your most recent flight"
   ]
 }

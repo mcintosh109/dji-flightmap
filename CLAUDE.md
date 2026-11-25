@@ -400,5 +400,23 @@ owner confirms it works**, release it with a tag (`git tag -a vX.Y.Z` +
   not `#planner`, since the editor moves. While editing, the tabs are hidden:
   ✕ is the way back (it asks if unsaved). The map's credit line floats above open bottom panels
   ON PURPOSE (`liftCredits`, map terms): the owner asked about it; keep it.
+- **Battery choice** (5.4.0, owner's wish: select "the ultralight battery vs
+  the normal" one in planning): Mini 4 Pro batteries per DJI's specs:
+  standard 2590 mAh / 77.9 g / 34 min (drone under 249 g), Plus 3850 mAh /
+  121 g / 45 min (over 249 g; not sold in Europe). `flightlogs.py` reads the
+  first `BATTERY.fullCapacity` (mAh) per log; `battery_kind()` = "plus" if
+  >= 3200 mAh (`PLUS_BATTERY_MAH`, midway, as batteries lose capacity with
+  age), only for aircraft names containing "Mini", else "" (summary fields
+  `batteryCapacity`, `batteryKind`; CACHE_VERSION 4). Plans store `battery`
+  ("standard" default, old plans read as standard). `batteryRate(kind)` in
+  planner.js: flights with that battery; none -> the other battery's rate
+  scaled by DJI's times (34/45); logs without capacity -> all flights;
+  nothing -> typical 3 %/min (standard) scaled. The note under the numbers
+  says which, and for Plus that the drone is over 249 g (US: FAA
+  registration + Remote ID; sources disagreed on Remote ID details, so the
+  text stays general and says to check local rules). Fixture flight B is a
+  Plus battery (3790 mAh); the others 2453 mAh. The owner's real logs were
+  not seen: if `batteryKind` stays "" for them, check their
+  `BATTERY.fullCapacity` column.
 - Old installs had an `update-ct.sh` that could not download its own
   replacement; the current one does `git pull` and restarts itself.

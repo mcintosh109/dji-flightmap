@@ -424,6 +424,7 @@ a.icon-btn { color: var(--text); }
 .icon-btn.small { width: 26px; height: 26px; font-size: 12px; }
 .pl-inline { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); }
 .pl-inline input { width: 70px; }
+.pl-inline select { width: auto; flex: 1; min-width: 0; }
 #pl-weather .live { margin-top: 8px; }
 .new-plan { width: 100%; justify-content: center; margin-bottom: 10px; padding: 9px; }
 .plan-card .time { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

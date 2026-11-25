@@ -557,6 +557,8 @@ function fakeInternet(ctx, { github = null } = {}) {
     await page.click(`.flight[data-id="${flightA.id}"]`);
     await page.waitForTimeout(800);
     check('flight opens', await page.isVisible('#detail') && await page.isVisible('#p-speed'));
+    check('the flight shows which battery pack flew it (told apart by its size)',
+      (await page.textContent('#d-stats')).includes('Standard · 2453 mAh'), await page.textContent('#d-stats'));
     const creditBox = await page.locator('#map .leaflet-control-attribution').boundingBox();
     const detailBox = await page.locator('#detail').boundingBox();
     check('the map credit line stays visible above the flight panel', creditBox.y + creditBox.height <= detailBox.y + 1,
@@ -687,6 +689,21 @@ function fakeInternet(ctx, { github = null } = {}) {
     check('"OK" says airspace, obstacles and local rules are not checked', /Airspace, obstacles and local rules are not checked/.test(okText), okText);
     check('local-laws disclaimer is always shown in the planner', await page.isVisible('#pl-disclaimer')
       && (await page.textContent('#pl-disclaimer')).includes('Always check your local laws and regulations'));
+    // Battery: the standard one by default (the last flight with a known battery used it).
+    const batteryUsed = async () => Number((await page.textContent('#pl-stats')).match(/Battery used\s*~(\d+)%/)?.[1]);
+    const note = () => page.textContent('#pl-battery-note');
+    const standardUse = await batteryUsed();
+    check('battery: the standard one at first, learned from the standard-battery flights',
+      (await page.inputValue('#pl-battery-kind')) === 'standard' && /1 flight with the standard battery/.test(await note()), await note());
+    await page.selectOption('#pl-battery-kind', 'plus');
+    await page.waitForTimeout(200);
+    check('  ...the Plus battery uses the flights flown with it',
+      /1 flight with the Plus battery/.test(await note()) && (await batteryUsed()) !== standardUse, `${standardUse}% vs ${await batteryUsed()}%: ${await note()}`);
+    check('  ...and says the drone is then over 249 g (registration rules)', /more than 249 g.*Check your local rules/.test(await note()));
+    check('  ...and the choice counts as an unsaved change', (await page.textContent('#pl-save-msg')).includes('Unsaved'));
+    await page.selectOption('#pl-battery-kind', 'standard');
+    await page.waitForTimeout(200);
+    check('  ...back to standard: the same estimate as before', (await batteryUsed()) === standardUse && !/249 g/.test(await note()));
     const altBox = '#pl-wps tr[data-i="1"] input[data-f=alt]';
     await page.fill(altBox, '500');
     await page.press(altBox, 'Tab');

@@ -59,18 +59,21 @@ def iso(dt):
 
 
 def write_flight(path, *, start, seconds, clock_offset=0.0, gps=True, max_h=40.0, loop_m=150.0,
-                 warn_at=None, serial=SERIAL, name=MODEL):
+                 warn_at=None, serial=SERIAL, name=MODEL, battery=('TESTBATTERY01', 2453)):
     """Write a flight that takes off, flies a loop, and lands.
 
     clock_offset: the drone's flight clock at the first row. Real drones keep
     counting if you land and take off without switching off (we saw 407 s).
     gps=False:    every position is 0,0 (no GPS lock, e.g. indoors).
+    battery:      (serial, full capacity in mAh). 2453 = a used standard
+                  Mini 4 Pro battery (2590 new), 3790 = a Plus one (3850 new).
     """
     rows = []
     total = seconds
     base = {h: '' for h in HEADER}
     base.update({
-        'RECOVER.aircraftName': name, 'RECOVER.aircraftSerial': serial, 'RECOVER.batterySerial': 'TESTBATTERY01',
+        'RECOVER.aircraftName': name, 'RECOVER.aircraftSerial': serial, 'RECOVER.batterySerial': battery[0],
+        'BATTERY.fullCapacity': str(battery[1]),
         'RECOVER.appVersion': '1.21.18', 'DETAILS.aircraftName': name, 'DETAILS.aircraftSerial': serial,
         'DETAILS.appVersion': '1.21.18', 'DETAILS.totalTime': f'{total:.1f}', 'DETAILS.photoNum': '2',
         'DETAILS.videoTime': '0', 'OSD.gpsNum': '18',
@@ -143,8 +146,9 @@ def make_archive(root):
     write_geojson(os.path.join(dock1, 'parsed', 'DJIFlightRecord_2026-01-10_[10-00-00].geojson'),
                   start=a_start, seconds=120)
     # B: second flight, drone not switched off, so its clock starts at 120.
+    # Flown with the bigger "Plus" battery.
     write_flight(os.path.join(dock1, 'parsed', 'DJIFlightRecord_2026-01-10_[10-05-00].csv'),
-                 start=b_start, seconds=90, clock_offset=120.0, max_h=60)
+                 start=b_start, seconds=90, clock_offset=120.0, max_h=60, battery=('TESTBATTERY02', 3790))
     # A again, saved by a later dock session: must be shown once.
     write_flight(os.path.join(dock2, 'parsed', 'DJIFlightRecord_2026-01-10_[10-00-00].csv'),
                  start=a_start, seconds=120, warn_at=60)

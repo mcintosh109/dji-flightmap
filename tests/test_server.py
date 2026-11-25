@@ -166,6 +166,20 @@ class ReadingLogs(unittest.TestCase):
         self.assertAlmostEqual(detail['track'][0]['t'], 2.0, delta=0.15)   # not 122
         self.assertLessEqual(detail['track'][-1]['t'], 90.5)
 
+    def test_which_battery(self):
+        # Told apart by the battery's full capacity: standard 2590 mAh, Plus 3850 mAh.
+        a, _ = self.flight('DJIFlightRecord_2026-01-10_[10-00-00].csv')
+        self.assertEqual((a['batteryCapacity'], a['batteryKind'], a['batterySerial']), (2453, 'standard', 'TESTBATTERY01'))
+        b, _ = self.flight('DJIFlightRecord_2026-01-10_[10-05-00].csv')
+        self.assertEqual((b['batteryCapacity'], b['batteryKind'], b['batterySerial']), (3790, 'plus', 'TESTBATTERY02'))
+        d, _ = self.flight('DJIFlightRecord_2026-01-11_[08-30-00].geojson')   # no battery details
+        self.assertEqual((d['batteryCapacity'], d['batteryKind']), (None, ''))
+        from flightmap.flightlogs import battery_kind
+        self.assertEqual(battery_kind('DJI Mini 4 Pro', 2100), 'standard')   # an old, tired battery
+        self.assertEqual(battery_kind('DJI Mini 4 Pro', 3500), 'plus')
+        self.assertEqual(battery_kind('DJI Mini 4 Pro', None), '')
+        self.assertEqual(battery_kind('DJI Air 3', 4241), '')               # not a Mini: don't guess
+
     def test_flight_without_gps(self):
         summary, detail = self.flight('FlightRecord_2026-01-11_[08-00-00].csv')
         self.assertFalse(summary['hasGps'])
@@ -329,6 +343,15 @@ class LivePlans(unittest.TestCase):
         self.assertGreaterEqual(len(body['problems']), 4, body)
         status, _ = self.put('new', dict(self.PLAN, home=None))   # waypoints but no take-off point
         self.assertEqual(status, 400)
+
+    def test_battery_choice(self):
+        status, saved = self.put('new', self.PLAN)                       # older pages don't send it
+        self.assertEqual((status, saved['battery']), (200, 'standard'))
+        status, saved = self.put('new', dict(self.PLAN, battery='plus'))
+        self.assertEqual((status, saved['battery']), (200, 'plus'))
+        status, body = self.put('new', dict(self.PLAN, battery='huge'))
+        self.assertEqual(status, 400)
+        self.assertIn('battery', ' '.join(body['problems']))
 
     def test_plans_need_our_header_and_good_ids(self):
         self.assertEqual(self.put('new', self.PLAN, header=False)[0], 403)

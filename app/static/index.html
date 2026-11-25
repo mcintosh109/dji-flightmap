@@ -167,6 +167,11 @@
       </div>
       <div id="pl-wps" class="pl-wps"></div>
       <label class="check"><input id="pl-return" type="checkbox"> <span>Fly back to take-off at the end (counted in the estimate)</span></label>
+      <label class="pl-inline">Battery
+        <select id="pl-battery-kind" title="Which battery you will fly with: the estimate learns from your flights with that one">
+          <option value="standard">Standard (2590 mAh)</option>
+          <option value="plus">Plus (3850 mAh, over 249 g)</option>
+        </select></label>
       <label class="pl-inline">Battery at take-off <input id="pl-battery" type="number" min="10" max="100" step="5"> %</label>
       <h3>When</h3>
       <input id="pl-when" type="datetime-local" aria-label="Planned date and time">

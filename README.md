@@ -434,6 +434,17 @@ it is all in one panel at the bottom.
 3. **The numbers:** distance, estimated flight time, battery used and battery
    left at landing. The battery estimate is based on **your own past flights**
    (how many % per minute they used). Wind can change it a lot.
+   - **Battery:** pick **Standard** (2590 mAh) or **Plus** (3850 mAh). The
+     estimate then uses only your flights with that battery. The map knows
+     which battery each flight used, because every flight log records the
+     battery's size (open a flight: **Battery pack**). If you haven't flown
+     one of them yet, it's worked out from the other one and DJI's flight
+     times (34 min standard, 45 min Plus). New plans start with the battery
+     of your last flight.
+   - With the **Plus** battery the drone weighs **more than 249 g**, so the
+     rules for heavier drones apply (in the US: FAA registration, even when
+     flying for fun, and Remote ID). The planner reminds you; check your
+     local rules.
 4. **Warnings** appear when a waypoint is above your height limit, too far to
    keep in sight, the battery would land below your reserve, or the weather is
    a problem (strong wind up high, gusts, rain, cold, after sunset).
@@ -1165,6 +1176,7 @@ The server uses these columns from the `dji-log-parser` CSV format:
 | `OSD.yaw` | heading in degrees, 0 = north; rotates the drone icon |
 | `OSD.gpsNum`, `OSD.flycState` | satellites and flight mode |
 | `BATTERY.chargeLevel` | battery % |
+| `BATTERY.fullCapacity` | the battery's size in mAh: under 3200 = standard battery, 3200 or more = Plus (Mini drones only) |
 | `APP.tip`, `APP.warn` | app messages; warnings show as orange dots on the path |
 | `DETAILS.*`, `RECOVER.*` | aircraft name, serial number, total flight time |
 

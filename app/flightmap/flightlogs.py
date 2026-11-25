@@ -116,6 +116,13 @@ def parse_csv(path):
                             meta[key] = get(col)
                             break
 
+            # The battery's full capacity (mAh) tells the standard battery
+            # from the Plus one (see battery_kind). Keep the first real value.
+            if not meta.get("batteryCapacity"):
+                capacity = num(get("BATTERY.fullCapacity"))
+                if capacity and 500 <= capacity <= 20000:
+                    meta["batteryCapacity"] = round(capacity)
+
             when = parse_time(get("CUSTOM.dateTime"))
             # The drone's flight clock does NOT always start at 0: if you land
             # and take off again without switching the drone off, it carries
@@ -165,6 +172,7 @@ def parse_csv(path):
         "aircraftName": meta.get("aircraftName", ""),
         "serial": meta.get("serial", ""),
         "batterySerial": meta.get("batterySerial", ""),
+        "batteryCapacity": meta.get("batteryCapacity"),
         "appVersion": meta.get("appVersion", ""),
         "totalTime": num(meta.get("totalTime")),
         "photoNum": int(num(meta.get("photoNum"), 0)),
@@ -210,11 +218,26 @@ def parse_geojson(path):
         "aircraftName": props.get("aircraftName", ""),
         "serial": props.get("aircraftSN", ""),
         "batterySerial": "",
+        "batteryCapacity": None,
         "appVersion": "",
         "totalTime": total,
         "photoNum": int(num(props.get("captureNum"), 0)),
         "videoTime": num(props.get("videoTime"), 0),
     }
+
+
+# DJI Mini 3 / Mini 4 Pro batteries (DJI's specs): the standard one is
+# 2590 mAh (the drone stays under 249 g, about 34 min in DJI's test), the
+# "Plus" one 3850 mAh (over 249 g, about 45 min). A battery holds a little
+# less as it ages, so the line between them is drawn in the middle.
+PLUS_BATTERY_MAH = 3200
+
+
+def battery_kind(aircraft_name, capacity):
+    """'standard' or 'plus' for a Mini drone's battery, '' when unknown."""
+    if not capacity or "mini" not in (aircraft_name or "").lower():
+        return ""
+    return "plus" if capacity >= PLUS_BATTERY_MAH else "standard"
 
 
 def build_flight(path, rel_path, mtime):
@@ -239,6 +262,8 @@ def build_flight(path, rel_path, mtime):
         "aircraftName": parsed["aircraftName"] or "Unknown aircraft",
         "serial": parsed["serial"],
         "batterySerial": parsed["batterySerial"],
+        "batteryCapacity": parsed["batteryCapacity"],
+        "batteryKind": battery_kind(parsed["aircraftName"], parsed["batteryCapacity"]),
         "appVersion": parsed["appVersion"],
         "start": start.isoformat() if start else None,
         "end": (start + timedelta(seconds=duration)).isoformat() if start else None,

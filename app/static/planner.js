@@ -42,6 +42,7 @@ const Planner = (() => {
     id: null, name: '', notes: '', home: null, waypoints: [],
     defaults: imperial() ? { alt: H.fromUser(200), speed: SPD.fromUser(18) } : { alt: 60, speed: SPD.fromUser(30) },
     plannedFor: '', compareFlight: '', batteryStart: 100, returnHome: true,
+    battery: lastBattery(),
   });
 
   // Centre a point in the part of the map you can see (not behind a panel).
@@ -55,17 +56,69 @@ const Planner = (() => {
   }
 
   // ---------- the numbers ----------
-  // Battery use per minute, learned from your past flights (or a typical value).
-  function batteryRate() {
-    let used = 0, minutes = 0, n = 0;
-    for (const f of state.lastData?.flights || []) {
-      if (f.duration >= 60 && f.batteryStart != null && f.batteryEnd != null && f.batteryStart > f.batteryEnd) {
-        used += f.batteryStart - f.batteryEnd;
-        minutes += f.duration / 60;
-        n++;
+  // The two Mini 4 Pro batteries (DJI's specs). The server tells them apart
+  // in each flight log by their size in mAh (flightlogs.battery_kind).
+  const BATTERIES = {
+    standard: { name: 'standard battery', minutes: 34 },   // 2590 mAh, drone under 249 g
+    plus: { name: 'Plus battery', minutes: 45 },           // 3850 mAh, drone over 249 g
+  };
+  const TYPICAL_RATE = 3.0;   // % per minute with the standard battery (~33 min) when there are no flights yet
+
+  // The battery of your most recent flight, for new plans.
+  function lastBattery() {
+    const known = (state.lastData?.flights || []).filter((f) => BATTERIES[f.batteryKind]);
+    known.sort((a, b) => b.sortKey - a.sortKey);
+    return known[0]?.batteryKind || 'standard';
+  }
+
+  // Battery use per minute, learned from your past flights with this battery.
+  // Returns { rate, from: how many flights, how: 'same' | 'other' | 'unknown' | 'typical' }.
+  //   same:    learned from flights with this battery
+  //   other:   none yet: learned from the other battery, scaled by DJI's flight times
+  //   unknown: the logs don't say which battery (no capacity in them): all flights
+  //   typical: no flights at all
+  function batteryRate(kind) {
+    const learn = (test) => {
+      let used = 0, minutes = 0, n = 0;
+      for (const f of state.lastData?.flights || []) {
+        if (test(f) && f.duration >= 60 && f.batteryStart != null && f.batteryEnd != null && f.batteryStart > f.batteryEnd) {
+          used += f.batteryStart - f.batteryEnd;
+          minutes += f.duration / 60;
+          n++;
+        }
       }
+      return n ? { rate: used / minutes, from: n } : null;
+    };
+    const mine = BATTERIES[kind] ? kind : 'standard';
+    const other = mine === 'plus' ? 'standard' : 'plus';
+    const scale = BATTERIES[other].minutes / BATTERIES[mine].minutes;
+    const same = learn((f) => f.batteryKind === mine);
+    if (same) return { ...same, how: 'same' };
+    const others = learn((f) => f.batteryKind === other);
+    if (others) return { rate: others.rate * scale, from: others.from, how: 'other' };
+    const any = learn((f) => !BATTERIES[f.batteryKind]);
+    if (any) return { ...any, how: 'unknown' };
+    return { rate: TYPICAL_RATE * BATTERIES.standard.minutes / BATTERIES[mine].minutes, from: 0, how: 'typical' };
+  }
+
+  // The sentence under the numbers that says where the battery estimate comes from.
+  function batteryNote(b) {
+    const kind = BATTERIES[plan.battery] ? plan.battery : 'standard';
+    const name = BATTERIES[kind].name;
+    const rate = `about ${b.rate.toFixed(1)}% per minute`;
+    const flights = (n) => `${n} flight${n === 1 ? '' : 's'}`;
+    let text = {
+      same: `Battery estimate based on your last ${flights(b.from)} with the ${name} (${rate}). Wind changes it a lot.`,
+      other: `You haven't flown with the ${name} yet: estimated from your ${flights(b.from)} with the `
+        + `${BATTERIES[kind === 'plus' ? 'standard' : 'plus'].name} and DJI's flight times (${rate}). Wind changes it a lot.`,
+      unknown: `Battery estimate based on your last ${flights(b.from)} (${rate}): your flight logs don't say which battery was used. Wind changes it a lot.`,
+      typical: `Battery estimate uses a typical Mini 4 Pro value for the ${name} (${rate}) until you have more flights.`,
+    }[b.how];
+    if (kind === 'plus') {
+      text += ' With the Plus battery the drone weighs more than 249 g, so the rules for heavier drones apply '
+        + '(in the US: FAA registration, even when flying for fun, and Remote ID). Check your local rules.';
     }
-    return n ? { rate: used / minutes, from: n } : { rate: 3.0, from: 0 };   // ~33 min per battery
+    return text;
   }
 
   // Distance, time, battery and the farthest/highest point of a plan.
@@ -89,10 +142,10 @@ const Planner = (() => {
       if (d > out.farthest) { out.farthest = d; out.farthestIdx = i; }
     });
     if (p.waypoints.length) out.seconds += OVERHEAD;
-    const b = batteryRate();
+    const b = batteryRate(p.battery || 'standard');
     out.batteryUsed = (out.seconds / 60) * b.rate;
     out.batteryLeft = p.batteryStart - out.batteryUsed;
-    out.batteryFrom = b.from;
+    out.battery = b;
     return out;
   }
 
@@ -346,9 +399,7 @@ const Planner = (() => {
       ['Farthest from take-off', plan.waypoints.length ? fmt.dist(m.farthest) : '–'],
     ];
     $('#pl-stats').innerHTML = stats.map(([k, v]) => `<div class="stat"><span>${esc(k)}</span><b>${esc(v)}</b></div>`).join('');
-    $('#pl-battery-note').textContent = m.batteryFrom
-      ? `Battery estimate based on your last ${m.batteryFrom} flight${m.batteryFrom === 1 ? '' : 's'} (about ${batteryRate().rate.toFixed(1)}% per minute). Wind changes it a lot.`
-      : 'Battery estimate uses a typical Mini 4 Pro value (about 3% per minute) until you have more flights.';
+    $('#pl-battery-note').textContent = batteryNote(batteryRate(plan.battery));
     const list = warnings(plan, m);
     $('#pl-warnings').innerHTML = !plan.waypoints.length ? ''
       : list.length ? list.map((w) => `<li class="${w.level}">${w.level === 'danger' ? '⛔' : '⚠'} ${esc(w.text)}</li>`).join('')
@@ -365,6 +416,7 @@ const Planner = (() => {
     $('#pl-notes').value = plan.notes;
     $('#pl-return').checked = plan.returnHome;
     $('#pl-battery').value = plan.batteryStart;
+    $('#pl-battery-kind').value = plan.battery;
     $('#pl-def-alt').value = H.toUser(plan.defaults.alt);
     $('#pl-def-speed').value = SPD.toUser(plan.defaults.speed);
     $('#pl-def-alt-unit').textContent = H.unit();
@@ -429,6 +481,7 @@ const Planner = (() => {
   function open(p = emptyPlan()) {
     if (state.detail) closeFlight();
     plan = JSON.parse(JSON.stringify(p));
+    if (!BATTERIES[plan.battery]) plan.battery = 'standard';   // plans saved before 5.4.0
     dirty = false;
     selected = -1;
     weather = { key: '', data: null, error: '' };
@@ -817,6 +870,7 @@ const Planner = (() => {
     $('#pl-notes').addEventListener('input', (e) => { plan.notes = e.target.value; dirty = true; setSaveMsg('Unsaved changes', 'warn'); });
     $('#pl-when').addEventListener('change', (e) => { plan.plannedFor = e.target.value; changed({ weather: true, waypoints: false }); });
     $('#pl-return').addEventListener('change', (e) => { plan.returnHome = e.target.checked; changed({ waypoints: false }); });
+    $('#pl-battery-kind').addEventListener('change', (e) => { plan.battery = e.target.value; changed({ waypoints: false }); });
     $('#pl-battery').addEventListener('change', (e) => {
       plan.batteryStart = Math.max(10, Math.min(100, Math.round(Number(e.target.value) || 100)));
       e.target.value = plan.batteryStart;
