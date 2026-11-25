@@ -431,8 +431,8 @@ owner confirms it works**, release it with a tag (`git tag -a vX.Y.Z` +
   says which, and for Plus that the drone is over 249 g (US: FAA
   registration + Remote ID; sources disagreed on Remote ID details, so the
   text stays general and says to check local rules). Fixture flight B is a
-  Plus battery (3790 mAh); the others 2453 mAh. The owner's real logs were
-  not seen: if `batteryKind` stays "" for them, check their
-  `BATTERY.fullCapacity` column.
+  Plus battery (3790 mAh); the others 2453 mAh. Confirmed on the owner's
+  real logs (Nov 2026): "your last 13 flights with the Plus battery (about
+  3.4% per minute)", so dji-log-parser's `BATTERY.fullCapacity` is filled.
 - Old installs had an `update-ct.sh` that could not download its own
   replacement; the current one does `git pull` and restarts itself.
