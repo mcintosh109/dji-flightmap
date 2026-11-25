@@ -651,16 +651,26 @@ function fakeInternet(ctx, { github = null } = {}) {
     check('take-off point is visible above the planner panel', hBox && hBox.y + hBox.height < plannerTop, JSON.stringify({ hBox, plannerTop }));
     for (const [x, y] of [[650, 120], [1100, 120], [1150, 300], [650, 300]]) { await page.mouse.click(x, y); await page.waitForTimeout(120); }
     check('clicking the map adds waypoints (4)', (await page.locator('#pl-wps tbody tr').count()) === 4);
+    const split = await page.evaluate(() => ({
+      editorInSidebar: document.querySelector('#pl-editor').parentElement.id === 'panel',
+      tabsHidden: getComputedStyle(document.querySelector('#panel .tabs')).display === 'none',
+      numbersAtBottom: !!document.querySelector('#planner #pl-stats') && !!document.querySelector('#planner #pl-weather')
+        && !!document.querySelector('#planner #pl-disclaimer'),
+    }));
+    check('wide screen: the plan editor is in the left sidebar (instead of the tabs), the numbers, weather and the '
+      + '"Planning aid only" note at the bottom', split.editorInSidebar && split.tabsHidden && split.numbersAtBottom, JSON.stringify(split));
     const scrolled = await page.evaluate(() => {
-      const body = document.querySelector('#planner .pl-body');
+      const body = document.querySelector('#pl-editor .pl-edit-body');
+      body.style.maxHeight = '200px';   // make it scroll, whatever the window size
       body.scrollTop = body.scrollHeight;
-      const p = document.querySelector('#planner').getBoundingClientRect(), s = document.querySelector('#pl-save').getBoundingClientRect();
+      const p = document.querySelector('#panel').getBoundingClientRect(), s = document.querySelector('#pl-save').getBoundingClientRect();
       const r = { scrolls: body.scrollHeight > body.clientHeight, saveInView: s.top >= p.top && s.bottom <= p.bottom,
-        bodyBelowHead: body.getBoundingClientRect().top >= document.querySelector('#planner .detail-head').getBoundingClientRect().bottom - 1 };
+        bodyBelowHead: body.getBoundingClientRect().top >= document.querySelector('#pl-editor .detail-head').getBoundingClientRect().bottom - 1 };
       body.scrollTop = 0;
+      body.style.maxHeight = '';
       return r;
     });
-    check('the planner scrolls under its top row: Save plan and ✕ stay in view', scrolled.scrolls && scrolled.saveInView
+    check('the editor scrolls under its top row: Save plan and ✕ stay in view', scrolled.scrolls && scrolled.saveInView
       && scrolled.bodyBelowHead, JSON.stringify(scrolled));
     // Right-click a waypoint: a menu with Delete (here on a 5th, extra point).
     await page.mouse.click(900, 200);
@@ -699,11 +709,11 @@ function fakeInternet(ctx, { github = null } = {}) {
     await page.waitForTimeout(500);
     check('plan saves', (await page.textContent('#pl-save-msg')).includes('Saved'));
     check('plan appears in the Plans tab', (await page.locator('.plan-card').count()) === 1);
-    // Unsaved changes: opening a flight asks first; saying "no" keeps the plan open.
-    await page.mouse.click(900, 330);
-    await page.click('[data-tab=flights]');
+    // Unsaved changes: closing asks first; saying "no" keeps the plan open.
+    // (While a plan is open on a wide screen, the sidebar shows its editor, not the tabs.)
+    await page.fill('#pl-name', 'Test loop (changed)');   // an unsaved change
     page.once('dialog', (d) => d.dismiss());
-    await page.locator('.flight').first().click();
+    await page.click('#pl-close');
     await page.waitForTimeout(400);
     check('unsaved plan: asks before closing, and stays open on "no"', await page.isVisible('#planner'));
     // Reload: the plan is still there, with exact values.
@@ -727,6 +737,8 @@ function fakeInternet(ctx, { github = null } = {}) {
     await page.click('#pl-close');
     await page.waitForTimeout(300);
     check('  ...closing it brings them back', (await page.locator('.plan-blip').count()) === 1);
+    check('  ...and the sidebar shows the tabs and the plans list again', await page.isVisible('#panel .tabs')
+      && await page.isVisible('#plan-list') && await page.isHidden('#pl-editor'));
     await page.click('.plan-card');
     await page.waitForTimeout(400);
     check('saved plan opens again with its 4 waypoints', (await page.locator('#pl-wps tbody tr').count()) === 4);
@@ -1005,6 +1017,18 @@ function fakeInternet(ctx, { github = null } = {}) {
     const box = await page.locator('#panel').boundingBox();
     check('panel sits at the bottom on a phone', Math.round(box.y + box.height) === 844 && box.height < 844 * 0.5, JSON.stringify(box));
     check('no sideways scrolling on a phone', await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth));
+    await page.click('[data-tab=plans]');
+    await page.click('#btn-new-plan');
+    await page.waitForTimeout(300);
+    const phonePlan = await page.evaluate(() => {
+      const box = document.querySelector('#planner').getBoundingClientRect();
+      return { inOnePanel: document.querySelector('#pl-editor').parentElement.id === 'planner', bottom: Math.round(box.bottom),
+        saveVisible: !!document.querySelector('#pl-save').offsetParent };
+    });
+    check('phone: the planner stays one panel at the bottom, editor included', phonePlan.inOnePanel && phonePlan.bottom === 844
+      && phonePlan.saveVisible, JSON.stringify(phonePlan));
+    await page.click('#pl-close');
+    await page.waitForTimeout(200);
     await page.click('#btn-addr');
     await page.waitForTimeout(200);
     const addrPanel = await page.locator('#addr-panel').boundingBox();

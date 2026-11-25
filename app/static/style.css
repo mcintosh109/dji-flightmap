@@ -359,9 +359,21 @@ a.icon-btn { color: var(--text); }
   border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow);
   padding: 14px 16px;
 }
-#planner > .detail-head { flex: none; }
+#planner > .pl-editor { flex: none; }
 #planner > .pl-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; margin-right: -10px; padding-right: 10px; }
-#planner h3 { font-size: 13px; margin: 12px 0 6px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }
+/* Wide screens: while a plan is open, the sidebar shows its editing part
+   (#pl-editor, moved there by placeEditor() in planner.js) instead of the tabs. */
+:root.plan-open { --panel-w: 400px; }
+#panel.editing > .tabs, #panel.editing > .tab-body, #panel.editing > .update-banner { display: none !important; }
+#panel:not(.editing) > #pl-editor { display: none; }
+#panel > #pl-editor { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; padding: 0 14px 14px; }
+#panel > #pl-editor > .detail-head { flex: none; flex-wrap: wrap; padding-bottom: 8px; border-bottom: 1px solid var(--line); }
+#panel > #pl-editor .pl-title { flex-basis: 100%; }
+#panel > #pl-editor > .pl-edit-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; margin-right: -10px; padding-right: 10px; }
+.pl-edit-body #pl-djifly { margin-top: 12px; }
+#panel .pl-wps { max-height: none; }   /* the sidebar has room: the whole editor scrolls instead */
+.pl-edit-body .check { margin-top: 6px; }
+.plan-ui h3 { font-size: 13px; margin: 12px 0 6px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }
 .pl-title { flex: 1; }
 .pl-name {
   width: 100%; max-width: 380px; font-size: 16px; font-weight: 650; padding: 6px 10px;
@@ -391,15 +403,14 @@ a.icon-btn { color: var(--text); }
 }
 .pl-disclaimer a, .plans-disclaimer a { color: var(--accent); }
 .plans-disclaimer { margin: 0 4px 12px; font-size: 12px; color: var(--muted); }
-.pl-columns { display: grid; grid-template-columns: 1.2fr 1fr; gap: 18px; }
 .pl-defaults { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; font-size: 13px; color: var(--muted); margin-bottom: 8px; }
-#planner input[type=number], #planner input[type=datetime-local], #planner select, #planner textarea {
+.plan-ui input[type=number], .plan-ui input[type=datetime-local], .plan-ui select, .plan-ui textarea {
   background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 5px 8px; outline: none; font-size: 13px;
 }
-#planner input:focus, #planner select:focus, #planner textarea:focus { border-color: var(--accent); }
+.plan-ui input:focus, .plan-ui select:focus, .plan-ui textarea:focus { border-color: var(--accent); }
 .pl-defaults input { width: 70px; }
-#planner select, #planner textarea, #pl-when { width: 100%; }
-#planner textarea { resize: vertical; font: inherit; font-size: 13px; }
+.plan-ui select, .plan-ui textarea, #pl-when { width: 100%; }
+.plan-ui textarea { resize: vertical; font: inherit; font-size: 13px; }
 .pl-wps { max-height: 200px; overflow-y: auto; margin-bottom: 8px; }
 .wp-table { width: 100%; border-collapse: collapse; font-size: 13px; }
 .wp-table th { text-align: left; color: var(--muted); font-weight: 500; font-size: 11px; padding: 2px 4px; position: sticky; top: 0; background: var(--panel-solid); }
@@ -433,8 +444,10 @@ a.icon-btn { color: var(--text); }
     max-height: 46%; border-radius: var(--radius) var(--radius) 0 0;
   }
   .leaflet-control-attribution { max-width: 100vw; }
-  #planner { left: 0; right: 0; bottom: 0; border-radius: var(--radius) var(--radius) 0 0; max-height: 62%; }
-  .pl-columns { grid-template-columns: 1fr; }
+  /* A phone: one panel at the bottom; it all scrolls, the top row (name, Save, ✕) stays. */
+  #planner { left: 0; right: 0; bottom: 0; border-radius: var(--radius) var(--radius) 0 0; max-height: 62%; overflow-y: auto; display: block; }
+  #planner > .pl-editor > .detail-head { position: sticky; top: -14px; z-index: 2; background: var(--panel-solid); margin: -14px -16px 0; padding: 14px 16px 8px; }
+  #planner > .pl-body { overflow: visible; margin: 0; padding: 0; }
   #detail {
     left: 0; right: 0; bottom: 0; border-radius: var(--radius) var(--radius) 0 0;
     max-height: 62%;

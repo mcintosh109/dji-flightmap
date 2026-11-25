@@ -8,6 +8,6 @@
     "Can't find a spot by name? Paste its coordinates (in Google Maps: right-click the spot and click the numbers at the top) and the map goes straight there",
     "New: right-click the map (or press and hold on a phone) and choose \"Create a flight plan here\": a new plan starts with its take-off point on that spot. With a plan open, the same menu adds a waypoint",
     "New: in the Plans tab, a purple flag on the map shows where each saved plan takes off. Point at one for its name, click it to open the plan",
-    "The flight planner's top row (the name, Save plan and \u2715) now stays in view while you scroll its waypoints and weather"
+    "The flight planner is less crowded on a computer: what you change (name, Save, waypoints, When, Notes) is in the left sidebar while a plan is open, and a short strip at the bottom shows the distance, time, battery, warnings and weather"
   ]
 }

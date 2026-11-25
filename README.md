@@ -55,7 +55,7 @@ plan here**. More in [Finding an address](#finding-an-address).
 
 ### Plan a flight
 
-![The flight planner: four waypoints, the distance, flight time and battery, a warning and the weather](docs/images/planner.png)
+![The flight planner: the plan's waypoints in the sidebar; the distance, flight time, battery, a warning and the weather at the bottom](docs/images/planner.png)
 
 Click the map to add waypoints. The planner works out the **distance, flight
 time and battery** (from your own past flights), warns about height,
@@ -416,6 +416,13 @@ Open the **Plans** tab in the sidebar and press **New plan**. Or, quicker:
 and choose **Create a flight plan here**: the plan opens with its take-off
 point on that spot. With a plan open, the same right-click menu adds a
 waypoint where you clicked.
+
+**Where things are:** on a computer, while a plan is open, the **left
+sidebar** holds what you change (the name, **Save plan**, the waypoints,
+When, Notes, **Download for DJI Fly…**), and a **strip along the bottom**
+shows what you read (the distance, time and battery, the warnings and the
+weather). Close the plan (**✕**) to see your list of plans again. On a phone
+it is all in one panel at the bottom.
 
 1. **Take-off point:** click the map where you'll take off, or press
    *Use the take-off point of my last flight*. It shows as **H**.

@@ -389,8 +389,16 @@ owner confirms it works**, release it with a tag (`git tag -a vX.Y.Z` +
   plain because Claude's sandbox can't load map pictures (the README says
   so). Never use the owner's real screenshots there (they show where they
   fly). Re-run it after visible changes; check each picture before committing.
-- **Planner panel** (5.3.0): the top row (name, Save plan, ✕) stays; only
-  `.pl-body` scrolls. The map's credit line floats above open bottom panels
+- **Planner layout** (5.3.0, owner's choice "A" after seeing mock-ups of two
+  options; their 32-inch screen looked tight): on a wide screen
+  (`min-width: 761px`), `placeEditor()` moves `#pl-editor` (name, Save, ✕,
+  waypoints, When, Compare, Notes, DJI Fly) into `#panel` while a plan is
+  open (`#panel.editing` hides the tabs, `:root.plan-open` makes the sidebar
+  400 px); `#planner` at the bottom keeps the numbers, warnings, weather and
+  the disclaimer. A phone keeps one panel (editor moved back into
+  `#planner`, which scrolls with a sticky top row). Styles use `.plan-ui`,
+  not `#planner`, since the editor moves. While editing, the tabs are hidden:
+  ✕ is the way back (it asks if unsaved). The map's credit line floats above open bottom panels
   ON PURPOSE (`liftCredits`, map terms): the owner asked about it; keep it.
 - Old installs had an `update-ct.sh` that could not download its own
   replacement; the current one does `git pull` and restarts itself.

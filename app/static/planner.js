@@ -409,6 +409,22 @@ const Planner = (() => {
     return f ? f.home : null;
   }
 
+  // ---------- where the editing part goes ----------
+  // Wide screen + a plan open: the editing part (name, Save, waypoints, When,
+  // Notes...) goes into the left sidebar, so the bottom strip only shows the
+  // numbers, warnings and weather and covers less of the map (the owner's
+  // choice, 5.3.0). A phone keeps one panel at the bottom. Moving the element
+  // keeps everything in it working (research: "appendChild moves a node").
+  const wideScreen = window.matchMedia('(min-width: 761px)');
+  function placeEditor() {
+    const editor = $('#pl-editor');
+    const side = wideScreen.matches;
+    if (side && editor.parentElement !== $('#panel')) $('#panel').append(editor);
+    if (!side && editor.parentElement !== $('#planner')) $('#planner').prepend(editor);
+    $('#panel').classList.toggle('editing', side && !!plan);
+    document.documentElement.classList.toggle('plan-open', side && !!plan);
+  }
+
   // ---------- opening, saving, closing ----------
   function open(p = emptyPlan()) {
     if (state.detail) closeFlight();
@@ -420,6 +436,7 @@ const Planner = (() => {
     layer.addTo(map);
     map.getContainer().classList.add('planning');
     $('#planner').classList.remove('hidden');
+    placeEditor();
     updateOverviewVisibility();
     showBlips();
     renderPanel();
@@ -441,6 +458,7 @@ const Planner = (() => {
     map.removeLayer(layer);
     map.getContainer().classList.remove('planning');
     $('#planner').classList.add('hidden');
+    placeEditor();
     updateOverviewVisibility();
     showBlips();
     return true;
@@ -849,6 +867,8 @@ const Planner = (() => {
   }
 
   wire();
+  placeEditor();
+  wideScreen.addEventListener('change', placeEditor);
   loadList();
   return {
     open, close, loadList, renderList, showBlips,

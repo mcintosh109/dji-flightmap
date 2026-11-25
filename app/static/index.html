@@ -139,50 +139,52 @@
   </section>
 
   <!-- Flight planner panel (bottom of the screen, like the flight details) -->
-  <section id="planner" class="hidden" aria-label="Flight planner">
-    <div class="detail-head">
-      <div class="detail-title pl-title">
-        <input id="pl-name" class="pl-name" maxlength="60" placeholder="Name this plan" aria-label="Plan name">
-        <p id="pl-hint" class="pl-hint"></p>
-      </div>
-      <div class="detail-actions">
-        <span id="pl-save-msg" class="pl-save-msg" role="status"></span>
-        <button id="pl-delete" class="chip hidden" type="button">Delete</button>
-        <button id="pl-save" class="chip accent" type="button">Save plan</button>
-        <button id="pl-close" class="icon-btn" type="button" aria-label="Close planner">✕</button>
-      </div>
-    </div>
-    <!-- Only this part scrolls: the row above (name, Save plan, ✕) stays in view. -->
-    <div class="pl-body">
-    <button id="pl-last-home" class="chip hidden" type="button">Use the take-off point of my last flight</button>
-    <div id="pl-stats" class="stats"></div>
-    <ul id="pl-warnings" class="pl-warnings"></ul>
-    <p id="pl-battery-note" class="help"></p>
-    <button id="pl-djifly" class="chip" type="button">Download for DJI Fly…</button>
-    <p id="pl-disclaimer" class="pl-disclaimer" role="note">⚠ <b>Planning aid only.</b> Always check your local laws and regulations before flying: airspace (in the US: the FAA's <a href="https://www.faa.gov/uas/getting_started/b4ufly" target="_blank" rel="noopener">B4UFLY</a> app or Aloft), any permission you need, and the weather where you are. You are responsible for every flight.</p>
-
-    <div class="pl-columns">
-      <div>
-        <h3>Waypoints</h3>
-        <div class="pl-defaults">
-          <label>New waypoints: <input id="pl-def-alt" type="number" min="0" step="5"> <span id="pl-def-alt-unit"></span></label>
-          <label>at <input id="pl-def-speed" type="number" min="1" step="1"> <span id="pl-def-speed-unit"></span></label>
-          <button id="pl-apply-all" class="chip" type="button" title="Give every waypoint this height and speed">Apply to all</button>
+  <!-- Flight planner. On a wide screen, the editing part (#pl-editor) moves into
+       the left sidebar while a plan is open (placeEditor() in planner.js), and the
+       bottom shows the numbers, warnings and weather. On a phone it all stays here,
+       in one panel at the bottom. -->
+  <section id="planner" class="hidden plan-ui" aria-label="Flight planner">
+    <div id="pl-editor" class="pl-editor plan-ui">
+      <div class="detail-head">
+        <div class="detail-title pl-title">
+          <input id="pl-name" class="pl-name" maxlength="60" placeholder="Name this plan" aria-label="Plan name">
+          <p id="pl-hint" class="pl-hint"></p>
         </div>
-        <div id="pl-wps" class="pl-wps"></div>
-        <label class="check"><input id="pl-return" type="checkbox"> <span>Fly back to take-off at the end (counted in the estimate)</span></label>
-        <label class="pl-inline">Battery at take-off <input id="pl-battery" type="number" min="10" max="100" step="5"> %</label>
+        <div class="detail-actions">
+          <span id="pl-save-msg" class="pl-save-msg" role="status"></span>
+          <button id="pl-delete" class="chip hidden" type="button">Delete</button>
+          <button id="pl-save" class="chip accent" type="button">Save plan</button>
+          <button id="pl-close" class="icon-btn" type="button" aria-label="Close planner">✕</button>
+        </div>
       </div>
-      <div>
-        <h3>When</h3>
-        <input id="pl-when" type="datetime-local" aria-label="Planned date and time">
-        <div id="pl-weather"></div>
-        <h3>Compare with a past flight</h3>
-        <select id="pl-compare" aria-label="Past flight to show"></select>
-        <h3>Notes</h3>
-        <textarea id="pl-notes" rows="3" maxlength="1000" placeholder="Anything to remember for this flight"></textarea>
+      <div class="pl-edit-body">
+      <button id="pl-last-home" class="chip hidden" type="button">Use the take-off point of my last flight</button>
+      <h3>Waypoints</h3>
+      <div class="pl-defaults">
+        <label>New waypoints: <input id="pl-def-alt" type="number" min="0" step="5"> <span id="pl-def-alt-unit"></span></label>
+        <label>at <input id="pl-def-speed" type="number" min="1" step="1"> <span id="pl-def-speed-unit"></span></label>
+        <button id="pl-apply-all" class="chip" type="button" title="Give every waypoint this height and speed">Apply to all</button>
+      </div>
+      <div id="pl-wps" class="pl-wps"></div>
+      <label class="check"><input id="pl-return" type="checkbox"> <span>Fly back to take-off at the end (counted in the estimate)</span></label>
+      <label class="pl-inline">Battery at take-off <input id="pl-battery" type="number" min="10" max="100" step="5"> %</label>
+      <h3>When</h3>
+      <input id="pl-when" type="datetime-local" aria-label="Planned date and time">
+      <h3>Compare with a past flight</h3>
+      <select id="pl-compare" aria-label="Past flight to show"></select>
+      <h3>Notes</h3>
+      <textarea id="pl-notes" rows="3" maxlength="1000" placeholder="Anything to remember for this flight"></textarea>
+      <button id="pl-djifly" class="chip" type="button">Download for DJI Fly…</button>
       </div>
     </div>
+    <!-- The numbers, warnings and weather: this part scrolls if it doesn't fit. -->
+    <div class="pl-body">
+      <div id="pl-stats" class="stats"></div>
+      <ul id="pl-warnings" class="pl-warnings"></ul>
+      <p id="pl-battery-note" class="help"></p>
+      <h3>Weather at take-off</h3>
+      <div id="pl-weather"></div>
+      <p id="pl-disclaimer" class="pl-disclaimer" role="note">⚠ <b>Planning aid only.</b> Always check your local laws and regulations before flying: airspace (in the US: the FAA's <a href="https://www.faa.gov/uas/getting_started/b4ufly" target="_blank" rel="noopener">B4UFLY</a> app or Aloft), any permission you need, and the weather where you are. You are responsible for every flight.</p>
     </div>
   </section>
 
