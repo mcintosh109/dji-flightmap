@@ -342,12 +342,23 @@ a.icon-btn { color: var(--text); }
 #d-events li.warn { color: var(--warn); }
 
 /* A saved plan on the map (Plans tab): a flag at its take-off point. */
-.plan-blip {
-  display: grid !important; place-items: center; border-radius: 50%;
-  background: #b48cff; color: #1a1030; border: 2px solid #fff; box-shadow: 0 2px 6px rgba(0,0,0,0.5);
+.plan-blip { display: grid !important; place-items: center; background: none; border: none; }
+.plan-blip .dot {
+  position: relative; z-index: 1; display: grid; place-items: center;
+  width: 32px; height: 32px; border-radius: 50%;
+  background: #c04dff; color: #fff; border: 3px solid #fff;
+  box-shadow: 0 0 0 2px #4a1470, 0 3px 12px rgba(0,0,0,0.65);
   transition: transform 0.15s;
 }
-.plan-blip.active, .plan-blip:hover { transform: scale(1.35); }
+/* A ring that keeps growing and fading, so a plan catches the eye even on a busy satellite map. */
+.plan-blip .ring {
+  position: absolute; inset: 0; border-radius: 50%;
+  background: rgba(192, 77, 255, 0.6); border: 2px solid #e6b8ff;
+  animation: blip-pulse 1.8s ease-out infinite;
+}
+@keyframes blip-pulse { from { transform: scale(0.6); opacity: 0.95; } to { transform: scale(2); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .plan-blip .ring { animation: none; transform: scale(1.35); opacity: 0.45; } }
+.plan-blip.active .dot, .plan-blip:hover .dot { transform: scale(1.3); }
 
 /* ---------- Flight planner ---------- */
 #planner {
@@ -590,6 +601,8 @@ code, .cmd { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 1
 .place-popup .leaflet-popup-content-wrapper, .place-popup .leaflet-popup-tip {
   background: var(--panel-solid); color: var(--text); box-shadow: var(--shadow);
 }
+.place-tip { font-size: 12px; line-height: 1.35; }
+.place-tip .muted { color: var(--muted); }
 .place-popup .leaflet-popup-close-button { color: var(--muted); }
 .place-pop { display: grid; gap: 3px; font-size: 13px; }
 .place-pop b { font-size: 14px; }

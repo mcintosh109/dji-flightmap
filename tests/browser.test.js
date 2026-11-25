@@ -418,8 +418,14 @@ function fakeInternet(ctx, { github = null } = {}) {
     await page.waitForTimeout(800);
     check('OpenStreetMap is credited', (await page.textContent('#map .leaflet-control-attribution')).includes('OpenStreetMap'));
     check('a name with code in it does not run', !(await page.evaluate(() => window.HACKED)));
+    await page.locator('.place-air').first().hover();
+    await page.waitForTimeout(200);
+    const tip = await page.textContent('.place-tip').catch(() => '');
+    check('pointing at a place icon says what it is (name and kind)', tip.includes('County Heliport') && /heliport/i.test(tip.replace('County Heliport', '')), tip);
     await page.locator('.place-air').first().click();
     await page.waitForTimeout(300);
+    check('  ...clicking it opens the popup without the label covering it',
+      await page.isVisible('.leaflet-popup-content') && (await page.locator('.place-tip').count() === 0 || await page.isHidden('.place-tip')));
     const pop = await page.textContent('.leaflet-popup-content');
     check('heliport popup warns about airspace', pop.includes('County Heliport') && pop.includes('does not check airspace'), pop);
     const asked = osm.got.queries;

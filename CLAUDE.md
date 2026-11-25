@@ -381,7 +381,10 @@ owner confirms it works**, release it with a tag (`git tag -a vX.Y.Z` +
   plan at its `home`, only while `state.tab === 'plans'` and no plan is open
   (overview.js's tab click calls `Planner.showBlips({ fit: true })`: if none
   is on screen, fit them). Tooltip = name, waypoints, distance; click opens;
-  hovering a plan card lights its flag. zIndexOffset 3000: plans often start
+  hovering a plan card lights its flag. 5.4.0 (owner: "make the plans points
+  stand out alot" = the flags, not the waypoints): 40 px icon, a 32 px
+  #c04dff dot with a white rim and a pulsing `.ring` (`blip-pulse`, still
+  under prefers-reduced-motion). zIndexOffset 3000: plans often start
   where the last flight took off, under the drone icon (500).
 - **README pictures** (5.3.0): `docs/images/*.png`, made by
   `node docs/make-pictures.js` from the test flights (Central Park, fake
@@ -400,6 +403,11 @@ owner confirms it works**, release it with a tag (`git tag -a vX.Y.Z` +
   not `#planner`, since the editor moves. While editing, the tabs are hidden:
   ✕ is the way back (it asks if unsaved). The map's credit line floats above open bottom panels
   ON PURPOSE (`liftCredits`, map terms): the owner asked about it; keep it.
+- **Place hover labels** (5.4.0, owner: "when you hover over a places icon it
+  shows you what you are looking at"): `hoverText()` in places.js, a Leaflet
+  tooltip `.place-tip` (name + label · kind group), replacing the old
+  `title`. Leaflet also opens tooltips on click, so the tooltip is closed
+  while the place's popup is open (`popupopen` / `tooltipopen`).
 - **Battery choice** (5.4.0, owner's wish: select "the ultralight battery vs
   the normal" one in planning): Mini 4 Pro batteries per DJI's specs:
   standard 2590 mAh / 77.9 g / 34 min (drone under 249 g), Plus 3850 mAh /

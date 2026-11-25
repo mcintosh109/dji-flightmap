@@ -764,8 +764,10 @@ const Planner = (() => {
   // so you can see where your plans are at a glance. Only while the Plans
   // tab is open and no plan is being edited. Click one to open that plan.
   // fit: if none of them is on screen, move the map to show them all.
-  const blipIcon = L.divIcon({ className: 'plan-blip', iconSize: [24, 24], iconAnchor: [12, 12],
-    html: '<svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path fill="currentColor" d="M5 21V4h9l.4 2H20v10h-7l-.4-2H7v7H5Z"/></svg>' });
+  // Big, bright and with a pulsing ring, so plans stand out at a glance (owner's wish).
+  const blipIcon = L.divIcon({ className: 'plan-blip', iconSize: [40, 40], iconAnchor: [20, 20],
+    html: '<span class="ring"></span><span class="dot"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">'
+      + '<path fill="currentColor" d="M5 21V4h9l.4 2H20v10h-7l-.4-2H7v7H5Z"/></svg></span>' });
   function showBlips({ fit = false } = {}) {
     blips.clearLayers();
     if (state.tab !== 'plans' || plan) { map.removeLayer(blips); return; }
@@ -774,9 +776,9 @@ const Planner = (() => {
       if (!p.home) continue;
       const m = measure(p);
       // zIndexOffset: above the drones' icons (a plan often starts where you last took off)
-      L.marker([p.home.lat, p.home.lon], { icon: blipIcon, title: p.name, zIndexOffset: 3000 })
+      L.marker([p.home.lat, p.home.lon], { icon: blipIcon, zIndexOffset: 3000 })
         .bindTooltip(`<b>${esc(p.name)}</b><br>${p.waypoints.length} waypoint${p.waypoints.length === 1 ? '' : 's'} · ${esc(fmt.dist(m.distance))}`,
-          { direction: 'top', offset: [0, -12] })
+          { direction: 'top', offset: [0, -18] })
         .on('click', () => open(p))
         .addTo(blips)._planId = p.id;
       spots.push([p.home.lat, p.home.lon]);

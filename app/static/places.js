@@ -160,6 +160,13 @@ const Places = (() => {
     });
   }
 
+  // The label shown while pointing at an icon: the name, and what kind of place it is.
+  function hoverText(p) {
+    const group = (KINDS[p.kind] || [])[2] || '';
+    const what = [p.label, group && group !== p.label ? group : ''].filter(Boolean).join(' · ');
+    return `<b>${esc(p.name)}</b>${what ? `<br><span class="muted">${esc(what)}</span>` : ''}`;
+  }
+
   function popup(p) {
     const kind = KINDS[p.kind] || ['', '', ''];
     const osmType = p.id.startsWith('g:') ? '' : { n: 'node', w: 'way', r: 'relation' }[p.id[0]];
@@ -190,8 +197,14 @@ const Places = (() => {
       if (!view.contains([p.lat, p.lon])) continue;
       count++;
       if (markers.has(p.id)) continue;
-      const marker = L.marker([p.lat, p.lon], { icon: icon(p), pane: 'places', title: p.name, keyboard: false })
-        .bindPopup(() => popup(p), { className: 'place-popup', maxWidth: 260 });
+      // Pointing at an icon says what it is (owner's wish); clicking it
+      // opens the popup with the address, hours and links.
+      const marker = L.marker([p.lat, p.lon], { icon: icon(p), pane: 'places', keyboard: false })
+        .bindTooltip(() => hoverText(p), { direction: 'top', offset: [0, -10], className: 'place-tip' })
+        .bindPopup(() => popup(p), { className: 'place-popup', maxWidth: 260 })
+        // The label would cover the popup: hide it while the popup is open.
+        .on('popupopen', () => marker.closeTooltip())
+        .on('tooltipopen', () => { if (marker.isPopupOpen()) marker.closeTooltip(); });
       marker.place = p;
       markers.set(p.id, marker);
       group.addLayer(marker);

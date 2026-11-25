@@ -60,8 +60,8 @@ plan here**. More in [Finding an address](#finding-an-address).
 Click the map to add waypoints. The planner works out the **distance, flight
 time and battery** (from your own past flights), warns about height,
 distance and battery, and shows the **weather forecast** for the planned time.
-In the **Plans** tab, a purple flag on the map marks where each saved plan
-takes off: click one to open it.
+In the **Plans** tab, a big purple flag with a pulsing ring marks where each
+saved plan takes off: click one to open it.
 
 > ⚠️ **It's a planning aid only.** It checks height, distance, battery and
 > weather. It does **not** check airspace, obstacles or local rules: always
@@ -369,6 +369,8 @@ with a coloured icon. Turn it on or off with **Places** in the layers panel
 - Places appear when you **zoom in** (about street level). Further out there
   would be thousands, so the layers panel says "Zoom in closer to see places".
 - Zoom in one more step and the **names** appear under the icons.
+- **Point at an icon** to see its name and what kind of place it is (for
+  example "Heliport · Airports & heliports"), even when the names are hidden.
 - Click an icon for its name, address and opening hours (when known), a
   **Navigate** link, and a link to more details on OpenStreetMap.
 - **With Google Maps as the provider, the places come from Google** (its
@@ -454,8 +456,9 @@ it is all in one panel at the bottom.
    [Open-Meteo](https://open-meteo.com), free with no key.
 6. **Compare with a past flight** draws one of your flights in grey dashes.
 7. **Save plan**. While the **Plans** tab is open, each saved plan shows on
-   the map as a **purple flag** at its take-off point, so you can see where
-   your plans are at a glance. Point at a flag for the plan's name, click it
+   the map as a big **purple flag** with a pulsing ring at its take-off
+   point, so you can see where your plans are at a glance, even on the
+   satellite map. Point at a flag for the plan's name, click it
    to open the plan. (If none is on screen, the map moves to show them.)
    Saved plans are listed in the Plans tab and kept on the server
    (`/var/lib/dji-flightmap/plans.json`, included in the update backups).
