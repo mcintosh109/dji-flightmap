@@ -1780,16 +1780,34 @@ class LiveRc2(unittest.TestCase):
         self.assertEqual((status, headers['Content-Type'], raw), (200, 'image/png', PNG))
         self.assertEqual(self.srv.request('/api/rc2/preview/..%2Fdock-key.json')[0], 404)
 
-        # Send a plan in place of mission A.
+        # The 4 slots: placeholders with 2, 3, 4 and 5 waypoints, confirmed once.
+        slots = {s['slot']: s for s in page['slots']}
+        self.assertEqual([slots[n]['waypoints'] for n in (1, 2, 3, 4)], [2, 3, 4, 5])
+        self.assertEqual((slots[1]['candidates'], slots[2]['candidates'], slots[3]['candidates']), ([UUID_A], [UUID_B], []),
+                         'found by their number of waypoints')
         plan_id = self.save_plan(central_park_plan())
-        self.assertEqual(self.call(f'/api/plans/{plan_id}/rc2', 'POST', {'uuid': UUID_A}, page=False)[0], 403)
-        self.assertEqual(self.call(f'/api/plans/{plan_id}/rc2', 'POST', {'uuid': UUID_A.replace('A', 'F')})[0], 409,
-                         'only a mission the dock reported')
+        self.assertEqual(self.call(f'/api/plans/{plan_id}/rc2', 'POST', {'slot': 1})[0], 409, 'not confirmed yet')
+        status, body = self.call('/api/rc2/slot', 'POST', {'slot': 1, 'uuid': UUID_B})
+        self.assertEqual(status, 400)
+        self.assertIn('must have 2 waypoints', body['error'], 'only a placeholder with the right count')
+        self.assertEqual(self.call('/api/rc2/slot', 'POST', {'slot': True, 'uuid': UUID_A})[0], 400)
+        self.assertEqual(self.call('/api/rc2/slot', 'POST', {'slot': 1, 'uuid': UUID_A}, page=False)[0], 403)
+        self.assertEqual(self.call('/api/rc2/slot', 'POST', {'slot': 1, 'uuid': UUID_A})[0], 200)
+        status, page = self.call('/api/rc2/slot', 'POST', {'slot': 2, 'uuid': UUID_B})
+        slots = {s['slot']: s for s in page['slots']}
+        self.assertEqual((slots[1]['uuid'], slots[2]['uuid'], slots[1]['candidates']), (UUID_A, UUID_B, []))
+
+        # Send a plan to slot 1 (mission A).
+        self.assertEqual(self.call(f'/api/plans/{plan_id}/rc2', 'POST', {'slot': 1}, page=False)[0], 403)
+        self.assertEqual(self.call(f'/api/plans/{plan_id}/rc2', 'POST', {'slot': 3})[0], 409, 'slot 3 is not set up')
+        self.assertEqual(self.call(f'/api/plans/{plan_id}/rc2', 'POST', {'slot': 9})[0], 400)
+        self.assertEqual(self.call(f'/api/plans/{plan_id}/rc2', 'POST', {'uuid': UUID_A})[0], 400,
+                         'any other mission can never be picked')
         bad_plan = self.save_plan(central_park_plan(waypoints=central_park_plan()['waypoints'][:1]))
-        status, body = self.call(f'/api/plans/{bad_plan}/rc2', 'POST', {'uuid': UUID_A})
+        status, body = self.call(f'/api/plans/{bad_plan}/rc2', 'POST', {'slot': 1})
         self.assertEqual(status, 400)
         self.assertIn('2 waypoints', body['error'], 'the same checks as the DJI Fly download')
-        status, body = self.call(f'/api/plans/{plan_id}/rc2', 'POST', {'uuid': UUID_A, 'finish': 'autoLand'})
+        status, body = self.call(f'/api/plans/{plan_id}/rc2', 'POST', {'slot': 1, 'finish': 'autoLand'})
         self.assertEqual(status, 200, body)
         send = body['send']
         self.assertEqual((send['state'], send['expectSha256']), ('waiting', listed[UUID_A]['sha256']))
@@ -1812,19 +1830,21 @@ class LiveRc2(unittest.TestCase):
         status, page = self.call('/api/rc2')
         listed = {m['uuid']: m for m in page['missions']}
         self.assertEqual(listed[UUID_A]['fromMap'], 'Park loop', 'the mission now holds our plan')
+        self.assertEqual(page['slots'][0]['mission']['fromMap'], 'Park loop', 'slot 1 holds it')
+        self.assertEqual(page['slots'][0]['uuid'], UUID_A, 'and stays slot 1 though it has 4 waypoints now')
         self.assertEqual(page['sends'][0]['state'], 'done')
 
         # Cancel a waiting send; a failed send keeps the dock's message.
-        status, body = self.call(f'/api/plans/{plan_id}/rc2', 'POST', {'uuid': UUID_B})
+        status, body = self.call(f'/api/plans/{plan_id}/rc2', 'POST', {'slot': 2})
         first = body['send']['id']
-        status, body = self.call(f'/api/plans/{plan_id}/rc2', 'POST', {'uuid': UUID_B})
+        status, body = self.call(f'/api/plans/{plan_id}/rc2', 'POST', {'slot': 2})
         second = body['send']['id']
         states = {s['id']: s['state'] for s in self.call('/api/rc2')[1]['sends']}
         self.assertEqual((states[first], states[second]), ('cancelled', 'waiting'), 'a newer send replaces the older')
         self.assertEqual(self.call(f'/api/rc2/send/{second}', 'DELETE')[0], 200)
         self.assertEqual(self.call(f'/api/rc2/send/{second}', 'DELETE')[0], 409)
         self.assertEqual(self.dock('/api/dock/queue')[1]['send'], [])
-        status, body = self.call(f'/api/plans/{plan_id}/rc2', 'POST', {'uuid': UUID_B})
+        status, body = self.call(f'/api/plans/{plan_id}/rc2', 'POST', {'slot': 2})
         third = body['send']['id']
         self.dock(f'/api/dock/result/{third}', 'POST', {'ok': False, 'message': 'The mission changed on the RC 2 <b>'})
         sends = {s['id']: s for s in self.call('/api/rc2')[1]['sends']}
@@ -1832,12 +1852,18 @@ class LiveRc2(unittest.TestCase):
         self.assertNotIn('<', sends[third]['message'])
 
         # A mission deleted in DJI Fly: a send still waiting for it fails.
-        status, body = self.call(f'/api/plans/{plan_id}/rc2', 'POST', {'uuid': UUID_B})
+        status, body = self.call(f'/api/plans/{plan_id}/rc2', 'POST', {'slot': 2})
         fourth = body['send']['id']
         self.report([a])
         sends = {s['id']: s for s in self.call('/api/rc2')[1]['sends']}
         self.assertEqual(sends[fourth]['state'], 'failed')
         self.assertIn('no longer on the RC 2', sends[fourth]['message'])
+        page = self.call('/api/rc2')[1]
+        self.assertTrue(page['slots'][1]['missing'], "slot 2's mission was deleted in DJI Fly")
+        self.assertEqual(self.call(f'/api/plans/{plan_id}/rc2', 'POST', {'slot': 2})[0], 409)
+        self.assertEqual(self.call('/api/rc2/slot/2', 'DELETE')[0], 200)
+        self.assertEqual(self.call('/api/rc2/slot/2', 'DELETE')[0], 404)
+        self.assertEqual(self.call('/api/rc2')[1]['slots'][1]['uuid'], '', 'slot 2 freed')
 
         # "Refresh the list" on the page.
         self.call('/api/rc2/refresh', 'POST', {})

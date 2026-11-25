@@ -74,10 +74,12 @@ Web addresses it answers:
   /api/plans/<id>       PUT: save a plan (id "new" makes one), DELETE: remove it
   /api/plans/<id>/djifly.kmz?finish=&lost=
                         the plan as a DJI Fly waypoint mission (download)
-  /api/plans/<id>/rc2   POST {uuid, finish, lost}: send the plan to the RC 2 (via the dock)
+  /api/plans/<id>/rc2   POST {slot, finish, lost}: send the plan to slot 1-4 on the RC 2 (via the dock)
   /api/rc2              the RC 2's missions (as the dock last saw them) and the sends
   /api/rc2/preview/<uuid>  DJI Fly's preview picture of one of those missions
   /api/rc2/key          POST: make a new dock key (shown once), DELETE: remove it
+  /api/rc2/slot         POST {slot, uuid}: confirm which RC 2 mission is slot 1-4
+  /api/rc2/slot/<n>     DELETE: free slot n
   /api/rc2/refresh      POST: ask the dock to report the RC 2's missions again
   /api/rc2/send/<id>    DELETE: cancel a send that is still waiting
   /api/dock/...         for the dock only (with its key, see flightmap/rc2.py):
@@ -428,7 +430,7 @@ class Handler(SimpleHTTPRequestHandler):
                                    finish=incoming.get("finish", "goHome"), lost=incoming.get("lost", "goBack"))
         except djifly.MissionError as exc:
             return self.send_json({"error": str(exc)}, 400)
-        answer, status = rc2.queue_send(plan_id, plan, incoming.get("uuid"), kmz)
+        answer, status = rc2.queue_send(plan_id, plan, incoming.get("slot"), kmz)
         return self.send_json(answer, status)
 
     def rc2_change(self, method, path):
@@ -440,6 +442,17 @@ class Handler(SimpleHTTPRequestHandler):
             return self.send_json({"key": rc2.new_key(), **rc2.page_status()})
         if path == "/api/rc2/key" and method == "DELETE":
             rc2.remove_key()
+            return self.send_json(rc2.page_status())
+        if path == "/api/rc2/slot" and method == "POST":
+            incoming = self.read_json_body()
+            if incoming is None:
+                return
+            answer, status = rc2.set_slot(incoming.get("slot"), incoming.get("uuid"))
+            return self.send_json(rc2.page_status() if status == 200 else answer, status)
+        if path.startswith("/api/rc2/slot/") and method == "DELETE":
+            slot = path[len("/api/rc2/slot/"):]
+            if not (slot.isdigit() and rc2.free_slot(int(slot))):
+                return self.send_json({"error": "That slot isn't set up."}, 404)
             return self.send_json(rc2.page_status())
         if path == "/api/rc2/refresh" and method == "POST":
             rc2.ask_for_list()

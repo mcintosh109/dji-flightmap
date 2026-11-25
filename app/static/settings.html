@@ -55,6 +55,14 @@
             <li>It says <b>"Connected to DJI Flight Map"</b>. Within a minute or two, this card says the dock checked in.</li>
           </ol>
         </div>
+        <div id="dock-slots" class="hidden">
+          <h3>Placeholder slots</h3>
+          <p class="help">Up to <b>4 routes</b> can be on the RC 2 at once, each in its own <b>slot</b>: a placeholder mission
+            you make in DJI Fly. The number of waypoints tells them apart: <b>2 waypoints = slot 1, 3 = slot 2, 4 = slot 3,
+            5 = slot 4</b> (put them anywhere, they are never flown). Confirm each one once below; after that the map
+            remembers it, whatever route it holds. Only these 4 missions can ever be replaced.</p>
+          <ul id="dock-slot-list" class="rc2-slots"></ul>
+        </div>
         <p>
           <button type="button" class="chip" id="dock-make">Make a dock key</button>
           <button type="button" class="chip hidden" id="dock-remove">Remove the key</button>

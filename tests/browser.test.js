@@ -640,21 +640,35 @@ function fakeInternet(ctx, { github = null } = {}) {
       body: data ? JSON.stringify(data) : undefined,
     }).then((r) => r.json());
     const RC2_UUID = '0A1B2C3D-0000-4000-8000-0000000000AA';
-    // The "placeholder" on the pretend RC 2 is the file just downloaded (4 waypoints).
-    await dockCall('/api/dock/missions', 'PUT', { missions: [{ uuid: RC2_UUID, kmz: kmzBytes.toString('base64'), modified: '2026-11-20' }] });
+    const RC2_SLOT1 = '0A1B2C3D-0000-4000-8000-0000000000A1';
+    // The pretend RC 2 holds the file just downloaded (4 waypoints: slot 3's
+    // placeholder) and a 2-waypoint placeholder (slot 1), made by the test's helper.
+    const twoPoints = execFileSync('python3', ['-c', `import sys, base64; sys.path.insert(0, ${JSON.stringify(path.join(ROOT, 'tests'))}); `
+      + 'from test_server import placeholder_kmz; print(base64.b64encode(placeholder_kmz([(40.7812, -73.9665, 30), (40.7830, -73.9660, 40)])).decode())']).toString().trim();
+    await dockCall('/api/dock/missions', 'PUT', { missions: [
+      { uuid: RC2_UUID, kmz: kmzBytes.toString('base64'), modified: '2026-11-20' },
+      { uuid: RC2_SLOT1, kmz: twoPoints, modified: '2026-11-20' }] });
     await page.keyboard.press('Escape');
     await page.click('#pl-djifly');
     await tickAll();
     await page.waitForTimeout(600);
-    check('RC 2: the missions the dock reported are listed (waypoints, length, a sketch of the route)',
-      (await page.locator('.rc2-mission').count()) === 1 && (await page.textContent('#dj-rc2')).includes('4 waypoints')
-      && await page.isVisible('.rc2-sketch'), await page.textContent('#dj-rc2'));
-    check('RC 2: Send waits until a mission to replace is picked', await page.isDisabled('#dj-rc2-send'));
-    await page.check('input[name=rc2-mission]');
+    check('RC 2: until the slots are confirmed, the window says how to set them up (2, 3, 4 and 5 waypoints)',
+      (await page.textContent('#dj-rc2')).includes('2, 3, 4 and 5 waypoints') && await page.isDisabled('#dj-rc2-send'), await page.textContent('#dj-rc2'));
+    await fetch(`${app.base}/api/rc2/slot`, { method: 'POST', headers: pageHeaders, body: JSON.stringify({ slot: 3, uuid: RC2_UUID }) });
+    await page.keyboard.press('Escape');
+    await page.click('#pl-djifly');
+    await tickAll();
+    await page.waitForTimeout(600);
+    check('RC 2: the 4 slots are listed; slot 3 is ready (with a sketch of its route), the others not set up',
+      (await page.locator('.rc2-mission').count()) === 4 && (await page.locator('.rc2-mission.off').count()) === 3
+      && (await page.textContent('#dj-rc2')).includes('Slot 3: the placeholder (4 waypoints)') && await page.isVisible('.rc2-sketch'),
+      await page.textContent('#dj-rc2'));
+    check('RC 2: Send waits until a slot is picked', await page.isDisabled('#dj-rc2-send'));
+    await page.check('input[name=rc2-slot][value="3"]');
     check('RC 2: ...then it can be sent', await page.isEnabled('#dj-rc2-send'));
     await page.click('#dj-rc2-send');
     await page.waitForTimeout(800);
-    check('RC 2: the send waits for the dock', (await page.textContent('#dj-rc2')).includes('Waiting for the dock'),
+    check('RC 2: the send waits for the dock', (await page.textContent('#dj-rc2')).includes('Slot 3: waiting for the dock'),
       await page.textContent('#dj-rc2'));
     const rc2Queue = await dockCall('/api/dock/queue');
     check("RC 2: the dock gets it, with the placeholder's fingerprint",
@@ -663,7 +677,7 @@ function fakeInternet(ctx, { github = null } = {}) {
     await page.waitForTimeout(5600);   // the window looks again every 5 seconds
     check('RC 2: when the dock is done, the window says to check the route in DJI Fly before flying',
       (await page.textContent('#dj-rc2')).includes('check the route on its map')
-      && (await page.textContent('#dj-rc2')).includes('holds Test loop from the map'), await page.textContent('#dj-rc2'));
+      && (await page.textContent('#dj-rc2')).includes('Slot 3: holds Test loop from the map'), await page.textContent('#dj-rc2'));
     await page.keyboard.press('Escape');
     page.once('dialog', (d) => d.accept());
     await page.click('#pl-delete');
@@ -685,8 +699,20 @@ function fakeInternet(ctx, { github = null } = {}) {
     check('the NAS card checks the logs when the page opens', (await page.textContent('#nas-summary')).includes('can be read')
       && await page.isHidden('#nas-reconnect'), await page.textContent('#nas-summary'));
     check('the RC 2 dock card shows the dock checked in and sent the list',
-      (await page.textContent('#dock-checks')).includes('last checked in') && (await page.textContent('#dock-checks')).includes('1 mission'),
+      (await page.textContent('#dock-checks')).includes('last checked in') && (await page.textContent('#dock-checks')).includes('2 missions'),
       await page.textContent('#dock-checks'));
+    const slotsText = () => page.textContent('#dock-slot-list');
+    check('the slots: slot 3 confirmed, slot 1 offers its 2-waypoint placeholder, slot 2 says how to make one',
+      (await slotsText()).includes('confirmed') && await page.isVisible('button[data-slot="1"]')
+      && (await slotsText()).includes('exactly 3 waypoints'), await slotsText());
+    await page.click('button[data-slot="1"]');
+    await page.waitForTimeout(500);
+    check('"Use as slot 1" confirms it', (await page.locator('#dock-slot-list button[data-free]').count()) === 2, await slotsText());
+    page.once('dialog', (d) => d.accept());
+    await page.click('button[data-free="1"]');
+    await page.waitForTimeout(500);
+    check('"Free this slot" frees it again', (await page.locator('#dock-slot-list button[data-free]').count()) === 1
+      && await page.isVisible('button[data-slot="1"]'), await slotsText());
     page.once('dialog', (d) => d.accept());
     await page.click('#dock-make');
     await page.waitForTimeout(500);

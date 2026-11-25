@@ -393,13 +393,7 @@ async function reconnectNas() {
 
 // ---------- start ----------
 // ---------- RC 2 dock (app/flightmap/rc2.py) ----------
-const ago = (iso) => {
-  const s = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000);
-  if (s < 90) return 'just now';
-  if (s < 5400) return `${Math.round(s / 60)} minutes ago`;
-  if (s < 129600) return `${Math.round(s / 3600)} hours ago`;
-  return new Date(iso).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' });
-};
+const ago = timeAgo;
 
 function renderDock(d) {
   const items = [];
@@ -415,8 +409,53 @@ function renderDock(d) {
       : '<li class="muted">No list of the RC 2\'s missions yet: plug the RC 2 into the dock and unlock it.</li>');
   }
   $('#dock-checks').innerHTML = items.join('');
+  renderSlots(d);
   $('#dock-make').textContent = d.keySet ? 'Make a new dock key' : 'Make a dock key';
   $('#dock-remove').classList.toggle('hidden', !d.keySet);
+}
+
+// The 4 placeholder slots: confirmed ones, or the missions that could be them.
+function renderSlots(d) {
+  $('#dock-slots').classList.toggle('hidden', !d.keySet);
+  if (!d.keySet) return;
+  const byUuid = Object.fromEntries((d.missions || []).map((m) => [m.uuid, m]));
+  const imperial = (saved?.units ?? 'imperial') === 'imperial';
+  const length = (mm) => (imperial ? (mm < 1609.344 ? `${Math.round(mm * 3.28084)} ft` : `${(mm / 1609.344).toFixed(2)} mi`)
+    : (mm < 1000 ? `${Math.round(mm)} m` : `${(mm / 1000).toFixed(2)} km`));
+  const describe = (m) => `${missionPicture(m)}<span>${m.waypoints} waypoints · ${length(m.lengthM)}
+    ${m.fromMap ? `· holds <b>${esc(m.fromMap)}</b> from the map` : ''}<br>
+    <span class="muted">${m.updated ? `saved in DJI Fly ${esc(new Date(m.updated).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }))}` : esc(m.modified || '')}</span></span>`;
+  $('#dock-slot-list').innerHTML = (d.slots || []).map((s) => {
+    const head = `<b>Slot ${s.slot}</b> <span class="muted">(placeholder with ${s.waypoints} waypoints)</span>`;
+    if (s.uuid && s.mission) {
+      return `<li>${head} <span class="ok">✓ confirmed</span>
+        <div class="rc2-mission">${describe(s.mission)}</div>
+        <button type="button" class="chip small" data-free="${s.slot}">Free this slot</button></li>`;
+    }
+    if (s.uuid) {
+      return `<li>${head}<p class="help warn">⚠️ Its mission isn't on the RC 2 any more (deleted in DJI Fly?).
+        Free the slot, make a new placeholder with ${s.waypoints} waypoints, and plug the RC 2 in.</p>
+        <button type="button" class="chip small" data-free="${s.slot}">Free this slot</button></li>`;
+    }
+    const options = s.candidates.map((u) => byUuid[u]).filter(Boolean).map((m) => `<div class="rc2-mission">${describe(m)}
+      <button type="button" class="chip small" data-slot="${s.slot}" data-uuid="${esc(m.uuid)}">Use as slot ${s.slot}</button></div>`);
+    if (!options.length) {
+      return `<li>${head}<p class="help">Not set up. In DJI Fly make a waypoint mission with exactly <b>${s.waypoints} waypoints</b>
+        and save it, then plug the RC 2 into the dock and unlock it. It appears here within about 2 minutes.</p></li>`;
+    }
+    return `<li>${head}<p class="help">Is this your placeholder? ${options.length > 1 ? 'More than one mission has ' + s.waypoints + ' waypoints: pick the right one (compare the picture and date with DJI Fly\'s list).' : 'Compare the picture and date with DJI Fly\'s list.'}</p>
+      ${options.join('')}</li>`;
+  }).join('');
+}
+
+async function dockSlot(method, url, data) {
+  const res = await fetch(url, {
+    method, headers: { 'X-Requested-With': 'flightmap', 'Content-Type': 'application/json' },
+    body: data ? JSON.stringify(data) : undefined,
+  });
+  const answer = await res.json().catch(() => ({}));
+  if (!res.ok) { alert(answer.error || `The server answered ${res.status}`); return; }
+  renderDock(answer);
 }
 
 async function loadDock() {
@@ -479,6 +518,14 @@ async function start() {
   if (location.hash === '#https') $('#https').scrollIntoView();
   $('#dock-make').addEventListener('click', () => dockKey('POST'));
   $('#dock-remove').addEventListener('click', () => dockKey('DELETE'));
+  $('#dock-slot-list').addEventListener('click', (e) => {
+    const b = e.target.closest('button');
+    if (!b) return;
+    if (b.dataset.uuid) dockSlot('POST', 'api/rc2/slot', { slot: Number(b.dataset.slot), uuid: b.dataset.uuid });
+    if (b.dataset.free && confirm(`Free slot ${b.dataset.free}? The map forgets which mission it is (the mission stays on the RC 2).`)) {
+      dockSlot('DELETE', `api/rc2/slot/${b.dataset.free}`);
+    }
+  });
   $('#dock-key-copy').addEventListener('click', async () => {
     const ok = await Updates.copy($('#dock-key').textContent);
     $('#dock-key-copy').textContent = ok ? 'Copied ✓' : 'Select the key and copy it';

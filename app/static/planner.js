@@ -495,7 +495,7 @@ const Planner = (() => {
   // made in DJI Fly); the dock backs it up, writes this plan in its place,
   // checks it, and reports back.
   let rc2 = null;          // the last answer of api/rc2
-  let rc2Choice = null;    // the uuid of the picked mission
+  let rc2Choice = null;    // the picked slot ("1" to "4")
   let rc2Timer = null;
 
   async function loadRc2() {
@@ -509,36 +509,16 @@ const Planner = (() => {
     renderRc2();
   }
 
-  // A small drawing of a mission's route (its points, scaled to fit).
-  function routeSketch(points) {
-    const w = 72, h = 54, pad = 6;
-    if (!points || points.length === 0) return `<svg class="rc2-sketch" viewBox="0 0 ${w} ${h}" aria-hidden="true"></svg>`;
-    const lats = points.map((p) => p[0]), lons = points.map((p) => p[1]);
-    const kx = Math.cos((Math.min(...lats) + Math.max(...lats)) / 2 * Math.PI / 180);
-    const spanX = (Math.max(...lons) - Math.min(...lons)) * kx || 1e-6, spanY = (Math.max(...lats) - Math.min(...lats)) || 1e-6;
-    const s = Math.min((w - 2 * pad) / spanX, (h - 2 * pad) / spanY);
-    const xy = points.map((p) => [pad + ((p[1] - Math.min(...lons)) * kx) * s, h - pad - (p[0] - Math.min(...lats)) * s]);
-    const line = xy.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(' ');
-    const dots = xy.map(([x, y], i) => `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${i === 0 ? 3 : 2}"/>`).join('');
-    return `<svg class="rc2-sketch" viewBox="0 0 ${w} ${h}" aria-hidden="true"><polyline points="${line}"/>${dots}</svg>`;
-  }
-
-  const ago = (iso) => {
-    if (!iso) return '';
-    const s = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000);
-    if (s < 90) return 'just now';
-    if (s < 5400) return `${Math.round(s / 60)} minutes ago`;
-    if (s < 129600) return `${Math.round(s / 3600)} hours ago`;
-    return fmt.date(iso);
-  };
+  const ago = timeAgo;
 
   function sendLine(s) {
     if (s.state === 'waiting') {
-      return `<li>⏳ Waiting for the dock: plug the RC 2 into the dock and unlock it (it checks every minute or two).
+      return `<li>⏳ Slot ${esc(s.slot ?? '')}: waiting for the dock. Plug the RC 2 into the dock and unlock it (it checks every 2 minutes).
+        Don't have the mission open in DJI Fly.
         <button type="button" class="chip small" data-cancel="${esc(s.id)}">Cancel</button></li>`;
     }
     if (s.state === 'done') {
-      return `<li class="ok">✓ On the RC 2 since ${esc(ago(s.finished))}. Open DJI Fly, open the mission and <b>check the route on its map</b> before flying.</li>`;
+      return `<li class="ok">✓ In slot ${esc(s.slot ?? '')} on the RC 2 since ${esc(ago(s.finished))}. Open DJI Fly, open that mission and <b>check the route on its map</b> before flying.</li>`;
     }
     if (s.state === 'failed') return `<li class="warn">⚠️ Not sent: ${esc(s.message || 'the dock reported a problem')}</li>`;
     return `<li class="muted">Cancelled (${esc(s.message || '')})</li>`;
@@ -560,22 +540,29 @@ const Planner = (() => {
     }
     actions.classList.remove('hidden');
     const parts = [];
-    if (!rc2.missions.length) {
-      parts.push(`<p class="help">${rc2.listReported ? 'The dock found no waypoint missions on the RC 2.' : "The dock hasn't sent the RC 2's list of missions yet."}
-        Make a placeholder mission in DJI Fly (any 2 points), then plug the RC 2 into the dock and unlock it. The list arrives within about 2 minutes.</p>`);
+    const ready = (rc2.slots || []).filter((s) => s.uuid && s.mission);
+    if (!ready.length) {
+      parts.push(`<p class="help">Set up your <b>placeholder slots</b> once: in DJI Fly make missions with <b>2, 3, 4 and 5 waypoints</b>
+        (slots 1 to 4), plug the RC 2 into the dock and unlock it, then confirm them in
+        <a href="settings.html#dock">Settings → RC 2 dock</a>.</p>`);
     } else {
-      if (rc2Choice && !rc2.missions.some((m) => m.uuid === rc2Choice)) rc2Choice = null;
-      parts.push(`<p class="help">Pick the <b>placeholder</b> to <b>replace</b> (compare the waypoints, length and date with DJI Fly's list).
-        Its old file is backed up first. List from the RC 2: ${esc(ago(rc2.listReported))}${rc2.listWanted ? ' (a new list was asked for)' : ''}.</p>`);
-      parts.push('<ul class="rc2-missions">' + rc2.missions.map((m) => {
-        const picture = m.preview ? `<img class="rc2-preview" alt="" src="api/rc2/preview/${encodeURIComponent(m.uuid)}?v=${esc(m.sha256.slice(0, 8))}">` : routeSketch(m.points);
-        const holds = m.fromMap ? ` · holds <b>${esc(m.fromMap)}</b> from the map` : '';
-        const when = m.updated ? `saved in DJI Fly ${esc(fmt.date(m.updated))}` : (m.modified ? `file date ${esc(m.modified)}` : '');
+      if (rc2Choice && !ready.some((s) => String(s.slot) === rc2Choice)) rc2Choice = null;
+      parts.push(`<p class="help">Pick the <b>slot</b> to put this route in. What is in it now is <b>replaced</b> (its old file is backed up first).
+        From the RC 2: ${esc(ago(rc2.listReported))}${rc2.listWanted ? ' (a new list was asked for)' : ''}.</p>`);
+      parts.push('<ul class="rc2-missions">' + rc2.slots.map((s) => {
+        const m = s.mission;
+        if (!s.uuid || !m) {
+          const why = s.uuid ? "its mission isn't on the RC 2 any more" : 'not set up yet';
+          return `<li><label class="rc2-mission off"><input type="radio" name="rc2-slot" disabled>
+            <span class="rc2-slot-n">${s.slot}</span><span><b>Slot ${s.slot}</b><br>
+            <span class="muted">${why} (<a href="settings.html#dock">Settings → RC 2 dock</a>)</span></span></label></li>`;
+        }
+        const holds = m.fromMap ? `holds <b>${esc(m.fromMap)}</b> from the map` : `the placeholder (${m.waypoints} waypoints)`;
         return `<li><label class="rc2-mission">
-          <input type="radio" name="rc2-mission" value="${esc(m.uuid)}"${m.uuid === rc2Choice ? ' checked' : ''}>
-          ${picture}
-          <span><b>${m.waypoints} waypoints · ${esc(fmt.dist(m.lengthM))}</b><br>
-          <span class="muted">${when}${holds}</span></span></label></li>`;
+          <input type="radio" name="rc2-slot" value="${s.slot}"${String(s.slot) === rc2Choice ? ' checked' : ''}>
+          <span class="rc2-slot-n">${s.slot}</span>${missionPicture(m)}
+          <span><b>Slot ${s.slot}</b>: ${holds}<br>
+          <span class="muted">${m.waypoints} waypoints · ${esc(fmt.dist(m.lengthM))}</span></span></label></li>`;
       }).join('') + '</ul>');
     }
     const mine = (rc2.sends || []).filter((s) => s.planId === plan?.id).slice(0, 3);
@@ -598,7 +585,7 @@ const Planner = (() => {
       const res = await fetch(`api/plans/${plan.id}/rc2`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'flightmap' },
-        body: JSON.stringify({ uuid: rc2Choice, finish: $('#dj-finish').value, lost: $('#dj-lost').value }),
+        body: JSON.stringify({ slot: Number(rc2Choice), finish: $('#dj-finish').value, lost: $('#dj-lost').value }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || `the server answered ${res.status}`);
@@ -700,7 +687,7 @@ const Planner = (() => {
       }
     });
     $('#dj-rc2').addEventListener('change', (e) => {
-      if (e.target.name !== 'rc2-mission') return;
+      if (e.target.name !== 'rc2-slot') return;
       rc2Choice = e.target.value;
       updateRc2Button();
     });

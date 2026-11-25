@@ -320,8 +320,12 @@ owner confirms it works**, release it with a tag (`git tag -a vX.Y.Z` +
   (map lists the RC 2's missions, owner picks the placeholder, dock backs up).
 - **Send to RC 2** (5.2.0): `flightmap/rc2.py` + dji-rc2-dock's `dji-missions.py`.
   The owner chose: the DOCK ASKS THE MAP (the map stays read-only on the NAS),
-  routes go on plug-in AND every 2 min while docked, and the owner picks the
-  placeholder each time. Dock key `dock_...` made in Settings → RC 2 dock,
+  routes go on plug-in AND every 2 min while docked. SLOTS (the owner's
+  design, 5.2.0): up to 4 placeholders, told apart by waypoint count:
+  2/3/4/5 waypoints = slot 1/2/3/4 (DJI Fly probably can't save 1 waypoint: unchecked), confirmed
+  once in Settings ("Use as slot N", `rc2-slots.json` slot -> UUID), then
+  remembered by UUID whatever they hold; sends go to a SLOT (POST
+  /api/plans/<id>/rc2 {slot}); no other mission can be targeted. Dock key `dock_...` made in Settings → RC 2 dock,
   shown once, only its SHA-256 kept (`dock-key.json`); the Pi sends it as
   `Authorization: Bearer` to `/api/dock/*` (bypasses the login, counts as a
   failed login when wrong). The Pi reports each mission's whole .kmz + DJI

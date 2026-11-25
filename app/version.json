@@ -3,9 +3,9 @@
   "released": "2026-11-24",
   "repo": "mcintosh109/dji-flightmap",
   "notes": [
-    "New: Send to RC 2. With the RC 2 dock (dji-rc2-dock), the DJI Fly window can put a planned route on the RC 2 for you: pick the placeholder mission to replace and press Send",
+    "New: Send to RC 2. With the RC 2 dock (dji-rc2-dock), the DJI Fly window can put a planned route on the RC 2 for you, in one of up to 4 slots: placeholder missions you make in DJI Fly with 2, 3, 4 and 5 waypoints",
     "The dock does it when the RC 2 is plugged in, and every 2 minutes while it stays plugged in. It backs the old mission up first (on the Pi and the NAS), checks the new file, and never overwrites a mission that was changed in DJI Fly since you picked it",
-    "Settings \u2192 RC 2 dock: make the key the dock needs (then run sudo dji-map-link on the Pi), and see when the dock last checked in",
+    "Settings \u2192 RC 2 dock: make the key the dock needs (then run sudo dji-map-link on the Pi), confirm your 4 placeholder slots once, and see when the dock last checked in. Only those 4 missions can ever be replaced",
     "Let's Encrypt: when your DNS company can't find the name's domain (often a spelling mistake), the settings page now says so in plain words, before the technical details",
     "The Cloudflare help lists both permissions the token needs: Zone \u2192 Zone \u2192 Read and Zone \u2192 DNS \u2192 Edit"
   ]

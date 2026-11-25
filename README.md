@@ -339,12 +339,19 @@ route on the RC 2 for you. (Research: *"bearer token"*, *"SHA-256 checksum"*.)
   update dji-rc2-dock (`git pull`, then `sudo ./redeploy.sh` in its folder) and
   run `sudo dji-map-link`: type the map's address, paste the key. The key works
   like a password for the dock; the map only keeps a scrambled copy of it.
-- **In DJI Fly:** make one or more **placeholder** missions (any 2 points).
+- **Slots (up to 4 routes on the RC 2 at once):** in DJI Fly, make up to 4
+  **placeholder** missions with **2, 3, 4 and 5 waypoints**: the number of
+  waypoints tells them apart (2 = slot 1, 3 = slot 2, 4 = slot 3, 5 = slot 4).
+  Plug the RC 2 into the dock and unlock it; within about 2 minutes
+  **Settings → RC 2 dock → Placeholder slots** shows each one with DJI Fly's
+  picture of it. Press **Use as slot 1** (and so on) once for each. From then
+  on the map remembers which mission is which slot, whatever route it holds.
+  **Only these 4 missions can ever be replaced**; your own missions are safe.
 - **Each time:** in the DJI Fly window, under **Send it to the RC 2**, pick the
-  placeholder to **replace** (the list shows each mission's waypoints, length,
-  date and a picture of its route, as the dock last saw them), tick the five
-  boxes and press **Send to RC 2**. Plug the RC 2 into the dock and unlock it:
-  the dock does it on plug-in, and checks every 2 minutes while it is plugged in.
+  **slot** (it shows what each slot holds now), tick the five boxes and press
+  **Send to RC 2**. Plug the RC 2 into the dock and unlock it: the dock does it
+  on plug-in, and checks every 2 minutes while it is plugged in. Don't have
+  that mission open in DJI Fly while it is sent.
 - **Safety nets:** the dock only replaces the placeholder if it is **exactly**
   the file you picked (a mission edited in DJI Fly since is never overwritten),
   backs the old file up first (on the Pi in `/var/lib/dji-dock/mission-backups`

@@ -10,11 +10,16 @@ copying, because the RC 2 is plugged into it. This file is the map's side:
   2. The Pi reports the missions it finds on the RC 2 (PUT /api/dock/missions):
      each mission's .kmz file and DJI Fly's small preview picture. The map
      reads the route out of each file, so the owner can see which is which.
-  3. In the planner, "Send to RC 2" picks one of those missions to replace.
+  3. SLOTS: up to 4 placeholders can hold routes. The owner makes them in DJI
+     Fly with 2, 3, 4 and 5 waypoints (slots 1-4: the count tells them
+     apart), and confirms each one once in Settings -> RC 2 dock. From then
+     on the slot is that mission (by its folder name, a UUID), whatever it
+     holds; no other mission can ever be replaced. (The owner's design.)
+  4. In the planner, "Send to RC 2" picks a slot to fill.
      The new .kmz is made right then (exactly what the owner approved) and
      waits in a queue, together with a fingerprint (SHA-256) of the
      placeholder as the Pi last saw it.
-  4. The Pi asks for the queue (GET /api/dock/queue) on plug-in and every
+  5. The Pi asks for the queue (GET /api/dock/queue) on plug-in and every
      minute or two while docked. For each waiting send it checks the
      placeholder still has that fingerprint (so a mission that changed in
      DJI Fly since is never overwritten), backs the old file up, writes the
@@ -24,6 +29,7 @@ Files (all in STATE_DIR, readable only by the map):
   dock-key.json       the hash of the dock key, and when the dock was last seen
   rc2-missions.json   the missions the Pi last reported
   rc2-previews/       DJI Fly's preview picture of each mission
+  rc2-slots.json      which mission is slot 1, 2, 3 and 4
   rc2-queue.json      sends: waiting, done, failed, cancelled (the last 30)
   rc2-outbox/         the .kmz of each send
 
@@ -49,6 +55,7 @@ from .config import STATE_DIR, log
 KEY_FILE = os.path.join(STATE_DIR, "dock-key.json")
 MISSIONS_FILE = os.path.join(STATE_DIR, "rc2-missions.json")
 QUEUE_FILE = os.path.join(STATE_DIR, "rc2-queue.json")
+SLOTS_FILE = os.path.join(STATE_DIR, "rc2-slots.json")
 PREVIEW_DIR = os.path.join(STATE_DIR, "rc2-previews")
 OUTBOX_DIR = os.path.join(STATE_DIR, "rc2-outbox")
 
@@ -62,6 +69,16 @@ MAX_INSIDE = 8 * 1024 * 1024     # bytes: a file inside the .kmz, unpacked
 MAX_PREVIEW = 512 * 1024         # bytes
 KEEP_SENDS = 30
 MAX_POINTS = 500
+SLOTS = (1, 2, 3, 4)
+
+
+def _is_slot(value):
+    return isinstance(value, int) and not isinstance(value, bool) and value in SLOTS
+
+
+def slot_waypoints(slot):
+    """The waypoint count of slot N's placeholder: slot 1 = 2 waypoints ... slot 4 = 5."""
+    return slot + 1
 
 
 def _now():
@@ -290,16 +307,70 @@ def ask_for_list():
         _set_flag("want-list", True)
 
 
-# ---- the send queue -------------------------------------------------------------------
-def queue_send(plan_id, plan, uuid, kmz):
-    """Planner "Send to RC 2": queue kmz for the mission uuid. Returns (answer, status)."""
+# ---- the 4 slots ------------------------------------------------------------------------
+def _slots():
+    """{slot number: {"uuid", "confirmed"}} for the confirmed slots."""
+    data = _read(SLOTS_FILE, {})
+    out = {}
+    for key, value in (data.items() if isinstance(data, dict) else []):
+        if key in {str(s) for s in SLOTS} and isinstance(value, dict) and UUID_RE.match(str(value.get("uuid", ""))):
+            out[int(key)] = value
+    return out
+
+
+def set_slot(slot, uuid):
+    """Settings "Use as slot N": confirm which mission is slot N. Returns (answer, status)."""
+    if not _is_slot(slot):
+        return {"error": "There are 4 slots: 1 to 4."}, 400
     if not isinstance(uuid, str) or not UUID_RE.match(uuid):
-        return {"error": "Pick a mission on the RC 2 to replace."}, 400
+        return {"error": "Pick a mission."}, 400
     with LOCK:
         listed = {m["uuid"].upper(): m for m in _read(MISSIONS_FILE, {}).get("missions", [])}
         target = listed.get(uuid.upper())
         if target is None:
-            return {"error": "That mission isn't in the RC 2's list any more. Refresh the list and pick again."}, 409
+            return {"error": "That mission isn't in the RC 2's list any more."}, 409
+        if target["waypoints"] != slot_waypoints(slot):
+            return {"error": f"Slot {slot}'s placeholder must have {slot_waypoints(slot)} waypoints "
+                             f"(this one has {target['waypoints']})."}, 400
+        slots = {k: v for k, v in _slots().items() if v["uuid"].upper() != uuid.upper()}
+        slots[slot] = {"uuid": target["uuid"], "confirmed": _now()}
+        _write(SLOTS_FILE, {str(k): v for k, v in slots.items()})
+    log(f"RC 2 mission {target['uuid']} is now slot {slot}")
+    return {"ok": True}, 200
+
+
+def free_slot(slot):
+    """Settings "Free this slot": the map forgets it (and cancels a send waiting for it)."""
+    with LOCK:
+        slots = _slots()
+        gone = slots.pop(slot, None)
+        if gone is None:
+            return False
+        _write(SLOTS_FILE, {str(k): v for k, v in slots.items()})
+        queue = _read(QUEUE_FILE, [])
+        for send in queue:
+            if send.get("state") == "waiting" and send["uuid"].upper() == gone["uuid"].upper():
+                send["state"], send["finished"], send["message"] = "cancelled", _now(), f"Slot {slot} was freed."
+        _write(QUEUE_FILE, queue)
+    log(f"RC 2 slot {slot} was freed")
+    return True
+
+
+# ---- the send queue -------------------------------------------------------------------
+def queue_send(plan_id, plan, slot, kmz):
+    """Planner "Send to RC 2": queue kmz for slot 1-4. Returns (answer, status)."""
+    if not _is_slot(slot):
+        return {"error": "Pick a slot (1 to 4) on the RC 2 to put the route in."}, 400
+    with LOCK:
+        chosen = _slots().get(slot)
+        if chosen is None:
+            return {"error": f"Slot {slot} isn't set up yet: Settings → RC 2 dock."}, 409
+        uuid = chosen["uuid"]
+        listed = {m["uuid"].upper(): m for m in _read(MISSIONS_FILE, {}).get("missions", [])}
+        target = listed.get(uuid.upper())
+        if target is None:
+            return {"error": f"Slot {slot}'s mission isn't on the RC 2 any more (deleted in DJI Fly?). "
+                             "Set the slot up again in Settings → RC 2 dock."}, 409
         queue = _read(QUEUE_FILE, [])
         now = _now()
         for send in queue:
@@ -311,12 +382,12 @@ def queue_send(plan_id, plan, uuid, kmz):
         send = {
             "id": send_id, "uuid": target["uuid"], "expectSha256": target["sha256"],
             "sha256": hashlib.sha256(kmz).hexdigest(), "size": len(kmz),
-            "planId": plan_id, "planName": str(plan.get("name", ""))[:60],
+            "planId": plan_id, "planName": str(plan.get("name", ""))[:60], "slot": slot,
             "created": now, "state": "waiting", "message": "", "finished": "", "backup": "",
         }
         queue.append(send)
         _write(QUEUE_FILE, _trim(queue))
-    log(f"Plan {plan_id} is waiting to be sent to RC 2 mission {target['uuid']}")
+    log(f"Plan {plan_id} is waiting to be sent to RC 2 slot {slot} (mission {target['uuid']})")
     return {"ok": True, "send": send}, 200
 
 
@@ -406,14 +477,31 @@ def page_status():
         data = _read(MISSIONS_FILE, {})
         queue = _read(QUEUE_FILE, [])
         want = os.path.exists(os.path.join(STATE_DIR, "rc2-want-list"))
+        slots = _slots()
     sent = {}   # sha256 -> plan name, for missions that now hold one of our plans
     for s in queue:
         if s.get("state") == "done":
             sent[s["sha256"]] = s.get("planName", "")
+    slot_of = {v["uuid"].upper(): k for k, v in slots.items()}
     missions = []
     for m in data.get("missions", []):
-        missions.append(dict(m, fromMap=sent.get(m["sha256"])))
+        missions.append(dict(m, fromMap=sent.get(m["sha256"]), slot=slot_of.get(m["uuid"].upper())))
+    by_uuid = {m["uuid"].upper(): m for m in missions}
+    slot_list = []
+    for n in SLOTS:
+        mission = by_uuid.get(slots[n]["uuid"].upper()) if n in slots else None
+        slot_list.append({
+            "slot": n, "waypoints": slot_waypoints(n),
+            "uuid": slots[n]["uuid"] if n in slots else "",
+            "confirmed": slots[n]["confirmed"] if n in slots else "",
+            "missing": n in slots and mission is None and bool(data.get("reported")),
+            "mission": mission,
+            # Not set up yet: the missions that could be it (the right count, not another slot).
+            "candidates": [] if n in slots else [m["uuid"] for m in missions
+                                                 if m["slot"] is None and m["waypoints"] == slot_waypoints(n)],
+        })
     return {
+        "slots": slot_list,
         "keySet": bool(key.get("hash")),
         "keyCreated": key.get("created", ""),
         "dockSeen": key.get("seen", ""),
