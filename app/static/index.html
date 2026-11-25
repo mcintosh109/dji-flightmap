@@ -152,6 +152,8 @@
         <button id="pl-close" class="icon-btn" type="button" aria-label="Close planner">✕</button>
       </div>
     </div>
+    <!-- Only this part scrolls: the row above (name, Save plan, ✕) stays in view. -->
+    <div class="pl-body">
     <button id="pl-last-home" class="chip hidden" type="button">Use the take-off point of my last flight</button>
     <div id="pl-stats" class="stats"></div>
     <ul id="pl-warnings" class="pl-warnings"></ul>
@@ -180,6 +182,7 @@
         <h3>Notes</h3>
         <textarea id="pl-notes" rows="3" maxlength="1000" placeholder="Anything to remember for this flight"></textarea>
       </div>
+    </div>
     </div>
   </section>
 

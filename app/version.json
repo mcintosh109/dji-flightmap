@@ -7,6 +7,7 @@
     "The search box only opens when you click the magnifying glass, so it takes no room on the map. The pin lets clicks through, so you can put a waypoint right on it",
     "With Azure Maps, Azure's addresses, Azure's places and OpenStreetMap are all asked and listed together, best match first (roads last unless you search for a road). With the other maps, the addresses come from OpenStreetMap",
     "Can't find a spot by name? Paste its coordinates (in Google Maps: right-click the spot and click the numbers at the top) and the map goes straight there",
-    "New: right-click the map (or press and hold on a phone) and choose \"Create a flight plan here\": a new plan starts with its take-off point on that spot. With a plan open, the same menu adds a waypoint"
+    "New: right-click the map (or press and hold on a phone) and choose \"Create a flight plan here\": a new plan starts with its take-off point on that spot. With a plan open, the same menu adds a waypoint",
+    "The flight planner's top row (the name, Save plan and \u2715) now stays in view while you scroll its waypoints and weather"
   ]
 }

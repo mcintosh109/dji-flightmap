@@ -651,6 +651,17 @@ function fakeInternet(ctx, { github = null } = {}) {
     check('take-off point is visible above the planner panel', hBox && hBox.y + hBox.height < plannerTop, JSON.stringify({ hBox, plannerTop }));
     for (const [x, y] of [[650, 120], [1100, 120], [1150, 300], [650, 300]]) { await page.mouse.click(x, y); await page.waitForTimeout(120); }
     check('clicking the map adds waypoints (4)', (await page.locator('#pl-wps tbody tr').count()) === 4);
+    const scrolled = await page.evaluate(() => {
+      const body = document.querySelector('#planner .pl-body');
+      body.scrollTop = body.scrollHeight;
+      const p = document.querySelector('#planner').getBoundingClientRect(), s = document.querySelector('#pl-save').getBoundingClientRect();
+      const r = { scrolls: body.scrollHeight > body.clientHeight, saveInView: s.top >= p.top && s.bottom <= p.bottom,
+        bodyBelowHead: body.getBoundingClientRect().top >= document.querySelector('#planner .detail-head').getBoundingClientRect().bottom - 1 };
+      body.scrollTop = 0;
+      return r;
+    });
+    check('the planner scrolls under its top row: Save plan and ✕ stay in view', scrolled.scrolls && scrolled.saveInView
+      && scrolled.bodyBelowHead, JSON.stringify(scrolled));
     // Right-click a waypoint: a menu with Delete (here on a 5th, extra point).
     await page.mouse.click(900, 200);
     await page.waitForTimeout(150);

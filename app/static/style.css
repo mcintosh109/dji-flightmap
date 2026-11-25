@@ -345,11 +345,14 @@ a.icon-btn { color: var(--text); }
 #planner {
   position: fixed; z-index: 1000;
   left: calc(var(--panel-w) + 32px); right: 16px; bottom: 16px;
-  max-height: min(58vh, calc(100% - 90px)); overflow-y: auto;
+  max-height: min(58vh, calc(100% - 90px));
+  display: flex; flex-direction: column;   /* the top row stays; only .pl-body scrolls */
   background: var(--panel); backdrop-filter: blur(14px);
   border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow);
   padding: 14px 16px;
 }
+#planner > .detail-head { flex: none; }
+#planner > .pl-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; margin-right: -10px; padding-right: 10px; }
 #planner h3 { font-size: 13px; margin: 12px 0 6px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }
 .pl-title { flex: 1; }
 .pl-name {
