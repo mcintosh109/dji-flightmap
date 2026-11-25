@@ -694,7 +694,7 @@ class FakeNominatim:
                     {'lat': '40.7812', 'lon': '-73.9665', 'display_name': '<b>Bow</b> Bridge, Central Park, New York, United States',
                      'addresstype': 'bridge', 'boundingbox': ['40.7810', '40.7814', '-73.9668', '-73.9662']},
                     {'lat': '40.78123', 'lon': '-73.96652', 'display_name': '1 Park Loop, Manhattan, New York, United States',
-                     'addresstype': 'house'},
+                     'category': 'place', 'type': 'house', 'addresstype': 'place'},
                     {'lat': 'x', 'lon': '1', 'display_name': 'Broken'},
                     {'lat': '40.0', 'lon': '-74.0', 'display_name': ''},
                 ]
@@ -1735,6 +1735,27 @@ class AzurePlaceKinds(unittest.TestCase):
                            ('AIRPORT', 'air'), ('HELIPAD_HELICOPTER_LANDING', 'air'), ('BARBER_SHOP', 'shop'),
                            ('COMPANY', 'work'), ('', 'work')):
             self.assertEqual(self.az.kind_of(code), kind, code)
+
+    def test_openstreetmap_words_become_plain_words(self):
+        geo = importlib.import_module('flightmap.geocode')
+        for place, words in (
+                ({'category': 'highway', 'type': 'tertiary', 'addresstype': 'road'}, 'Road'),
+                ({'category': 'highway', 'type': 'residential'}, 'Road'),
+                ({'category': 'highway', 'type': 'unclassified'}, 'Road'),
+                ({'category': 'highway', 'type': 'path'}, 'Trail or path'),
+                ({'category': 'highway', 'type': 'track'}, 'Dirt road'),
+                ({'category': 'tourism', 'type': 'attraction', 'addresstype': 'tourism'}, 'Attraction'),
+                ({'category': 'natural', 'type': 'waterfall'}, 'Waterfall'),
+                ({'category': 'waterway', 'type': 'waterfall'}, 'Waterfall'),
+                ({'category': 'leisure', 'type': 'slipway'}, 'Boat ramp'),
+                ({'category': 'boundary', 'type': 'administrative', 'addresstype': 'county'}, 'County'),
+                ({'category': 'boundary', 'type': 'protected_area'}, 'Park or forest'),
+                ({'category': 'place', 'type': 'village'}, 'Village'),
+                ({'class': 'building', 'type': 'yes'}, 'Building'),
+                ({'category': 'amenity', 'type': 'fire_station'}, 'Fire station'),
+                ({'addresstype': 'bridge'}, 'Bridge'),
+                ({}, '')):
+            self.assertEqual(geo.osm_kind(place), words, place)
 
     def test_nearby_views_share_one_search(self):
         self.assertEqual(self.az.snap(40.78123, -73.96121, 1500), self.az.snap(40.7838, -73.9641, 1900))

@@ -16,6 +16,9 @@ most bugs in this project were found by testing, not by reading.
   - an improvement to something the app already does → middle number (2.0.1 → 2.1.0), last number back to 0
   - **a whole new function** (like the flight planner was, in 2.0.0), or something that
     needs the owner to do a manual step → first number (2.1.0 → 3.0.0), the others back to 0
+  - **For now the owner stays on 5.x.x** (Nov 2026: "we will not be moving to ver6 any
+    time soon"): a whole new function raises the **middle** number instead
+    (5.3.0 → 5.4.0). Never make 6.0.0 unless the owner asks for it.
   - If unsure which, ask the owner before releasing.
 - Set `released` to today's date (`YYYY-MM-DD`).
 - Replace `notes` with 2–6 short lines in **plain English, from the owner's

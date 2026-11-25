@@ -75,7 +75,8 @@ async function startFakeAzure() {
       got.geocodes = (got.geocodes || 0) + 1;
       if (u.pathname === '/search') {
         res.writeHead(200, { 'Content-Type': 'application/json' });
-        return res.end(JSON.stringify([{ lat: '40.7812', lon: '-73.9665', display_name: 'Bow Bridge, Central Park, New York', addresstype: 'bridge' }]));
+        return res.end(JSON.stringify([{ lat: '40.7812', lon: '-73.9665', display_name: 'Bow Bridge, Central Park, New York',
+          category: 'highway', type: 'footway', addresstype: 'road' }]));
       }
       got.keys.add(u.searchParams.get('subscription-key'));
       res.writeHead(200, { 'Content-Type': 'application/geo+json' });
@@ -322,6 +323,8 @@ function fakeInternet(ctx, { github = null } = {}) {
       (await page.locator('.addr-result').count()) === 3 && (await page.textContent('#addr-results')).includes('1 Park Loop, New York')
       && (await page.textContent('#addr-results')).includes('Bow Bridge') && azure.got.geocodes === 2,
       `${azure.got.geocodes} searches: ${await page.textContent('#addr-results')}`);
+    check("...in plain words: OpenStreetMap's footway is a \"Trail or path\"",
+      (await page.textContent('#addr-results')).includes('Trail or path · OpenStreetMap'), await page.textContent('#addr-results'));
     check('...each answer says which company it came from', (await page.textContent('.addr-result >> nth=0')).includes('Azure Maps')
       && (await page.textContent('#addr-results')).includes('OpenStreetMap'), await page.textContent('#addr-results'));
     check('a name with code in it shows as text and does not run',

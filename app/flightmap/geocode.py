@@ -222,8 +222,7 @@ def _osm_result(place):
     name = str(place.get("display_name", "")).strip()
     if not name:
         return None
-    kind = str(place.get("addresstype") or place.get("type") or "").replace("_", " ")
-    result = {"name": name[:150], "detail": kind[:1].upper() + kind[1:40], "lat": round(lat, 6), "lon": round(lon, 6),
+    result = {"name": name[:150], "detail": osm_kind(place), "lat": round(lat, 6), "lon": round(lon, 6),
               "from": "osm"}
     box = place.get("boundingbox")
     try:
@@ -232,6 +231,55 @@ def _osm_result(place):
     except (TypeError, ValueError):
         pass
     return result
+
+
+# OpenStreetMap describes a place with two words, its "category" and "type"
+# (research: "OpenStreetMap map features"), e.g. highway + tertiary for a
+# minor road. These turn them into plain words. Checked in this order:
+# (category, type), then the type alone, then the category alone.
+OSM_WORDS = {
+    ("highway", "path"): "Trail or path", ("highway", "footway"): "Trail or path",
+    ("highway", "bridleway"): "Trail or path", ("highway", "cycleway"): "Bike path",
+    ("highway", "track"): "Dirt road", ("highway", "motorway"): "Highway", ("highway", "trunk"): "Highway",
+    ("highway", "bus_stop"): "Bus stop",
+    ("place", "city"): "Town or city", ("place", "town"): "Town or city", ("place", "village"): "Village",
+    ("place", "hamlet"): "Village", ("place", "suburb"): "Neighborhood", ("place", "neighbourhood"): "Neighborhood",
+    ("place", "quarter"): "Neighborhood", ("place", "county"): "County", ("place", "state"): "State or region",
+    ("place", "country"): "Country", ("place", "house"): "Address", ("place", "locality"): "Place",
+    ("boundary", "national_park"): "National park", ("boundary", "protected_area"): "Park or forest",
+    ("waterway", "river"): "River", ("waterway", "stream"): "Stream", ("waterway", "dam"): "Dam",
+    ("tourism", "attraction"): "Attraction",
+}
+OSM_TYPE_WORDS = {
+    "waterfall": "Waterfall", "peak": "Mountain top", "water": "Lake or pond", "lake": "Lake or pond",
+    "reservoir": "Lake or pond", "wood": "Woods", "forest": "Forest", "beach": "Beach", "cliff": "Cliff",
+    "spring": "Spring", "viewpoint": "Viewpoint", "camp_site": "Campground", "picnic_site": "Picnic area",
+    "park": "Park", "nature_reserve": "Nature reserve", "slipway": "Boat ramp", "parking": "Parking",
+    "trailhead": "Trailhead", "golf_course": "Golf course", "pitch": "Sports field", "playground": "Playground",
+    "house": "Address", "postcode": "Postal code", "administrative": "Area", "bridge": "Bridge",
+}
+OSM_CATEGORY_WORDS = {
+    "highway": "Road", "building": "Building", "tourism": "Tourist spot", "natural": "Nature",
+    "leisure": "Park or leisure", "waterway": "River or stream", "railway": "Railway", "aeroway": "Airport",
+    "shop": "Shop", "office": "Office", "landuse": "Area", "boundary": "Area", "historic": "Historic site",
+}
+OSM_LEVELS = {"county": "County", "state": "State or region", "country": "Country", "city": "Town or city",
+              "town": "Town or city", "village": "Village", "hamlet": "Village"}
+
+
+def osm_kind(place):
+    """Plain words for what an OpenStreetMap answer is ("Road", "Waterfall"...)."""
+    category = str(place.get("category") or place.get("class") or "")
+    kind = str(place.get("type") or "")
+    level = str(place.get("addresstype") or "")
+    if category == "boundary" and kind == "administrative" and level in OSM_LEVELS:
+        return OSM_LEVELS[level]            # a county's or a town's border: say which
+    words = (OSM_WORDS.get((category, kind)) or OSM_TYPE_WORDS.get(kind) or OSM_CATEGORY_WORDS.get(category)
+             or OSM_LEVELS.get(level) or OSM_TYPE_WORDS.get(level))
+    if words:
+        return words
+    other = (kind if kind not in ("", "yes") else level).replace("_", " ")   # something else: its own word
+    return other[:1].upper() + other[1:40]
 
 
 # ---- both lists together ---------------------------------------------------------------------------

@@ -84,7 +84,10 @@ Inside the container: settings in `/var/lib/dji-flightmap/settings.json`
 Use the **release** skill (`.claude/skills/release/SKILL.md`) for every change.
 Version numbers follow the owner's rule: a **whole new function** raises the
 first number (the flight planner made it 2.0.0); improvements raise the middle
-one; bug fixes the last one.
+one; bug fixes the last one. **But for now, stay on 5.x.x** (the owner, Nov
+2026: "we will not be moving to ver6 any time soon"): a whole new function
+raises the MIDDLE number too (5.3.0 → 5.4.0). Never make 6.0.0 unless the
+owner asks for it.
 In short: raise the version in `app/version.json` and write plain-English
 notes, update the README, run `FLIGHTMAP_ALLOW_SYSTEM_TEST=1 bash tests/run-all.sh`,
 commit, push to `main`. That makes it a **test version**: nothing offers it
@@ -358,7 +361,9 @@ owner confirms it works**, release it with a tag (`git tag -a vX.Y.Z` +
   words) once, max 8; each result has `from`. Answers remembered in memory
   a day, unless a company failed. Coordinates (decimal, N/S/E/W, deg/min/sec,
   from Google Maps' right-click) are read in the page (`readCoordinates`)
-  and go straight there, nothing sent. The pin is `interactive: false` so waypoints
+  and go straight there, nothing sent. OSM's category/type words
+  (highway/tertiary...) become plain words in `osm_kind` ("Road",
+  "Waterfall"): the owner saw "Tertiary". The pin is `interactive: false` so waypoints
   can go on it. The Nominatim policy page was not reachable from Claude's
   sandbox (Nov 2026): rules taken from search results.
 - Old installs had an `update-ct.sh` that could not download its own
