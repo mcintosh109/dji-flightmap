@@ -491,7 +491,9 @@ owner confirms it works**, release it with a tag (`git tag -a vX.Y.Z` +
   destination, which protects nothing here), an Allow policy for their own
   M365 email, Microsoft Entra ID sign-in. cloudflared's address has a DHCP
   reservation. The owner chose to leave the WARP device-enrollment rule
-  (any @gmail.com) as is: WARP routing is off. The owner gave Claude
+  (any @gmail.com) as is: WARP routing is off. The owner then turned the
+  map's own login OFF (set-login.sh --off; guests have their own network),
+  so Access is the only lock from the internet. The owner gave Claude
   READ-ONLY Cloudflare access: never change anything there.
   Tests: `LiveTunnelVisitors`.
 - Old installs had an `update-ct.sh` that could not download its own
