@@ -1,5 +1,5 @@
 {
-  "version": "5.4.0",
+  "version": "5.4.2",
   "released": "2026-11-25",
   "repo": "mcintosh109/dji-flightmap",
   "notes": [
@@ -14,6 +14,8 @@
     "Fixed: the planner's weather could show the forecast of an earlier choice (another time or take-off spot) when that answer came back late, with the wrong wind and rain warnings",
     "Fixed: a quick double click on Save plan saved a new plan twice. Changes made while a save is on its way now stay marked \"Unsaved changes\"",
     "Fixed: deleting a plan now says so when the server can't be reached, and Backspace no longer deletes a waypoint behind the DJI Fly window",
-    "Fixed: the server no longer waits up to a minute on a request with a broken size (it answers at once)"
+    "Fixed: the server no longer waits up to a minute on a request with a broken size (it answers at once)",
+    "Security: the login's limit of 10 wrong passwords in 15 minutes now holds even when many guesses are sent at the same moment (they used to all be checked before any was counted). The same goes for wrong RC 2 dock keys",
+    "Fixed: once locked out after too many wrong passwords, the browser could show a \"connection reset\" error page instead of the \"Too many wrong attempts\" message"
   ]
 }

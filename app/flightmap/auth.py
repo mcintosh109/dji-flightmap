@@ -22,6 +22,7 @@ COOKIE_NAME = "flightmap_session"
 PUBLIC_PATHS = {"/login", "/login.html", "/api/login", "/api/health", "/favicon.ico", "/flightmap-ca.crt"}
 FAILED_LOGINS = {}            # ip address -> list of times of failed logins
 FAILED_LOCK = threading.Lock()
+PENDING = {}                  # attempts being checked right now: ticket -> ip
 MAX_FAILURES = 10             # this many wrong passwords ...
 FAILURE_WINDOW = 15 * 60      # ... within 15 minutes locks that address out
 
@@ -109,14 +110,37 @@ def session_is_valid(cookie_header):
     return user == AUTH_USER and expires.isdigit() and int(expires) > time.time()
 
 
-def too_many_failures(ip):
+def start_attempt(ip):
+    """Count a login (or dock key) attempt from this address BEFORE checking it.
+
+    Returns a ticket, or None when the address is locked out. The attempt
+    counts as a failure until forget_attempt() takes it back after a
+    success. Counting first matters: checking a password takes about a
+    second, and guesses sent all at once used to be checked before any of
+    them was counted, so the 10-try limit didn't hold.
+    """
     now = time.time()
     with FAILED_LOCK:
         recent = [t for t in FAILED_LOGINS.get(ip, []) if now - t < FAILURE_WINDOW]
-        FAILED_LOGINS[ip] = recent
-        return len(recent) >= MAX_FAILURES
+        if len(recent) >= MAX_FAILURES:
+            FAILED_LOGINS[ip] = recent
+            return None
+        ticket = (now, secrets.token_hex(4))
+        FAILED_LOGINS[ip] = [*recent, ticket[0]]
+        PENDING[ticket] = ip
+        return ticket
 
 
-def record_failure(ip):
+def forget_attempt(ticket):
+    """The attempt succeeded: it no longer counts as a failure."""
     with FAILED_LOCK:
-        FAILED_LOGINS.setdefault(ip, []).append(time.time())
+        ip = PENDING.pop(ticket, None)
+        times = FAILED_LOGINS.get(ip, [])
+        if ticket[0] in times:
+            times.remove(ticket[0])
+
+
+def end_attempt(ticket):
+    """The attempt failed: it stays counted."""
+    with FAILED_LOCK:
+        PENDING.pop(ticket, None)

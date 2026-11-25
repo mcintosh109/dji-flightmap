@@ -118,8 +118,8 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, unquote, urlparse
 
 from flightmap import auth
-from flightmap.auth import (COOKIE_NAME, PUBLIC_PATHS, hash_password, make_session_cookie, record_failure,
-                            session_days, session_is_valid, too_many_failures, verify_password)
+from flightmap.auth import (COOKIE_NAME, PUBLIC_PATHS, end_attempt, forget_attempt, hash_password,
+                            make_session_cookie, session_days, session_is_valid, start_attempt, verify_password)
 from flightmap.azure import AZURE_TILESETS, azure_request, html_to_text
 from flightmap.config import (APP_VERSION, AUTH_ENABLED, AUTH_PASSWORD_HASH, AUTH_USER, DATA_DIR, HOST, PORT,
                               STATIC_DIR, VERSION_INFO, log)
@@ -484,12 +484,14 @@ class Handler(SimpleHTTPRequestHandler):
     def dock_request(self, method, path):
         """Requests from the RC 2 dock (the Pi), which sends the dock key instead of signing in."""
         ip = self.client_address[0]
-        if too_many_failures(ip):
+        ticket = start_attempt(ip)
+        if ticket is None:
             return self.send_json({"error": "too many wrong keys, wait a while"}, 429)
         if not rc2.dock_allowed(self.headers.get("Authorization", ""), ip):
-            record_failure(ip)
+            end_attempt(ticket)
             log(f"{ip} used a wrong or old dock key")
             return self.send_json({"error": "wrong dock key: make a new one in Settings and run sudo dji-map-link on the Pi"}, 401)
+        forget_attempt(ticket)
         if method == "GET" and path == "/api/dock/queue":
             return self.send_json(rc2.dock_queue())
         if method == "GET" and path.startswith("/api/dock/kmz/"):
@@ -712,24 +714,29 @@ class Handler(SimpleHTTPRequestHandler):
         if path != "/api/login" or not AUTH_ENABLED:
             return self.send_json({"error": "unknown address"}, 404)
         ip = self.client_address[0]
-        if too_many_failures(ip):
-            log(f"{ip} login blocked: too many wrong passwords")
-            return self.redirect("/login.html?error=locked")
+        # Read the form first, even when locked out: answering with it still
+        # unread made the connection end with a "reset" (a browser error page
+        # instead of the "too many wrong attempts" message).
         length = self.body_length(4096)
         if length is None:
             return None
         form = parse_qs(self.rfile.read(length).decode("utf-8", "replace"))
+        ticket = start_attempt(ip)   # counted before checking: see auth.start_attempt
+        if ticket is None:
+            log(f"{ip} login blocked: too many wrong passwords")
+            return self.redirect("/login.html?error=locked")
         user = (form.get("username") or [""])[0]
         password = (form.get("password") or [""])[0]
         user_ok = hmac.compare_digest(user.encode("utf-8"), AUTH_USER.encode("utf-8"))
         password_ok = verify_password(password, AUTH_PASSWORD_HASH)  # always run: same timing
         if user_ok and password_ok:
+            forget_attempt(ticket)
             log(f"{ip} signed in as {AUTH_USER}")
             # "Secure": over HTTPS, the browser never sends the cookie unencrypted.
             cookie = (f"{COOKIE_NAME}={make_session_cookie()}; Max-Age={session_days() * 86400}; "
                       "Path=/; HttpOnly; SameSite=Lax" + ("; Secure" if self.secure else ""))
             return self.redirect("/", cookie=cookie)
-        record_failure(ip)
+        end_attempt(ticket)
         log(f"{ip} wrong username or password")
         time.sleep(1)   # slows down anyone trying to guess
         return self.redirect("/login.html?error=1")

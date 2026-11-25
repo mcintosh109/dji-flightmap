@@ -447,5 +447,21 @@ owner confirms it works**, release it with a tag (`git tag -a vX.Y.Z` +
   connections; HTTPS code is delicate), ruff's style-only notes (bare
   `return` in handlers, small lambdas), ElementTree on dock .kmz (the dock is
   authenticated; Python's expat resists entity bombs).
+- **Login security review** (owner asked; the owner named this version
+  **5.4.2** "since we are finding and fixing security bugs", skipping the
+  never-released 5.4.0/5.4.1). Fixed: (1) the lock-out (10 failures / 15 min
+  per IP) counted a failure only AFTER the ~1 s check, so guesses sent at
+  once were all checked: now `auth.start_attempt(ip)` counts first (a
+  ticket), `forget_attempt` takes it back on success, `end_attempt` keeps it;
+  also used for dock keys. (2) The locked-out answer was sent before reading
+  the form, so closing the socket with unread data sent a TCP RST (browser
+  "connection reset" page); the form is now read first. Test:
+  `LiveLoginLockout` (30 guesses at once, own server so it can't lock out
+  the other tests). Fine as is: PBKDF2-SHA256 600k + salt, constant-time
+  compares, HMAC-signed cookie (HttpOnly, SameSite=Lax, Secure on https,
+  key = secret file + password hash), X-Frame-Options DENY, the error text
+  is fixed strings via textContent, no X-Forwarded-For trust. Not done
+  (offered to the owner): "sign out everywhere" (a copied cookie stays valid
+  until it expires; changing the password signs everyone out).
 - Old installs had an `update-ct.sh` that could not download its own
   replacement; the current one does `git pull` and restarts itself.

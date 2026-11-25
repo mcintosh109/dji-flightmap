@@ -1621,6 +1621,39 @@ class LiveLogin(unittest.TestCase):
         self.assertEqual(self.srv.request('/api/flights')[0], 401)
 
 
+class LiveLoginLockout(unittest.TestCase):
+    """10 wrong passwords in 15 minutes lock an address out, even when the
+    guesses are sent all at once (they used to be checked before any was counted)."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = tempfile.mkdtemp(prefix='flightmap-test-')
+        os.makedirs(os.path.join(cls.tmp, 'state'))
+        make_archive(os.path.join(cls.tmp, 'archive'))
+        server = load_server(cls.tmp)
+        cls.srv = LiveServer(os.path.join(cls.tmp, 'archive'), os.path.join(cls.tmp, 'state'),
+                             AUTH_USER='tester', AUTH_PASSWORD_HASH=server.hash_password('testpass123', rounds=1000))
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.srv.stop()
+        shutil.rmtree(cls.tmp, ignore_errors=True)
+
+    def login(self, password):
+        body = f'username=tester&password={password}'.encode()
+        return self.srv.request('/api/login', 'POST', body, {'Content-Type': 'application/x-www-form-urlencoded'})
+
+    def test_guesses_sent_at_once_are_still_limited(self):
+        from concurrent.futures import ThreadPoolExecutor
+        with ThreadPoolExecutor(30) as pool:
+            answers = list(pool.map(lambda i: self.login(f'guess-{i}')[1].get('Location'), range(30)))
+        checked = answers.count('/login.html?error=1')
+        self.assertLessEqual(checked, 10, f'{checked} of 30 guesses were checked')
+        self.assertEqual(answers.count('/login.html?error=locked'), 30 - checked)
+        # Locked out now: even the right password isn't checked.
+        self.assertEqual(self.login('testpass123')[1].get('Location'), '/login.html?error=locked')
+
+
 # ------------------------------------------------- the NAS connection (4.3.0)
 def write_mountinfo(path, data_dir, fstype, source='//127.0.0.1/Central/DJI\\040Flight\\040logs'):
     """A pretend /proc/self/mountinfo: the container's own disk, plus what is
