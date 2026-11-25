@@ -183,7 +183,7 @@ const Planner = (() => {
   function renderWeather() {
     const box = $('#pl-weather');
     if (!plan?.home) { box.innerHTML = '<p class="help">Set a take-off point to see the weather there.</p>'; return; }
-    if (!plan.plannedFor) { box.innerHTML = '<p class="help">Pick a date and time above to see the forecast.</p>'; return; }
+    if (!plan.plannedFor) { box.innerHTML = '<p class="help">Pick a date and time under <b>When</b> to see the forecast.</p>'; return; }
     if (weather.loading) { box.innerHTML = '<p class="help">Getting the forecast…</p>'; return; }
     if (weather.error) { box.innerHTML = `<p class="help warn">No forecast: ${esc(weather.error)}.</p>`; return; }
     const w = weather.data?.at;
