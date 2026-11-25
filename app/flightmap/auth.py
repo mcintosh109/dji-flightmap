@@ -5,6 +5,7 @@ Only used when AUTH_USER and AUTH_PASSWORD_HASH are set (deploy/set-login.sh).
 """
 import hashlib
 import hmac
+import ipaddress
 import os
 import secrets
 import threading
@@ -110,6 +111,21 @@ def session_is_valid(cookie_header):
     return user == AUTH_USER and expires.isdigit() and int(expires) > time.time()
 
 
+def lockout_group(ip):
+    """Which addresses share one lock-out. An IPv4 address is one device (or
+    one home). But an IPv6 home or phone usually gets a whole block of
+    18 billion billion addresses (a "/64") and can pick a new one at will, so
+    counting each IPv6 address on its own would give a guesser a fresh 10
+    tries per address. The whole /64 block counts as one."""
+    try:
+        address = ipaddress.ip_address(ip)
+    except ValueError:
+        return ip
+    if address.version == 6 and not address.ipv4_mapped:
+        return str(ipaddress.ip_network(f"{address}/64", strict=False))
+    return ip
+
+
 def start_attempt(ip):
     """Count a login (or dock key) attempt from this address BEFORE checking it.
 
@@ -120,6 +136,7 @@ def start_attempt(ip):
     them was counted, so the 10-try limit didn't hold.
     """
     now = time.time()
+    ip = lockout_group(ip)
     with FAILED_LOCK:
         recent = [t for t in FAILED_LOGINS.get(ip, []) if now - t < FAILURE_WINDOW]
         if len(recent) >= MAX_FAILURES:

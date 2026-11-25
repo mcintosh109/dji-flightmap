@@ -1721,6 +1721,22 @@ class LiveTunnelVisitors(unittest.TestCase):
         self.assertEqual(self.login(srv, 'testpass123', 'not-an-address'), '/')
         self.assertIn('203.0.113.5 login blocked', open(srv.log.name, encoding='utf-8').read())
 
+    def test_ipv6_visitors_are_counted_per_block(self):
+        # A phone or home on IPv6 can pick any address in its /64 block:
+        # a new address must not mean 10 new tries.
+        srv = self.servers['trusted']
+        with ThreadPoolExecutor(10) as pool:
+            list(pool.map(lambda i: self.login(srv, f'guess-{i}', f'2001:db8:1:2::{i + 1:x}'), range(10)))
+        self.assertEqual(self.login(srv, 'testpass123', '2001:db8:1:2::beef'), '/login.html?error=locked')
+        self.assertEqual(self.login(srv, 'testpass123', '2001:db8:1:3::1'), '/')    # another block
+        self.assertIn('2001:db8:1:2::1 wrong username or password', open(srv.log.name, encoding='utf-8').read())
+
+    def test_request_log_names_the_visitor(self):
+        srv = self.servers['trusted']
+        srv.request('/api/health', headers={'CF-Connecting-IP': '198.51.100.99'})
+        log = open(srv.log.name, encoding='utf-8').read()
+        self.assertIn('198.51.100.99 "GET /api/health', log)
+
     def test_header_ignored_from_anywhere_else(self):
         srv = self.servers['other']
         with ThreadPoolExecutor(10) as pool:     # every guess pretends to be someone new

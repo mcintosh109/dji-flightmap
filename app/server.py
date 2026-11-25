@@ -199,7 +199,7 @@ class Handler(SimpleHTTPRequestHandler):
         is_api = getattr(self, "path", "").startswith("/api/")
         is_error = len(args) > 1 and str(args[1])[:1] in "45"
         if is_api or is_error:
-            log(f"{self.address_string()} {fmt % args}")
+            log(f"{self.client_ip()} {fmt % args}")
 
     def send_json(self, obj, status=200):
         body = json.dumps(obj, separators=(",", ":")).encode("utf-8")
@@ -230,9 +230,10 @@ class Handler(SimpleHTTPRequestHandler):
         from the tunnel address set in Settings (and only those: anyone could
         write the header), Cloudflare's CF-Connecting-IP names the visitor."""
         peer = self.client_address[0]
-        if peer.removeprefix("::ffff:") in tunnel_peers():
+        headers = getattr(self, "headers", None)   # not there yet for a garbled request line
+        if headers is not None and peer.removeprefix("::ffff:") in tunnel_peers():
             try:
-                return str(ipaddress.ip_address(self.headers.get("CF-Connecting-IP", "").strip()))
+                return str(ipaddress.ip_address(headers.get("CF-Connecting-IP", "").strip()))
             except ValueError:
                 pass
         return peer

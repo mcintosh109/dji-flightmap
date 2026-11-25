@@ -476,5 +476,18 @@ owner confirms it works**, release it with a tag (`git tag -a vX.Y.Z` +
   once: 6 checked, 24 locked). An earlier run had ONE guess with a broken
   connection; not seen again, not reproduced here: if it returns, ask for
   the curl exit code the check prints before changing the server.
+- **Cloudflare Tunnel visitors** (5.4.2): the owner reaches the map from
+  outside through a Cloudflare Tunnel (cloudflared in its own container on
+  another Proxmox node, DHCP with a reservation). Every tunnel visitor came
+  from cloudflared's address = ONE shared lock-out (a stranger could lock the
+  owner out). `tunnelAddress` (Settings → Server; `tunnel_peers()`):
+  `Handler.client_ip()` reads `CF-Connecting-IP` ONLY for requests from those
+  addresses (anyone else could fake it). `auth.lockout_group()` counts IPv6
+  per /64 (a phone can rotate inside its block). The request log uses
+  `client_ip()` too. Confirmed on the owner's server (Nov 2026): the log
+  showed the phone's address, not cloudflared's. Cloudflare Access (email
+  one-time PIN, already an identity provider on their account) was
+  recommended in front of the map; the owner gave Claude READ-ONLY Cloudflare
+  access: never change anything there. Tests: `LiveTunnelVisitors`.
 - Old installs had an `update-ct.sh` that could not download its own
   replacement; the current one does `git pull` and restarts itself.

@@ -705,6 +705,15 @@ carries the visits from Cloudflare to the map. Two things to set up:
    Cloudflare's `CF-Connecting-IP` note, and each visitor gets their own
    lock-out. The map believes that note **only** from the tunnel's address:
    anyone else could write it, to get a new lock-out for every guess.
+   Visitors on IPv6 are counted per *block* of addresses (a "/64"): an IPv6
+   phone or home can pick any of billions of addresses in its block, and a
+   new address must not mean 10 new tries.
+
+Use the tunnel computer's **IPv4** address (like `192.168.1.50`) if the
+tunnel's route points at the map's IPv4 address. Give it a **DHCP
+reservation** in your router (UniFi: *Fixed IP Address*), so it never
+changes. If it does change, nothing opens up: tunnel visitors just share one
+lock-out again until you update the box.
 
 To find the address, run this on the Proxmox server that runs
 `cloudflared` (replace `108` with its container number):
