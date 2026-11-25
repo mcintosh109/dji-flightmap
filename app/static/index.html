@@ -57,6 +57,22 @@
 
   <!-- Buttons in the top-right corner of the map -->
   <div id="map-tools">
+    <div class="addr-wrap">
+      <button id="btn-addr" class="chip icon-chip" type="button" aria-haspopup="true" aria-expanded="false"
+        title="Find an address" aria-label="Find an address">
+        <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M10 3a7 7 0 0 1 5.6 11.2l5.1 5.1-1.4 1.4-5.1-5.1A7 7 0 1 1 10 3Zm0 2a5 5 0 1 0 0 10 5 5 0 0 0 0-10Z"/></svg>
+      </button>
+      <div id="addr-panel" class="layers-panel addr-panel hidden" role="dialog" aria-label="Find an address">
+        <form id="addr-form" class="addr-form" role="search">
+          <input id="addr-q" type="search" placeholder="Address, town or place" autocomplete="off" enterkeyhint="search"
+            aria-label="Address, town or place" maxlength="200">
+          <button class="chip accent" type="submit">Find</button>
+        </form>
+        <div id="addr-results" aria-live="polite"><p class="addr-msg">Type an address and press Enter.</p></div>
+        <button id="addr-clear" class="chip hidden" type="button">Remove the pin</button>
+        <p id="addr-foot" class="layers-foot"></p>
+      </div>
+    </div>
     <div class="layers-wrap">
       <button id="btn-layers" class="chip" type="button" aria-haspopup="true" aria-expanded="false" title="Map layers">
         <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M12 3 2 8.5l10 5.5 10-5.5L12 3Zm-7.6 9.3L2 13.6 12 19l10-5.4-2.4-1.3L12 16.4l-7.6-4.1Z"/></svg>
@@ -252,5 +268,6 @@
   <script src="update-notice.js"></script>
   <script src="main.js"></script>
   <script src="planner.js"></script>
+  <script src="address.js"></script>
 </body>
 </html>

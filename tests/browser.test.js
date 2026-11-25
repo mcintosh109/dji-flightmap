@@ -70,6 +70,22 @@ async function startFakeAzure() {
   const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYGD4DwABBAEAwS2OUAAAAABJRU5ErkJggg==', 'base64');
   const server = http.createServer((req, res) => {
     const u = new URL(req.url, 'http://x');
+    // The address search: Azure's Get Geocoding, and (same fake) OpenStreetMap's Nominatim.
+    if (u.pathname === '/geocode' || u.pathname === '/search') {
+      got.geocodes = (got.geocodes || 0) + 1;
+      if (u.pathname === '/search') {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify([{ lat: '40.7812', lon: '-73.9665', display_name: 'Bow Bridge, Central Park, New York', addresstype: 'bridge' }]));
+      }
+      got.keys.add(u.searchParams.get('subscription-key'));
+      res.writeHead(200, { 'Content-Type': 'application/geo+json' });
+      return res.end(JSON.stringify({ type: 'FeatureCollection', features: [
+        { type: 'Feature', properties: { type: 'Address', address: { formattedAddress: '1 Park Loop, New York, NY 10024' } },
+          geometry: { type: 'Point', coordinates: [-73.9665, 40.7812] }, bbox: [-73.9670, 40.7808, -73.9660, 40.7816] },
+        { type: 'Feature', properties: { type: 'PopulatedPlace', address: { formattedAddress: '<img src=x onerror="window.HACKED=5">Evil town' } },
+          geometry: { type: 'Point', coordinates: [-73.99, 40.73] } },
+      ] }));
+    }
     got.keys.add(u.searchParams.get('subscription-key'));
     if (u.pathname === '/search/nearby/json') {
       got.searches++;
@@ -259,7 +275,7 @@ function fakeInternet(ctx, { github = null } = {}) {
   const osm = await startFakeOverpass();
   const google = await startFakeGoogle();
   const app = await startServer(archive, { AZURE_MAPS_URL: azure.base, OVERPASS_URL: osm.url,
-    GOOGLE_TILES_URL: google.base, GOOGLE_PLACES_URL: google.base });
+    GOOGLE_TILES_URL: google.base, GOOGLE_PLACES_URL: google.base, NOMINATIM_URL: azure.base });
   const browser = await chromium.launch();
   const servers = [app];
   try {
@@ -284,6 +300,51 @@ function fakeInternet(ctx, { github = null } = {}) {
     const credit = await page.textContent('#map .leaflet-control-attribution');
     check('Azure credit shows clean text, once', credit.includes('©2026 TomTom') && credit.split('TomTom').length === 2 && !credit.includes('<a'), credit);
     check('code inside the credit does not run', !(await page.evaluate(() => window.HACKED)));
+
+    // ---- 1b. address search ----
+    console.log('Address search');
+    const addrBox = await page.locator('#btn-addr').boundingBox();
+    check('the address search is one small button in the top-right corner (the box is hidden)',
+      addrBox && addrBox.width <= 40 && addrBox.x > 1000 && !(await page.isVisible('#addr-panel')), JSON.stringify(addrBox));
+    await page.click('#btn-addr');
+    await page.waitForTimeout(200);
+    check('clicking it opens the search box, ready to type', await page.isVisible('#addr-panel')
+      && await page.evaluate(() => document.activeElement.id === 'addr-q'));
+    await page.fill('#addr-q', 'ab');
+    await page.press('#addr-q', 'Enter');
+    await page.waitForTimeout(200);
+    check('a too-short search asks for more letters (nothing is sent)',
+      (await page.textContent('#addr-results')).includes('at least 3 letters') && !azure.got.geocodes);
+    await page.fill('#addr-q', '1 Park Loop');
+    await page.press('#addr-q', 'Enter');
+    await page.waitForSelector('.addr-result', { timeout: 5000 }).catch(() => {});
+    check('Enter searches, through our server: the answers are listed', (await page.locator('.addr-result').count()) === 2
+      && (await page.textContent('#addr-results')).includes('1 Park Loop, New York') && azure.got.geocodes === 1,
+      await page.textContent('#addr-results'));
+    check('a name with code in it shows as text and does not run',
+      (await page.textContent('#addr-results')).includes('<img src=x') && !(await page.evaluate(() => window.HACKED)));
+    check('it says where the addresses come from (Azure Maps)', (await page.textContent('#addr-foot')).includes('Azure Maps'));
+    if (process.env.SHOTS) await page.screenshot({ path: path.join(process.env.SHOTS, 'desktop-results.png') });
+    await page.click('.addr-result >> nth=0');
+    await page.waitForTimeout(900);
+    const at = await page.evaluate(() => ({ c: map.getCenter(), z: map.getZoom(), pins: document.querySelectorAll('.addr-pin').length,
+      label: document.querySelector('.addr-label')?.textContent, clickable: !!document.querySelector('.addr-pin.leaflet-interactive') }));
+    check('picking one goes there, close up, with a pin and its name', at.pins === 1 && at.label === '1 Park Loop'
+      && at.z >= 16 && Math.abs(at.c.lat - 40.7812) < 0.01 && Math.abs(at.c.lng + 73.9665) < 0.02, JSON.stringify(at));
+    if (process.env.SHOTS) await page.screenshot({ path: path.join(process.env.SHOTS, 'desktop-pin.png') });
+    check('...the search box closes, and the pin lets clicks through (for waypoints)', !(await page.isVisible('#addr-panel')) && !at.clickable);
+    await page.click('#btn-addr');
+    await page.click('#btn-layers');
+    await page.waitForTimeout(200);
+    check('only one panel at a time: Layers closes the search box', !(await page.isVisible('#addr-panel')) && await page.isVisible('#layers-panel'));
+    await page.click('#btn-addr');
+    await page.waitForTimeout(200);
+    check('...and the search box closes Layers', await page.isVisible('#addr-panel') && !(await page.isVisible('#layers-panel')));
+    await page.click('#addr-clear');
+    check('"Remove the pin" removes it', (await page.locator('.addr-pin').count()) === 0 && !(await page.isVisible('#addr-clear')));
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(200);
+    check('Esc closes the search box', !(await page.isVisible('#addr-panel')));
 
     // ---- 2. layers panel ----
     console.log('Layers panel');
@@ -866,6 +927,12 @@ function fakeInternet(ctx, { github = null } = {}) {
     const box = await page.locator('#panel').boundingBox();
     check('panel sits at the bottom on a phone', Math.round(box.y + box.height) === 844 && box.height < 844 * 0.5, JSON.stringify(box));
     check('no sideways scrolling on a phone', await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth));
+    await page.click('#btn-addr');
+    await page.waitForTimeout(200);
+    const addrPanel = await page.locator('#addr-panel').boundingBox();
+    check('the address search box fits on a phone screen', addrPanel && addrPanel.x >= 0 && addrPanel.x + addrPanel.width <= 390,
+      JSON.stringify(addrPanel));
+    if (process.env.SHOTS) await page.screenshot({ path: path.join(process.env.SHOTS, 'phone-search.png') });
     await ctx.close();
 
     // ---- 7. login ----

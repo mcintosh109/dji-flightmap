@@ -354,6 +354,8 @@ class FakeAzure:
         self.cache_control = None     # Cache-Control header to send with pictures
         self.fail_next = 0            # answer this many requests with 503 first (a busy moment)
         self.search_status = 200      # answer for places searches (e.g. 400: switched off)
+        self.geocode_status = 200     # answer for address searches
+        self.geocodes = []            # the address searches asked (their query parameters)
         outer = self
 
         class Handler(http.server.BaseHTTPRequestHandler):
@@ -377,6 +379,27 @@ class FakeAzure:
                     self.send_response(503)
                     self.send_header('Content-Length', '0')
                     self.end_headers()
+                    return
+                if u.path == '/geocode':
+                    # Like Get Geocoding 2026-01-01 (a made-up answer near Central Park).
+                    outer.geocodes.append({k: v[0] for k, v in q.items()})
+                    features = [
+                        {'type': 'Feature', 'properties': {
+                            'address': {'formattedAddress': '1 Park Loop, New York, NY 10024', 'countryRegion': {'name': 'United States'}},
+                            'type': 'Address', 'confidence': 'High'},
+                         'geometry': {'type': 'Point', 'coordinates': [-73.9665, 40.7812]},
+                         'bbox': [-73.9670, 40.7808, -73.9660, 40.7816]},
+                        {'type': 'Feature', 'properties': {'address': {'formattedAddress': 'New York, NY', 'locality': 'New York'},
+                                                           'type': 'PopulatedPlace'},
+                         'geometry': {'type': 'Point', 'coordinates': [-73.99, 40.73]}, 'bbox': [-74.26, 40.49, -73.70, 40.92]},
+                        {'type': 'Feature', 'properties': {'address': {'formattedAddress': 'No point'}}, 'geometry': {}},
+                    ]
+                    body = json.dumps({'type': 'FeatureCollection', 'features': features}).encode()
+                    self.send_response(outer.geocode_status)
+                    self.send_header('Content-Type', 'application/geo+json')
+                    self.send_header('Content-Length', str(len(body)))
+                    self.end_headers()
+                    self.wfile.write(body)
                     return
                 if u.path == '/search/nearby/json':
                     # Places around Central Park (made up), like Search v1 answers.
@@ -649,6 +672,146 @@ class FakeOverpass:
 
     def stop(self):
         self.server.shutdown()
+
+
+class FakeNominatim:
+    """A pretend OpenStreetMap Nominatim (the free address search)."""
+
+    def __init__(self):
+        import http.server
+        import threading
+        from urllib.parse import parse_qs, urlparse
+        self.asked = []            # (time, query parameters, User-Agent)
+        self.status = 200
+        outer = self
+
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def do_GET(self):
+                u = urlparse(self.path)
+                outer.asked.append((time.monotonic(), {k: v[0] for k, v in parse_qs(u.query).items()},
+                                    self.headers.get('User-Agent', '')))
+                places = [
+                    {'lat': '40.7812', 'lon': '-73.9665', 'display_name': '<b>Bow</b> Bridge, Central Park, New York, United States',
+                     'addresstype': 'bridge', 'boundingbox': ['40.7810', '40.7814', '-73.9668', '-73.9662']},
+                    {'lat': 'x', 'lon': '1', 'display_name': 'Broken'},
+                    {'lat': '40.0', 'lon': '-74.0', 'display_name': ''},
+                ]
+                body = json.dumps(places if u.path == '/search' else []).encode()
+                self.send_response(outer.status)
+                self.send_header('Content-Type', 'application/json')
+                self.send_header('Content-Length', str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def log_message(self, *args):
+                pass
+
+        self.server = http.server.ThreadingHTTPServer(('127.0.0.1', 0), Handler)
+        self.url = f'http://127.0.0.1:{self.server.server_address[1]}'
+        threading.Thread(target=self.server.serve_forever, daemon=True).start()
+
+    def stop(self):
+        self.server.shutdown()
+
+
+class LiveGeocode(unittest.TestCase):
+    """The address search: Azure Maps with the Azure map, otherwise OpenStreetMap."""
+    KEY = 'SECRET-AZURE-KEY-GEO'
+
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = tempfile.mkdtemp(prefix='flightmap-test-')
+        cls.state = os.path.join(cls.tmp, 'state')
+        os.makedirs(cls.state)
+        os.makedirs(os.path.join(cls.tmp, 'archive'))
+        cls.azure = FakeAzure(cls.KEY)
+        cls.osm = FakeNominatim()
+        cls.srv = LiveServer(os.path.join(cls.tmp, 'archive'), cls.state,
+                             AZURE_MAPS_URL=cls.azure.url, NOMINATIM_URL=cls.osm.url)
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.srv.stop()
+        cls.azure.stop()
+        cls.osm.stop()
+        shutil.rmtree(cls.tmp, ignore_errors=True)
+
+    def find(self, q, lat=40.78, lon=-73.96):
+        from urllib.parse import quote
+        status, _, body = self.srv.request(f'/api/geocode?q={quote(q)}&lat={lat}&lon={lon}')
+        return status, json.loads(body), body
+
+    def test_azure_with_the_azure_map(self):
+        self.srv.put_settings({'mapProvider': 'azure', 'azureMapsKey': self.KEY})
+        status, answer, body = self.find('1 Park Loop, New York')
+        self.assertEqual((status, answer['source']), (200, 'azure'))
+        self.assertNotIn(self.KEY.encode(), body, 'the key stays on the server')
+        first, town = answer['results']
+        self.assertEqual((first['name'], first['lat'], first['lon']), ('1 Park Loop, New York, NY 10024', 40.7812, -73.9665))
+        self.assertEqual(first['box'], [40.7808, -73.967, 40.7816, -73.966], 'south, west, north, east')
+        self.assertEqual(first['detail'], 'Address, United States')
+        self.assertEqual(town['detail'], 'Town or city')
+        self.assertEqual(len(answer['results']), 2, 'an answer without a point is left out')
+        asked = self.azure.geocodes[-1]
+        self.assertEqual((asked['api-version'], asked['query'], asked['coordinates'], asked['top']),
+                         ('2026-01-01', '1 Park Loop, New York', '-74.0,40.8', '5'),
+                         'the current Search API, with the middle of the map (longitude first)')
+        # The same search again is remembered: Azure is not asked again.
+        before = len(self.azure.geocodes)
+        status, again, _ = self.find('1  park loop, new york')
+        self.assertEqual((status, again.get('remembered'), len(self.azure.geocodes)), (200, True, before))
+
+    def test_azure_failing_or_used_up_falls_back_to_openstreetmap(self):
+        self.srv.put_settings({'mapProvider': 'azure', 'azureMapsKey': self.KEY})
+        self.azure.geocode_status = 500
+        try:
+            status, answer, _ = self.find('Bow Bridge fallback')
+        finally:
+            self.azure.geocode_status = 200
+        self.assertEqual((status, answer['source']), (200, 'osm'))
+        self.assertIn('Azure Maps answered 500', answer['note'])
+        with open(os.path.join(self.state, 'azure-geocode-usage.json'), 'w') as fh:
+            json.dump({'day': time.strftime('%Y-%m-%d'), 'count': 200}, fh)
+        try:
+            before = len(self.azure.geocodes)
+            status, answer, _ = self.find('Bow Bridge used up')
+            self.assertEqual((status, answer['source'], len(self.azure.geocodes)), (200, 'osm', before))
+            self.assertIn('used up', answer['note'])
+        finally:
+            os.remove(os.path.join(self.state, 'azure-geocode-usage.json'))
+
+    def test_openstreetmap_with_other_maps(self):
+        self.srv.put_settings({'mapProvider': 'free'})
+        before = len(self.azure.geocodes)
+        status, answer, _ = self.find('Bow Bridge')
+        self.assertEqual((status, answer['source'], len(self.azure.geocodes)), (200, 'osm', before), 'Azure not asked')
+        self.assertEqual(answer['results'], [{'name': '<b>Bow</b> Bridge, Central Park, New York, United States',
+                                              'detail': 'Bridge', 'lat': 40.7812, 'lon': -73.9665,
+                                              'box': [40.781, -73.9668, 40.7814, -73.9662]}],
+                         'broken answers are left out (the page shows names as text, not HTML)')
+        _, params, agent = self.osm.asked[-1]
+        self.assertTrue(agent.startswith('dji-flightmap/'), 'Nominatim wants a User-Agent naming the app')
+        self.assertEqual((params['q'], params['format'], params['viewbox']), ('Bow Bridge', 'jsonv2', '-75.0,41.8,-73.0,39.8'))
+        self.assertNotIn('subscription-key', params)
+
+    def test_at_most_one_openstreetmap_search_a_second(self):
+        self.srv.put_settings({'mapProvider': 'free'})
+        self.find('Gap test one')
+        self.find('Gap test two')
+        (t1, _, _), (t2, _, _) = self.osm.asked[-2:]
+        self.assertGreaterEqual(t2 - t1, 1.0)
+
+    def test_bad_searches(self):
+        self.assertEqual(self.find('ab')[0], 400, 'at least 3 letters')
+        self.assertEqual(self.srv.request('/api/geocode?q=Main+St&lat=north')[0], 400)
+        self.srv.put_settings({'mapProvider': 'free'})
+        self.osm.status = 503
+        try:
+            status, answer, _ = self.find('Nobody home')
+        finally:
+            self.osm.status = 200
+        self.assertEqual(status, 502)
+        self.assertIn('OpenStreetMap answered 503', answer['error'])
 
 
 class PlacesRules(unittest.TestCase):

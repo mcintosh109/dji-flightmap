@@ -70,9 +70,9 @@ another third-party library is ever bundled, add its notice there.
 | Path | What |
 |---|---|
 | `app/server.py` | Python, standard library only. Entry point: the `Handler` class (every web address) and start-up. |
-| `app/flightmap/` | One module per job: `config` (env + paths), `flightlogs` (read one log), `library` (all flights), `settings`, `plans`, `auth` (login), `azure` / `google` (key-hiding proxies), `upstream` (shared connection pool), `places` (OpenStreetMap places), `djifly` (DJI Fly .kmz), `rc2` (Send to RC 2 via the dock). Modules read the environment at import, so tests set env vars first and re-import. |
+| `app/flightmap/` | One module per job: `config` (env + paths), `flightlogs` (read one log), `library` (all flights), `settings`, `plans`, `auth` (login), `azure` / `google` (key-hiding proxies), `upstream` (shared connection pool), `places` (OpenStreetMap places), `geocode` (address search), `djifly` (DJI Fly .kmz), `rc2` (Send to RC 2 via the dock). Modules read the environment at import, so tests set env vars first and re-import. |
 | `app/version.json` | Version number + "what's new" notes. The page compares it with GitHub to show the update notice. |
-| `app/static/` | Classic scripts sharing globals, loaded in this order by `index.html`: `common.js` (helpers), `updates.js`, `maps.js` (providers/layers), `app.js` (state, formatting, map, icons), `layers.js`, `places.js` (shops/schools/parks layer), `overview.js` (sidebar + all flights), `flight.js` (open flight + replay), `update-notice.js`, `main.js` (refresh + start), `planner.js`. Each file wires its own buttons at the bottom. Also `settings.*`, `login.html` (self-contained), `style.css`, `vendor/leaflet` (1.9.4). |
+| `app/static/` | Classic scripts sharing globals, loaded in this order by `index.html`: `common.js` (helpers), `updates.js`, `maps.js` (providers/layers), `app.js` (state, formatting, map, icons), `layers.js`, `places.js` (shops/schools/parks layer), `overview.js` (sidebar + all flights), `flight.js` (open flight + replay), `update-notice.js`, `main.js` (refresh + start), `planner.js`, `address.js` (address search). Each file wires its own buttons at the bottom. Also `settings.*`, `login.html` (self-contained), `style.css`, `vendor/leaflet` (1.9.4). |
 | `deploy/` | `easy-install.sh` (host, the one-command install that runs the others), `nas-watch.sh` (host, every minute, reconnects the NAS) + `nas-view.sh`, `setup-truenas-mount.sh`, `create-ct.sh` (host), `install.sh` (in container), `update-ct.sh` + `restore-ct.sh` + `ct-backup.sh` (host), `set-login.sh` (container). |
 | `tests/` | `run-all.sh` runs everything (privacy, syntax + ruff/shellcheck when installed, server, browser, update scripts). See `tests/README.md`. |
 
@@ -341,5 +341,18 @@ owner confirms it works**, release it with a tag (`git tag -a vX.Y.Z` +
   + `tests/test-sync.sh`. First real send (24 Nov 2026): the 2-minute
   check wrote a route into slot 1 over MTP (jmtpfs), read it back
   ("Written to the RC 2 and checked"), and the map showed it done.
+- **Address search** (5.3.0, owner's wish: "does not take up room on the
+  map"): a magnifying-glass chip first in `#map-tools`, its panel drops down
+  (`.addr-wrap` is NOT position:relative, so the panel lines up with the
+  tools' right edge and fits on a phone). `/api/geocode?q=&lat=&lon=`
+  (`flightmap/geocode.py`): with the Azure provider + key, Azure **Get
+  Geocoding** `api-version=2026-01-01` (`coordinates` = lon,lat; GeoJSON
+  answer, bbox W,S,E,N), max 200 a day (`azure-geocode-usage.json`), then or
+  on any Azure error OpenStreetMap **Nominatim** (`NOMINATIM_URL`): own
+  User-Agent, >= 1.1 s between searches, `viewbox` ~1° to prefer nearby,
+  only on Enter (no type-ahead). Answers remembered in memory a day
+  (fallback answers are not). The pin is `interactive: false` so waypoints
+  can go on it. The Nominatim policy page was not reachable from Claude's
+  sandbox (Nov 2026): rules taken from search results.
 - Old installs had an `update-ct.sh` that could not download its own
   replacement; the current one does `git pull` and restarts itself.

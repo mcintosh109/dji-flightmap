@@ -15,6 +15,7 @@
     update-notice.js  the version number, update notice and Updates window
     main.js           loading data from the server, and start-up
     planner.js        the flight planner
+    address.js        the address search (magnifying glass, top right)
 
   The server (server.py) provides the data:
     GET api/flights        -> every flight, summaries only

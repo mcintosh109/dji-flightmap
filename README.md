@@ -205,13 +205,40 @@ Open the address the script printed, for example `http://192.168.1.50:8080`.
   bright and the rest faint. **Follow** keeps the map centred on the drone;
   dragging the map turns it off.
   Keyboard: **Space** = play/pause, **← →** = skip, **F** = follow, **Esc** = close.
-- Top-right: the **layers button** (Road, Satellite, Dark, Terrain, each
+- Top-right: the **magnifying glass** (find an address, see below), the
+  **layers button** (Road, Satellite, Dark, Terrain, each
   with a small picture of your area, plus **Details** for road and place names
   on satellite, and **Places**), ft/mph ↔ m/km/h, and show everything.
 - Top of the left panel: ⚙ opens **Settings**, ↻ checks TrueNAS for new
   flights right away, and the door icon signs you out (when the login is on).
 
 When the dock adds new flights, they show up within about a minute.
+
+### Finding an address
+
+To plan a flight somewhere new, go there on the map by its address:
+
+1. Click the **magnifying glass** (top right, left of **Layers**). A search
+   box opens. It closes again by itself, so it takes no room on the map.
+2. Type an address, a town or a landmark, for example
+   `12 Main St, Springfield, IL`, and press **Enter** (or **Find**).
+3. Click the right answer in the list. The map goes there, close up, and puts
+   a **red pin** with the name on it.
+4. Plan as usual: the pin lets clicks through, so you can put a waypoint
+   right on it. **Remove the pin** (in the search box) takes it away.
+
+- Answers near the part of the map you're looking at come first. If the
+  right one isn't listed, add the town or the state.
+- **With Azure Maps as the provider, the addresses come from Azure Maps**
+  (its *Get Geocoding* search; your key stays on the server). At most 200
+  searches a day are sent to Azure; searching the same thing again within a
+  day costs nothing. After that, or if Azure doesn't answer, OpenStreetMap is
+  asked instead, and the box says so.
+- **With the other providers, the addresses come from OpenStreetMap** (its
+  free *Nominatim* search). It's a shared, free service, so it only searches
+  when you press Enter, never while you type.
+- It finds where a place is. It doesn't say whether you may fly there: check
+  airspace and local rules as always.
 
 ### Places: what is around you
 
@@ -804,6 +831,14 @@ You opened the map by an address the certificate doesn't cover (the
 settings page lists them). Use one of those, or put the new name in
 Settings → Secure connection and press Save.
 
+**The address search says "not available right now"**
+
+The map server couldn't reach the search service. The container needs
+internet access to `atlas.microsoft.com` (Azure) or
+`nominatim.openstreetmap.org` (OpenStreetMap). Try again in a minute; the
+lines starting with `Address search:` in the map server's log (see *Places
+don't show up* below for the command) say why.
+
 **Places don't show up**
 
 - Zoom in further: places only appear at about street level.
@@ -912,6 +947,7 @@ SCAN_SECONDS=30             # starting value; change it on the settings page
 CACHE_FILE=/var/lib/dji-flightmap/summaries.json
 SESSION_DAYS=30             # starting value; change it on the settings page
 OVERPASS_URL=...            # optional: OpenStreetMap Overpass servers for Places, comma-separated
+NOMINATIM_URL=...           # optional: the OpenStreetMap address search server
 AUTH_USER=...               # added by set-login.sh
 AUTH_PASSWORD_HASH=...      # added by set-login.sh
 ```
@@ -945,6 +981,8 @@ pct exec 105 -- systemctl restart dji-flightmap
 | `app/static/common.js` | Tiny helpers every page shares | |
 | `app/static/app.js` | What the map scripts share: the page's state, number formatting, the map and its icons | *"leafletjs"* |
 | `app/static/layers.js` | The layers button (Road / Satellite / Dark / Terrain) | |
+| `app/static/address.js` | The address search: the magnifying glass, the answers, the pin | *"Leaflet fitBounds"*, *"AbortController"* |
+| `app/flightmap/geocode.py` | Finds an address: Azure Maps with the Azure map (daily limit), otherwise OpenStreetMap; at most 1 OpenStreetMap search a second, answers remembered a day | *"Azure Maps Get Geocoding"*, *"Nominatim usage policy"*, *"geocoding"* |
 | `app/static/places.js` | Shops, schools, parks… on the map, drawn only for the area on screen | *"Leaflet divIcon"*, *"map tiles"* |
 | `app/flightmap/places.py` | Asks OpenStreetMap for places, sorts them into kinds and remembers them for a week | *"Overpass API"*, *"Overpass QL"* |
 | `app/static/overview.js` | The sidebar lists and the overview of all flights | *"leaflet polyline"* |

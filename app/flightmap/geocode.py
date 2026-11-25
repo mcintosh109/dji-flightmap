@@ -1,0 +1,224 @@
+"""Address search: type an address (or a town, a landmark) and get the places
+on the map that match it, so the map can go there for planning.
+
+Where the answers come from:
+  - With the Azure Maps provider and a saved key: Azure's "Get Geocoding"
+        GET https://atlas.microsoft.com/geocode?api-version=2026-01-01&query=...
+    (research: "Azure Maps Get Geocoding"). It is the current Search API
+    (not the old v1 that Azure places use). Each search is one billable
+    transaction after Azure's free monthly amount, so there is a daily limit
+    (DAILY_LIMIT); after it, or if Azure fails, OpenStreetMap is asked.
+  - Otherwise: OpenStreetMap's free Nominatim server
+        GET https://nominatim.openstreetmap.org/search?q=...&format=jsonv2
+    (research: "Nominatim usage policy"). Its rules (as found in Nov 2026;
+    the policy page itself was not reachable from Claude's sandbox): at most
+    1 search per second in total, a User-Agent that names the app (a stock
+    one is refused), light use with answers remembered, and the credit
+    "© OpenStreetMap contributors". So the page only searches when Enter is
+    pressed (no search-as-you-type), this server leaves at least 1 second
+    between searches, and answers are remembered.
+  - Google is not used: the owner's Google key is kept to Map Tiles and
+    Places, and OpenStreetMap's data may be shown on any map.
+
+Answers are remembered in memory for a day (both companies allow it), so
+searching the same thing again costs nothing.
+"""
+import json
+import os
+import threading
+import time
+from urllib.parse import quote, urlencode
+
+from .config import APP_VERSION, AZURE_MAPS_URL, STATE_DIR, log
+from .settings import current_settings
+from .upstream import Upstream
+
+NOMINATIM_URL = os.environ.get("NOMINATIM_URL", "https://nominatim.openstreetmap.org").rstrip("/")
+AZURE = Upstream(AZURE_MAPS_URL, timeout=10)
+OSM = Upstream(NOMINATIM_URL, timeout=10)
+USER_AGENT = f"dji-flightmap/{APP_VERSION} (self-hosted flight log map)"
+USAGE_FILE = os.path.join(STATE_DIR, "azure-geocode-usage.json")
+DAILY_LIMIT = 200          # Azure address searches a day (then OpenStreetMap is asked)
+TOP = 5                    # answers per search
+MAX_QUERY = 200            # characters
+REMEMBER_S = 24 * 3600
+REMEMBER_MAX = 300
+OSM_GAP_S = 1.1            # Nominatim: at most 1 search per second
+
+_lock = threading.Lock()           # the remembered answers and the daily count
+_osm_lock = threading.Lock()       # one Nominatim search at a time
+_osm_last = 0.0
+_remembered = {}                   # key -> (time, answer)
+
+
+def search(query, lat=None, lon=None):
+    """Up to 5 places matching `query`. lat/lon (the middle of the map) make
+    nearby answers come first. Returns (answer dict, HTTP status)."""
+    query = " ".join(str(query or "").split())[:MAX_QUERY]
+    if len(query) < 3:
+        return {"error": "type at least 3 letters"}, 400
+    near = None
+    if lat is not None and lon is not None and -90 <= lat <= 90 and -180 <= lon <= 180:
+        near = (round(lat, 1), round(lon, 1))      # ~10 km: nearby views share an answer
+    settings = current_settings()
+    use_azure = settings.get("mapProvider") == "azure" and bool(settings.get("azureMapsKey"))
+    key = f"{'azure' if use_azure else 'osm'}|{query.lower()}|{near}"
+    with _lock:
+        hit = _remembered.get(key)
+        if hit and time.time() - hit[0] < REMEMBER_S:
+            return dict(hit[1], remembered=True), 200
+    answer, note = None, ""
+    if use_azure:
+        try:
+            answer = _azure(query, near, settings["azureMapsKey"])
+        except _Skip as why:
+            note = str(why)
+            log(f"Address search: {why}; asking OpenStreetMap instead")
+    if answer is None:
+        try:
+            answer = _osm(query, near)
+        except _Skip as why:
+            log(f"Address search: {why}")
+            return {"error": f"the address search is not available right now ({why})"}, 502
+    if note:
+        # Azure couldn't answer: not remembered, so Azure is asked again next time.
+        answer["note"] = note
+        return answer, 200
+    with _lock:
+        _remembered[key] = (time.time(), answer)
+        if len(_remembered) > REMEMBER_MAX:
+            for old in sorted(_remembered, key=lambda k: _remembered[k][0])[:len(_remembered) - REMEMBER_MAX]:
+                del _remembered[old]
+    return answer, 200
+
+
+class _Skip(Exception):
+    """This source can't answer now (the reason is the message)."""
+
+
+# ---- Azure Maps -------------------------------------------------------------------------------
+def _azure(query, near, key):
+    with _lock:
+        _count_one()
+    params = {"api-version": "2026-01-01", "query": query, "top": TOP, "subscription-key": key}
+    if near:
+        params["coordinates"] = f"{near[1]},{near[0]}"     # Azure wants longitude first
+    try:
+        status, _, body, _ = AZURE.request("GET", "/geocode?" + urlencode(params, quote_via=quote),
+                                           headers={"Accept-Language": "en-US"})
+    except OSError:
+        raise _Skip("could not reach Azure Maps") from None
+    if status != 200:
+        raise _Skip(f"Azure Maps answered {status}")
+    try:
+        features = json.loads(body).get("features") or []
+    except (ValueError, AttributeError):
+        raise _Skip("Azure Maps sent something unexpected") from None
+    results = [r for r in (_azure_result(f) for f in features) if r]
+    return {"results": results[:TOP], "source": "azure"}
+
+
+def _azure_result(feature):
+    if not isinstance(feature, dict):
+        return None
+    props = feature.get("properties") or {}
+    coords = (feature.get("geometry") or {}).get("coordinates") or []
+    if len(coords) < 2 or not all(isinstance(c, (int, float)) for c in coords[:2]):
+        return None
+    addr = props.get("address") or {}
+    name = str(addr.get("formattedAddress") or addr.get("addressLine") or addr.get("locality") or "").strip()
+    if not name:
+        return None
+    country = str((addr.get("countryRegion") or {}).get("name", "")).strip()
+    result = {"name": name[:150], "detail": _kind(props.get("type")), "lat": round(coords[1], 6),
+              "lon": round(coords[0], 6)}
+    if country and country not in name:
+        result["detail"] = ", ".join(x for x in (result["detail"], country) if x)
+    box = feature.get("bbox")
+    if isinstance(box, list) and len(box) == 4 and all(isinstance(c, (int, float)) for c in box):
+        result["box"] = [round(box[1], 6), round(box[0], 6), round(box[3], 6), round(box[2], 6)]   # S, W, N, E
+    return result
+
+
+AZURE_KINDS = {"Address": "Address", "RoadBlock": "Street", "RoadIntersection": "Crossroads",
+               "Neighborhood": "Neighborhood", "PopulatedPlace": "Town or city", "Postcode1": "Postal code",
+               "AdminDivision1": "State or region", "AdminDivision2": "County", "CountryRegion": "Country",
+               "PointOfInterest": "Place", "LandmarkBuilding": "Landmark"}
+
+
+def _kind(code):
+    return AZURE_KINDS.get(str(code or ""), "")
+
+
+def _today():
+    return time.strftime("%Y-%m-%d")
+
+
+def _count_one():
+    """Count one Azure search, or skip Azure when today's limit is used. (Called with _lock held.)"""
+    try:
+        with open(USAGE_FILE, encoding="utf-8") as fh:
+            saved = json.load(fh)
+        used = int(saved.get("count", 0)) if saved.get("day") == _today() else 0
+    except (OSError, ValueError, AttributeError, TypeError):
+        used = 0
+    if used >= DAILY_LIMIT:
+        raise _Skip(f"today's {DAILY_LIMIT} Azure address searches are used up")
+    try:
+        os.makedirs(STATE_DIR, exist_ok=True)
+        tmp = USAGE_FILE + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as fh:
+            json.dump({"day": _today(), "count": used + 1}, fh)
+        os.replace(tmp, USAGE_FILE)
+    except OSError as err:
+        raise _Skip(f"could not save today's count of Azure searches: {err}") from None
+
+
+# ---- OpenStreetMap (Nominatim) -------------------------------------------------------------------
+def _osm(query, near):
+    global _osm_last
+    params = {"q": query, "format": "jsonv2", "limit": TOP, "addressdetails": 0}
+    if near:
+        # Prefer (not limit to) an area about 100 km around the map's middle.
+        lat, lon = near
+        params["viewbox"] = f"{lon - 1},{lat + 1},{lon + 1},{lat - 1}"
+    with _osm_lock:
+        wait = _osm_last + OSM_GAP_S - time.monotonic()
+        if wait > 0:
+            time.sleep(wait)
+        try:
+            status, _, body, _ = OSM.request("GET", "/search?" + urlencode(params, quote_via=quote),
+                                             headers={"User-Agent": USER_AGENT, "Accept-Language": "en"})
+        except OSError:
+            raise _Skip("could not reach OpenStreetMap") from None
+        finally:
+            _osm_last = time.monotonic()
+    if status != 200:
+        raise _Skip(f"OpenStreetMap answered {status}" + (" (too many searches, wait a minute)" if status == 429 else ""))
+    try:
+        found = json.loads(body)
+    except ValueError:
+        raise _Skip("OpenStreetMap sent something unexpected") from None
+    results = [r for r in (_osm_result(p) for p in (found if isinstance(found, list) else [])) if r]
+    return {"results": results[:TOP], "source": "osm"}
+
+
+def _osm_result(place):
+    if not isinstance(place, dict):
+        return None
+    try:
+        lat, lon = float(place["lat"]), float(place["lon"])
+    except (KeyError, TypeError, ValueError):
+        return None
+    name = str(place.get("display_name", "")).strip()
+    if not name:
+        return None
+    kind = str(place.get("addresstype") or place.get("type") or "").replace("_", " ")
+    result = {"name": name[:150], "detail": kind[:1].upper() + kind[1:40], "lat": round(lat, 6), "lon": round(lon, 6)}
+    box = place.get("boundingbox")
+    try:
+        s, n, w, e = (float(x) for x in box)
+        result["box"] = [round(s, 6), round(w, 6), round(n, 6), round(e, 6)]   # S, W, N, E
+    except (TypeError, ValueError):
+        pass
+    return result

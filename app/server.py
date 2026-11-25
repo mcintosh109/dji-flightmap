@@ -28,6 +28,7 @@ rest lives in the flightmap/ folder, one file per job:
   nas.py         checks the connection to the flight logs on the NAS
   djifly.py      a saved plan as a DJI Fly waypoint mission (.kmz)
   rc2.py         sending plans to the RC 2 through the dock (dji-rc2-dock)
+  geocode.py     the address search (Azure Maps, or OpenStreetMap's Nominatim)
 
 Settings are read from environment variables (see deploy/dji-flightmap.env):
   DATA_DIR      folder that holds the flight logs     (default: /srv/dji-logs)
@@ -65,6 +66,10 @@ Web addresses it answers:
   /api/azure-places?lat=&lon=&radius=
                         up to 100 Azure Maps places near that point (remembered
                         for 30 days; new searches count towards a daily limit)
+  /api/geocode?q=&lat=&lon=
+                        address search: up to 5 matching places, nearest the
+                        map's middle first (Azure with the Azure map, else
+                        OpenStreetMap; see flightmap/geocode.py)
   /api/places?x0=&x1=&y0=&y1=
                         places (shops, schools, parks...) in those map
                         squares, from OpenStreetMap (see flightmap/places.py)
@@ -118,7 +123,7 @@ from flightmap.auth import (COOKIE_NAME, PUBLIC_PATHS, hash_password, make_sessi
 from flightmap.azure import AZURE_TILESETS, azure_request, html_to_text
 from flightmap.config import (APP_VERSION, AUTH_ENABLED, AUTH_PASSWORD_HASH, AUTH_USER, DATA_DIR, HOST, PORT,
                               STATIC_DIR, VERSION_INFO, log)
-from flightmap import djifly, google, https, nas, rc2
+from flightmap import djifly, geocode, google, https, nas, rc2
 from flightmap.google import GOOGLE_SETS, google_credits, google_tile
 from flightmap.azplaces import search as azure_places_search
 from flightmap.gplaces import search as google_places_search
@@ -270,6 +275,8 @@ class Handler(SimpleHTTPRequestHandler):
             return self.google_places(azure_places_search)
         if path == "/api/places":
             return self.places()
+        if path == "/api/geocode":
+            return self.geocode()
         if path == "/api/nas":
             return self.send_json(nas.status(len(LIBRARY.listing()["flights"])))
         if path.startswith("/api/plans/") and path.endswith("/djifly.kmz"):
@@ -374,6 +381,17 @@ class Handler(SimpleHTTPRequestHandler):
         if not (-85 <= lat <= 85 and -180 <= lon <= 180 and 0 < radius <= 50000):
             return self.send_json({"error": "bad request"}, 400)
         answer, status = (search or google_places_search)(lat, lon, radius)
+        return self.send_json(answer, status)
+
+    # ---- the address search ---------------------------------------------------
+    def geocode(self):
+        q = parse_qs(urlparse(self.path).query)
+        try:
+            lat = float(q["lat"][0]) if q.get("lat") else None
+            lon = float(q["lon"][0]) if q.get("lon") else None
+        except ValueError:
+            return self.send_json({"error": "bad request"}, 400)
+        answer, status = geocode.search((q.get("q") or [""])[0], lat, lon)
         return self.send_json(answer, status)
 
     # ---- places from OpenStreetMap ------------------------------------------
