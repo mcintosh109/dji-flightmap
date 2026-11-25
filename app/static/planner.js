@@ -197,7 +197,11 @@ const Planner = (() => {
     const lat = plan.home.lat.toFixed(3), lon = plan.home.lon.toFixed(3);
     const key = `${lat},${lon},${plan.plannedFor.slice(0, 13)}`;
     if (key === weather.key && (weather.data || weather.error)) { renderWeather(); return; }
-    weather = { key, data: null, error: '', loading: true };
+    // This request's own answer. If the time or place changes while it is
+    // on its way, a newer request replaces `weather`, and this answer is
+    // dropped instead of showing the wrong hour's wind and rain.
+    const mine = { key, data: null, error: '', loading: true };
+    weather = mine;
     renderWeather();
     try {
       const url = 'https://api.open-meteo.com/v1/forecast?' + new URLSearchParams({
@@ -205,19 +209,19 @@ const Planner = (() => {
         hourly: 'temperature_2m,precipitation_probability,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,wind_speed_80m,wind_speed_120m',
         daily: 'sunrise,sunset',
       });
+      const when = plan.plannedFor;   // read now: the plan may change while waiting
       const res = await fetch(url);
       if (!res.ok) throw new Error(`weather service answered ${res.status}`);
       const d = await res.json();
       // Times come back in the place's local time, e.g. "2026-11-20T15:00".
-      const hour = plan.plannedFor.slice(0, 13);
+      const hour = when.slice(0, 13);
       const i = (d.hourly?.time || []).findIndex((t) => t.startsWith(hour));
       if (i < 0) throw new Error('only the next 16 days can be forecast. Pick a time in that range');
       const h = d.hourly;
-      const day = (d.daily?.time || []).indexOf(plan.plannedFor.slice(0, 10));
+      const day = (d.daily?.time || []).indexOf(when.slice(0, 10));
       const sunrise = day >= 0 ? d.daily.sunrise[day] : null;
       const sunset = day >= 0 ? d.daily.sunset[day] : null;
-      const when = plan.plannedFor;
-      weather.data = {
+      mine.data = {
         at: {
           temp: h.temperature_2m[i], rain: h.precipitation_probability[i] ?? 0, sky: sky(h.weather_code[i]),
           wind10: h.wind_speed_10m[i], dir: h.wind_direction_10m[i], gusts: h.wind_gusts_10m[i],
@@ -227,10 +231,10 @@ const Planner = (() => {
         sunrise, sunset,
       };
     } catch (err) {
-      weather.error = err.message;
+      mine.error = err.message;
     }
-    weather.loading = false;
-    if (key === weather.key) { renderWeather(); renderStats(); }
+    mine.loading = false;
+    if (weather === mine && plan) { renderWeather(); renderStats(); }
   }
 
   function renderWeather() {
@@ -517,35 +521,62 @@ const Planner = (() => {
     return true;
   }
 
+  // One save at a time: a quick double click on a NEW plan used to save it
+  // twice (two copies in the list), because the first answer, with the
+  // plan's id, hadn't come back yet.
+  let saving = null;
   async function save() {
+    if (saving) return saving;
+    saving = saveNow();
+    $('#pl-save').disabled = true;
+    try { await saving; } finally { saving = null; $('#pl-save').disabled = false; }
+  }
+
+  async function saveNow() {
+    const saved = plan;
+    const sent = JSON.stringify(plan);
     setSaveMsg('Saving…');
     try {
       const res = await fetch(`api/plans/${plan.id || 'new'}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'flightmap' },
-        body: JSON.stringify(plan),
+        body: sent,
       });
       if (res.status === 401) { location.href = 'login.html'; return; }
       const data = await res.json();
+      if (plan !== saved) { await loadList(); return; }   // closed (or another plan opened) meanwhile
       if (!res.ok) { setSaveMsg(data.error || `Could not save (${res.status})`, 'error'); return; }
+      // Changed while the answer was on its way? Then those changes aren't saved yet.
+      const untouched = JSON.stringify(plan) === sent;
       plan.id = data.id;
-      plan.name = data.name;
-      dirty = false;
-      setSaveMsg('Saved ✓', 'ok');
-      $('#pl-name').value = plan.name;
       $('#pl-delete').classList.remove('hidden');
+      if (untouched) {
+        plan.name = data.name;
+        $('#pl-name').value = plan.name;
+        dirty = false;
+        setSaveMsg('Saved ✓', 'ok');
+      } else {
+        setSaveMsg('Unsaved changes', 'warn');
+      }
       await loadList();
     } catch (err) {
-      setSaveMsg(`Could not reach the server (${err.message})`, 'error');
+      if (plan === saved) setSaveMsg(`Could not reach the server (${err.message})`, 'error');
     }
   }
 
   async function remove() {
     if (!plan?.id || !confirm(`Delete the plan "${plan.name}"? This can't be undone.`)) return;
-    const res = await fetch(`api/plans/${plan.id}`, { method: 'DELETE', headers: { 'X-Requested-With': 'flightmap' } });
-    if (res.ok || res.status === 404) {
-      close({ ask: false });
-      await loadList();
+    try {
+      const res = await fetch(`api/plans/${plan.id}`, { method: 'DELETE', headers: { 'X-Requested-With': 'flightmap' } });
+      if (res.ok || res.status === 404) {
+        close({ ask: false });
+        await loadList();
+      } else {
+        const data = await res.json().catch(() => ({}));
+        setSaveMsg(`Could not delete: ${data.error || `the server answered ${res.status}`}`, 'error');
+      }
+    } catch (err) {
+      setSaveMsg(`Could not reach the server (${err.message})`, 'error');
     }
   }
 
@@ -913,7 +944,8 @@ const Planner = (() => {
 
     // Delete key removes the selected waypoint (when not typing in a box).
     document.addEventListener('keydown', (e) => {
-      if (!plan || e.target.matches('input, select, textarea')) return;
+      // Not while typing, and not behind the DJI Fly window (Backspace on its buttons).
+      if (!plan || e.target.matches('input, select, textarea') || $('#dj-dialog').open) return;
       if ((e.key === 'Delete' || e.key === 'Backspace') && selected >= 0) {
         e.preventDefault();
         removeWaypoint(selected);

@@ -273,6 +273,22 @@ class LiveFlights(unittest.TestCase):
         status, _, body = self.srv.request('/api/rescan', 'POST', headers={'X-Requested-With': 'flightmap'})
         self.assertEqual(status, 200)
 
+    def test_bad_data_size_is_refused_at_once(self):
+        # "Content-Length: -1" used to make the server wait for the browser
+        # to hang up (a minute per connection), even on the login address.
+        import http.client
+        for size in ('-1', 'abc'):
+            conn = http.client.HTTPConnection('127.0.0.1', self.srv.port, timeout=5)
+            conn.putrequest('PUT', '/api/settings')
+            conn.putheader('X-Requested-With', 'flightmap')
+            conn.putheader('Content-Length', size)
+            conn.endheaders()
+            started = time.time()
+            res = conn.getresponse()
+            self.assertEqual(res.status, 400, size)
+            self.assertLess(time.time() - started, 3, size)
+            conn.close()
+
     def test_settings_saved_and_private(self):
         status, _, _ = self.srv.put_settings({'mapProvider': 'free', 'mapLayer': 'satellite', 'units': 'metric'})
         self.assertEqual(status, 200)

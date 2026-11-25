@@ -230,7 +230,7 @@ const localDay = (offsetDays) => {
 function fakeInternet(ctx, { github = null } = {}) {
   const seen = { tiles: [], github: 0, weather: 0, keyLeaks: 0 };
   const svg = (c) => `<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256"><rect width="256" height="256" fill="${c}"/></svg>`;
-  return ctx.route(/^https?:\/\//, (route) => {
+  return ctx.route(/^https?:\/\//, async (route) => {
     const u = new URL(route.request().url());
     if (/subscription-key|TEST-AZURE-KEY/.test(route.request().url())) seen.keyLeaks++;
     if (u.hostname === '127.0.0.1') {
@@ -256,7 +256,13 @@ function fakeInternet(ctx, { github = null } = {}) {
     }
     if (u.hostname === 'api.open-meteo.com') {
       seen.weather++;
-      return route.fulfill({ contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' }, body: JSON.stringify(fakeForecast()) });
+      // seen.slowRain: the next forecast arrives late (ms) and says 100% rain.
+      const slow = seen.slowRain;
+      seen.slowRain = 0;
+      const forecast = fakeForecast();
+      if (slow) forecast.hourly.precipitation_probability.fill(100);
+      if (slow) await new Promise((r) => setTimeout(r, slow));
+      return route.fulfill({ contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' }, body: JSON.stringify(forecast) });
     }
     if (u.pathname === '/map/attribution') {
       // Azure really sends HTML like this; the page must show only the text.
@@ -736,11 +742,24 @@ function fakeInternet(ctx, { github = null } = {}) {
     check('warns about the cold', (await warns()).includes('Cold'), await warns());
     await setWhen(`${localDay(1)}T21:00`);
     check('warns about flying after sunset', (await warns()).includes('after sunset'), await warns());
+    // A slow forecast for an earlier choice must not replace the newer one.
+    seen.slowRain = 2500;
+    await page.fill('#pl-when', `${localDay(1)}T10:00`);
+    await page.$eval('#pl-when', (el) => el.dispatchEvent(new Event('change', { bubbles: true })));
+    await page.waitForTimeout(900);                       // its (slow, rainy) request is on its way
+    await setWhen(`${localDay(1)}T21:00`);                // a new choice, answered at once
+    await page.waitForTimeout(2500);                      // ...then the slow answer arrives
+    await page.fill('#pl-battery', '95');                 // any change: the warnings are worked out again
+    await page.press('#pl-battery', 'Tab');
+    await page.waitForTimeout(200);
+    check('weather: a late answer for an earlier time is dropped (no wrong rain warning)',
+      (await warns()).includes('after sunset') && !(await warns()).includes('chance of rain'), await warns());
     await page.fill('#pl-name', 'Test loop');
-    await page.click('#pl-save');
-    await page.waitForTimeout(500);
+    await page.evaluate(() => { $('#pl-save').click(); $('#pl-save').click(); });   // a quick double click
+    await page.waitForTimeout(700);
     check('plan saves', (await page.textContent('#pl-save-msg')).includes('Saved'));
-    check('plan appears in the Plans tab', (await page.locator('.plan-card').count()) === 1);
+    check('plan appears in the Plans tab, once (a double click on Save makes one plan)',
+      (await page.locator('.plan-card').count()) === 1, `${await page.locator('.plan-card').count()} plans`);
     // Unsaved changes: closing asks first; saying "no" keeps the plan open.
     // (While a plan is open on a wide screen, the sidebar shows its editor, not the tabs.)
     await page.fill('#pl-name', 'Test loop (changed)');   // an unsaved change

@@ -562,11 +562,26 @@ class Handler(SimpleHTTPRequestHandler):
             },
         }
 
+    def body_length(self, limit):
+        """The size of the data sent with this request, or None after answering an error.
+
+        A missing size counts as 0. A size that isn't a whole number, or is
+        negative, is refused: reading "-1" bytes would wait for the browser
+        to close the connection, holding this thread for a minute.
+        """
+        text = (self.headers.get("Content-Length") or "0").strip()
+        if not text.isdigit():
+            self.send_json({"error": "bad Content-Length"}, 400)
+            return None
+        if int(text) > limit:
+            self.send_json({"error": "too much data"}, 413)
+            return None
+        return int(text)
+
     def read_json_body(self, limit=65536):
         """Read a JSON object sent by the page. Returns None after answering an error."""
-        length = int(self.headers.get("Content-Length") or 0)
-        if length > limit:
-            self.send_json({"error": "too much data"}, 413)
+        length = self.body_length(limit)
+        if length is None:
             return None
         try:
             incoming = json.loads(self.rfile.read(length) or b"{}")
@@ -700,7 +715,9 @@ class Handler(SimpleHTTPRequestHandler):
         if too_many_failures(ip):
             log(f"{ip} login blocked: too many wrong passwords")
             return self.redirect("/login.html?error=locked")
-        length = min(int(self.headers.get("Content-Length") or 0), 4096)
+        length = self.body_length(4096)
+        if length is None:
+            return None
         form = parse_qs(self.rfile.read(length).decode("utf-8", "replace"))
         user = (form.get("username") or [""])[0]
         password = (form.get("password") or [""])[0]

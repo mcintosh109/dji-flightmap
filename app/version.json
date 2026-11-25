@@ -10,6 +10,10 @@
     "New plans start with the battery of your most recent flight",
     "Point at a place's icon on the map to see its name and what kind of place it is, even when you're zoomed out and the names are hidden",
     "The plan flags in the Plans tab stand out much more: bigger, brighter, with a pulsing ring (it stays still if your computer is set to reduce motion)",
-    "Places: when Azure's places can't be used (today's searches used up, or Azure didn't answer), the layers panel now says why, and that OpenStreetMap's places are shown instead. After a one-off hiccup Azure is asked again 5 minutes later (it used to stay on OpenStreetMap until the page was reloaded). The \"Places come from\" line now names the right company"
+    "Places: when Azure's places can't be used (today's searches used up, or Azure didn't answer), the layers panel now says why, and that OpenStreetMap's places are shown instead. After a one-off hiccup Azure is asked again 5 minutes later (it used to stay on OpenStreetMap until the page was reloaded). The \"Places come from\" line now names the right company",
+    "Fixed: the planner's weather could show the forecast of an earlier choice (another time or take-off spot) when that answer came back late, with the wrong wind and rain warnings",
+    "Fixed: a quick double click on Save plan saved a new plan twice. Changes made while a save is on its way now stay marked \"Unsaved changes\"",
+    "Fixed: deleting a plan now says so when the server can't be reached, and Backspace no longer deletes a waypoint behind the DJI Fly window",
+    "Fixed: the server no longer waits up to a minute on a request with a broken size (it answers at once)"
   ]
 }

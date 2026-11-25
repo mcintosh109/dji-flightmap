@@ -434,5 +434,18 @@ owner confirms it works**, release it with a tag (`git tag -a vX.Y.Z` +
   Plus battery (3790 mAh); the others 2453 mAh. Confirmed on the owner's
   real logs (Nov 2026): "your last 13 flights with the Plus battery (about
   3.4% per minute)", so dji-log-parser's `BATTERY.fullCapacity` is filled.
+- **Code review** (5.4.0, owner: "go through the code and clean it up"):
+  ruff (strict), eslint (scripts concatenated in load order; MapStyles and
+  Updates are `window.` globals) and shellcheck were clean. Bugs fixed, each
+  with a test that FAILED on the old code: `loadWeather` wrote a late answer
+  into the newer request's object (now each request fills its own `mine`);
+  `save()` twice on a new plan made two plans (one save at a time, Save
+  disabled meanwhile; edits during a save stay dirty); `body_length()` in
+  server.py refuses a negative/garbled Content-Length (reading -1 bytes
+  waited for the client, even on /api/login). Left alone on purpose:
+  `renew_forever` re-applies the listeners twice a day (a ~0.5 s gap for new
+  connections; HTTPS code is delicate), ruff's style-only notes (bare
+  `return` in handlers, small lambdas), ElementTree on dock .kmz (the dock is
+  authenticated; Python's expat resists entity bombs).
 - Old installs had an `update-ct.sh` that could not download its own
   replacement; the current one does `git pull` and restarts itself.
