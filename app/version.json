@@ -16,6 +16,7 @@
     "Fixed: deleting a plan now says so when the server can't be reached, and Backspace no longer deletes a waypoint behind the DJI Fly window",
     "Fixed: the server no longer waits up to a minute on a request with a broken size (it answers at once)",
     "Security: the login's limit of 10 wrong passwords in 15 minutes now holds even when many guesses are sent at the same moment (they used to all be checked before any was counted). The same goes for wrong RC 2 dock keys",
-    "Fixed: once locked out after too many wrong passwords, the browser could show a \"connection reset\" error page instead of the \"Too many wrong attempts\" message"
+    "Fixed: once locked out after too many wrong passwords, the browser could show a \"connection reset\" error page instead of the \"Too many wrong attempts\" message",
+    "Security: using the map from outside through a Cloudflare Tunnel? Put the tunnel's local address in Settings → Server. Then each visitor gets their own lock-out after 10 wrong passwords, so a stranger can no longer lock you out"
   ]
 }

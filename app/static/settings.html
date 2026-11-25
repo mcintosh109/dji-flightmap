@@ -300,6 +300,12 @@
         </dl>
         <p class="help">To turn the login on or off, or change the password, run this in the Proxmox Shell (replace <code>105</code> with your container's number):</p>
         <pre class="cmd">pct exec 105 -- bash /opt/dji-flightmap/deploy/set-login.sh</pre>
+
+        <div class="field">
+          <label for="tunnelAddress">Cloudflare Tunnel address (optional)</label>
+          <input id="tunnelAddress" data-key="tunnelAddress" type="text" maxlength="200" placeholder="e.g. 192.168.1.50" autocomplete="off" spellcheck="false">
+          <p class="help">Only if the map is reachable from the internet through a Cloudflare Tunnel: the local address of the computer or container running <code>cloudflared</code>. Then each visitor gets their own lock-out after 10 wrong passwords, so a stranger can't lock you out. Leave empty otherwise. To find it: <code>pct exec &lt;number&gt; -- hostname -I</code> on the Proxmox server that runs it.</p>
+        </div>
       </section>
 
       <!-- ================= HTTPS ================= -->

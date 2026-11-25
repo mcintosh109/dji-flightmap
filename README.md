@@ -566,7 +566,7 @@ Everything here is saved on the server, so it applies on every device.
 | **Display** | Default units, flight path colour, replay speed, whether a flight opens at the landing or take-off spot, which app **Navigate** opens (Google Maps, Apple Maps, Waze), lines for all flights, and whether an open flight is shown on its own (on by default). |
 | **Flights** | Hide flights shorter than N seconds (quick tests), hide flights without GPS, **nicknames** for each drone. |
 | **Flight planner** | Height limit (400 ft by default), distance warning, battery to keep for landing, wind limit. |
-| **Server** | How often to check for new files, how many days you stay signed in. |
+| **Server** | How often to check for new files, how many days you stay signed in, and the Cloudflare Tunnel address (only if you use one: see [the login page](#the-login-page)). |
 
 **Getting a map key** (optional; the free styles need none):
 
@@ -685,9 +685,36 @@ How it protects you:
 The map uses HTTPS (the padlock) by default, so the password crosses your
 network encrypted (see the next section). Even so, **don't open a port on
 your router** for it: the map is made for your home network. To use it away
-from home, use a VPN such as Tailscale or WireGuard.
+from home, use a VPN such as Tailscale or WireGuard, or a Cloudflare Tunnel
+(below).
 
-> Research keywords: *"password hashing pbkdf2"*, *"http cookie HttpOnly"*.
+### Using the map from outside through a Cloudflare Tunnel
+
+A Cloudflare Tunnel lets you reach the map from anywhere without opening a
+port on your router: a small program, `cloudflared`, runs at home and
+carries the visits from Cloudflare to the map. Two things to set up:
+
+1. **Cloudflare Access** (in Cloudflare's Zero Trust dashboard): Cloudflare
+   asks for a one-time code sent to your email *before* anyone reaches the
+   map. Strangers never even see the login page. Free for up to 50 users.
+2. **The tunnel's address in the map** (⚙ Settings → Server → *Cloudflare
+   Tunnel address*): the local address of the computer or container running
+   `cloudflared`. Why: every tunnel visitor arrives from that one address,
+   so without it, a stranger typing 10 wrong passwords would lock **you**
+   out too. With it, the map reads the visitor's real address from
+   Cloudflare's `CF-Connecting-IP` note, and each visitor gets their own
+   lock-out. The map believes that note **only** from the tunnel's address:
+   anyone else could write it, to get a new lock-out for every guess.
+
+To find the address, run this on the Proxmox server that runs
+`cloudflared` (replace `108` with its container number):
+
+```bash
+pct exec 108 -- hostname -I
+```
+
+> Research keywords: *"password hashing pbkdf2"*, *"http cookie HttpOnly"*,
+> *"Cloudflare Access self-hosted application"*, *"CF-Connecting-IP"*.
 
 ---
 

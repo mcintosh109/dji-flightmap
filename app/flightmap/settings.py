@@ -2,6 +2,7 @@
 
 Saved in settings.json (readable only by the service: it may hold map keys).
 """
+import ipaddress
 import json
 import os
 import re
@@ -62,6 +63,7 @@ DEFAULT_SETTINGS = {
     "scanSeconds": SCAN_SECONDS,
     "sessionDays": SESSION_DAYS,
     "checkUpdates": True,
+    "tunnelAddress": "",          # cloudflared's address: trust its CF-Connecting-IP (see tunnel_peers)
     # Secure connection (see flightmap/https.py)
     "httpsMode": DEFAULT_HTTPS if DEFAULT_HTTPS in ("off", "private", "letsencrypt") else "private",
     "httpsName": "",              # e.g. flightmap.home (optional for private)
@@ -147,6 +149,9 @@ def clean_settings(incoming):
     pick("scanSeconds", whole(5, 3600), "Check for new files every 5 to 3600 seconds.")
     pick("sessionDays", whole(1, 365), "Stay signed in for 1 to 365 days.")
     pick("checkUpdates", is_bool, "Check for updates must be on or off.")
+    pick("tunnelAddress", lambda v: isinstance(v, str) and len(v) <= 200 and all(
+        _ip(a) for a in re.split(r"[\s,]+", v.strip()) if a),
+         "The Cloudflare Tunnel address must be an address like 192.168.1.50 (several: separate with commas).")
     pick("httpsMode", lambda v: v in ("off", "private", "letsencrypt"), "Unknown secure connection choice.")
     pick("httpsName", lambda v: isinstance(v, str) and (v.strip() == "" or HOST_NAME_RE.match(v.strip().lower())),
          "The name must look like flightmap.home (letters, numbers, dashes, with a dot).")
@@ -166,6 +171,7 @@ def clean_settings(incoming):
         else:
             problems.append("The DNS company details have odd characters.")
     new["httpsName"] = new["httpsName"].strip().lower()
+    new["tunnelAddress"] = ", ".join(_ip(a) for a in re.split(r"[\s,]+", new["tunnelAddress"].strip()) if a)
     if new["httpsMode"] != "off" and new["httpsPort"] == PORT:
         problems.append(f"The HTTPS port can't be {PORT}: the plain http address uses it.")
     if new["httpsMode"] == "letsencrypt" and not new["httpsName"]:
@@ -219,6 +225,25 @@ def save_settings(new):
     with SETTINGS_LOCK:
         SETTINGS.clear()
         SETTINGS.update(new)
+
+
+def _ip(text):
+    """An IP address written the standard way, or "" if it isn't one."""
+    try:
+        address = ipaddress.ip_address(text.strip())
+    except ValueError:
+        return ""
+    return str(getattr(address, "ipv4_mapped", None) or address)
+
+
+def tunnel_peers():
+    """The addresses of the Cloudflare Tunnel program (cloudflared), as set in
+    Settings -> Server. Only requests coming FROM these addresses may say who
+    the real visitor is (the CF-Connecting-IP header): anyone else could write
+    that header too, and get around the lock-out with a made-up address."""
+    with SETTINGS_LOCK:
+        text = SETTINGS["tunnelAddress"]
+    return {a for a in re.split(r"[\s,]+", text) if a}
 
 
 def current_settings():

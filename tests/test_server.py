@@ -28,6 +28,7 @@ import unittest
 import urllib.error
 import urllib.request
 import zipfile
+from concurrent.futures import ThreadPoolExecutor
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
@@ -218,6 +219,14 @@ class SettingsRules(unittest.TestCase):
             'mapProvider': 'not-a-provider', 'pathColor': 'red', 'scanSeconds': 1,
             'customTileUrl': 'javascript:alert(1)', 'mapboxToken': 'pk.<script>', 'aircraftNames': {'X': '<b>'}})
         self.assertEqual(len(problems), 6, problems)
+
+    def test_tunnel_address(self):
+        new, problems = self.server.clean_settings({'tunnelAddress': ' 192.168.1.50,  ::ffff:192.168.1.200 '})
+        self.assertEqual(problems, [])
+        self.assertEqual(new['tunnelAddress'], '192.168.1.50, 192.168.1.200')
+        for bad in ('flightmap.home', '192.0.2.300', '192.168.1.50; rm', 'x' * 201):
+            _, problems = self.server.clean_settings({'tunnelAddress': bad})
+            self.assertEqual(len(problems), 1, bad)
 
     def test_password_hash(self):
         stored = self.server.hash_password('correct horse', rounds=1000)
@@ -1661,6 +1670,62 @@ class LiveLoginLockout(unittest.TestCase):
         self.assertEqual(answers.count('/login.html?error=locked'), 30 - checked)
         # Locked out now: even the right password isn't checked.
         self.assertEqual(self.login('testpass123')[1].get('Location'), '/login.html?error=locked')
+
+
+class LiveTunnelVisitors(unittest.TestCase):
+    """Through a Cloudflare Tunnel every visitor arrives from cloudflared's
+    address. With that address in Settings, Cloudflare's CF-Connecting-IP
+    header names the visitor, so a stranger's wrong guesses lock out only the
+    stranger. From any other address the header is ignored: otherwise a
+    guesser could send a new made-up address with every guess."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = tempfile.mkdtemp(prefix='flightmap-test-')
+        make_archive(os.path.join(cls.tmp, 'archive'))
+        server = load_server(cls.tmp)
+        password = server.hash_password('testpass123', rounds=1000)
+        cls.servers = {}
+        for name, tunnel in (('trusted', '127.0.0.1'), ('other', '192.168.1.50')):
+            state = os.path.join(cls.tmp, name)
+            os.makedirs(state)
+            with open(os.path.join(state, 'settings.json'), 'w') as fh:
+                json.dump({'tunnelAddress': tunnel}, fh)
+            cls.servers[name] = LiveServer(os.path.join(cls.tmp, 'archive'), state,
+                                           AUTH_USER='tester', AUTH_PASSWORD_HASH=password)
+
+    @classmethod
+    def tearDownClass(cls):
+        for srv in cls.servers.values():
+            srv.stop()
+        shutil.rmtree(cls.tmp, ignore_errors=True)
+
+    @staticmethod
+    def login(srv, password, visitor=None):
+        headers = {'Content-Type': 'application/x-www-form-urlencoded'}
+        if visitor:
+            headers['CF-Connecting-IP'] = visitor
+        body = f'username=tester&password={password}'.encode()
+        return srv.request('/api/login', 'POST', body, headers)[1].get('Location')
+
+    def guess_ten(self, srv, visitor):
+        with ThreadPoolExecutor(10) as pool:
+            return list(pool.map(lambda i: self.login(srv, f'guess-{i}', visitor), range(10)))
+
+    def test_each_tunnel_visitor_has_their_own_lockout(self):
+        srv = self.servers['trusted']
+        self.guess_ten(srv, '203.0.113.5')                      # a stranger
+        self.assertEqual(self.login(srv, 'testpass123', '203.0.113.5'), '/login.html?error=locked')
+        self.assertEqual(self.login(srv, 'testpass123', '198.51.100.7'), '/')   # the owner, elsewhere
+        self.assertEqual(self.login(srv, 'testpass123'), '/')   # at home (no header)
+        self.assertEqual(self.login(srv, 'testpass123', 'not-an-address'), '/')
+        self.assertIn('203.0.113.5 login blocked', open(srv.log.name, encoding='utf-8').read())
+
+    def test_header_ignored_from_anywhere_else(self):
+        srv = self.servers['other']
+        with ThreadPoolExecutor(10) as pool:     # every guess pretends to be someone new
+            list(pool.map(lambda i: self.login(srv, f'guess-{i}', f'203.0.113.{i + 1}'), range(10)))
+        self.assertEqual(self.login(srv, 'testpass123', '198.51.100.7'), '/login.html?error=locked')
 
 
 # ------------------------------------------------- the NAS connection (4.3.0)

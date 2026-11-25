@@ -105,6 +105,7 @@ start time, and only one is shown.
 import getpass
 import gzip
 import hmac
+import ipaddress
 import json
 import re
 import secrets
@@ -131,7 +132,7 @@ from flightmap.library import FlightLibrary
 from flightmap.places import PlacesError, parse_range, places_in
 from flightmap.plans import MAX_PLANS, PLAN_ID_RE, PLANS_LOCK, clean_plan, load_plans, save_plans
 from flightmap.settings import (DEFAULT_SETTINGS, SERVER_ONLY_KEYS, clean_settings, current_settings,
-                                load_settings, public_settings, save_settings)
+                                load_settings, public_settings, save_settings, tunnel_peers)
 
 LIBRARY = None   # created in main()
 
@@ -222,6 +223,20 @@ class Handler(SimpleHTTPRequestHandler):
         self.end_headers()
 
     # ---- the login gate ----------------------------------------------------
+    def client_ip(self):
+        """Who is asking. Visitors through a Cloudflare Tunnel all arrive from
+        cloudflared's address, which would give them ONE shared lock-out (a
+        stranger's wrong guesses would lock out the owner too). So for requests
+        from the tunnel address set in Settings (and only those: anyone could
+        write the header), Cloudflare's CF-Connecting-IP names the visitor."""
+        peer = self.client_address[0]
+        if peer.removeprefix("::ffff:") in tunnel_peers():
+            try:
+                return str(ipaddress.ip_address(self.headers.get("CF-Connecting-IP", "").strip()))
+            except ValueError:
+                pass
+        return peer
+
     def allowed(self, path):
         """True if this request may go ahead. Otherwise sends the right answer."""
         if not AUTH_ENABLED or path in PUBLIC_PATHS:
@@ -423,7 +438,7 @@ class Handler(SimpleHTTPRequestHandler):
         except djifly.MissionError as exc:
             return self.send_json({"error": str(exc)}, 400)
         name = re.sub(r"[^A-Za-z0-9 _-]+", "", plan.get("name", "")).strip()[:40] or "plan"
-        log(f"{self.client_address[0]} downloaded plan {plan_id} for DJI Fly")
+        log(f"{self.client_ip()} downloaded plan {plan_id} for DJI Fly")
         self.send_response(200)
         self.send_header("Content-Type", "application/vnd.google-earth.kmz")
         self.send_header("Content-Disposition", f'attachment; filename="{name}.kmz"')
@@ -456,7 +471,7 @@ class Handler(SimpleHTTPRequestHandler):
         if not self.allowed(path) or not self.from_our_page():
             return
         if path == "/api/rc2/key" and method == "POST":
-            log(f"{self.client_address[0]} made a new dock key")
+            log(f"{self.client_ip()} made a new dock key")
             return self.send_json({"key": rc2.new_key(), **rc2.page_status()})
         if path == "/api/rc2/key" and method == "DELETE":
             rc2.remove_key()
@@ -483,7 +498,7 @@ class Handler(SimpleHTTPRequestHandler):
 
     def dock_request(self, method, path):
         """Requests from the RC 2 dock (the Pi), which sends the dock key instead of signing in."""
-        ip = self.client_address[0]
+        ip = self.client_ip()
         ticket = start_attempt(ip)
         if ticket is None:
             return self.send_json({"error": "too many wrong keys, wait a while"}, 429)
@@ -615,7 +630,7 @@ class Handler(SimpleHTTPRequestHandler):
                 return self.send_json({"error": "plan not found"}, 404)
             del plans[plan_id]
             save_plans(plans)
-        log(f"{self.client_address[0]} deleted plan {plan_id}")
+        log(f"{self.client_ip()} deleted plan {plan_id}")
         return self.send_json({"ok": True})
 
     def do_PUT(self):
@@ -649,7 +664,7 @@ class Handler(SimpleHTTPRequestHandler):
             save_settings(new)
         except OSError as exc:
             return self.send_json({"error": f"could not save: {exc}"}, 500)
-        log(f"{self.client_address[0]} saved settings")
+        log(f"{self.client_ip()} saved settings")
         if https_choice(new) != before:
             # Switch http/https in the background, after this answer is sent.
             https.set_state("working", "Changing the secure connection…", mode=new["httpsMode"])
@@ -680,7 +695,7 @@ class Handler(SimpleHTTPRequestHandler):
                 save_plans(plans)
             except OSError as exc:
                 return self.send_json({"error": f"could not save: {exc}"}, 500)
-        log(f"{self.client_address[0]} saved plan {plan_id}")
+        log(f"{self.client_ip()} saved plan {plan_id}")
         return self.send_json(dict(plan, id=plan_id))
 
     def do_POST(self):
@@ -704,7 +719,7 @@ class Handler(SimpleHTTPRequestHandler):
             if not self.allowed(path) or not self.from_our_page():
                 return
             asked = nas.request_reconnect()
-            log(f"{self.client_address[0]} asked to reconnect the NAS")
+            log(f"{self.client_ip()} asked to reconnect the NAS")
             return self.send_json({"requested": True, "at": asked})
         if path == "/api/rescan":
             if not self.allowed(path) or not self.from_our_page():
@@ -713,7 +728,7 @@ class Handler(SimpleHTTPRequestHandler):
             return self.send_json(self.flights_payload())
         if path != "/api/login" or not AUTH_ENABLED:
             return self.send_json({"error": "unknown address"}, 404)
-        ip = self.client_address[0]
+        ip = self.client_ip()
         # Read the form first, even when locked out: answering with it still
         # unread made the connection end with a "reset" (a browser error page
         # instead of the "too many wrong attempts" message).

@@ -980,6 +980,17 @@ function fakeInternet(ctx, { github = null } = {}) {
     await page.click('#btn-save');
     await page.waitForTimeout(500);
     check('settings save', (await page.textContent('#save-msg')).includes('Saved'));
+    await page.fill('#tunnelAddress', 'flightmap.home');
+    await page.click('#btn-save');
+    await page.waitForTimeout(500);
+    check('a Cloudflare Tunnel "address" that is a name is refused, with a reason',
+      (await page.textContent('#save-msg')).includes('must be an address'), await page.textContent('#save-msg'));
+    await page.fill('#tunnelAddress', ' 192.168.1.50 ');
+    await page.click('#btn-save');
+    await page.waitForTimeout(500);
+    const savedTunnel = await page.evaluate(async () => (await (await fetch('/api/settings')).json()).settings.tunnelAddress);
+    check('the Cloudflare Tunnel address is saved', savedTunnel === '192.168.1.50'
+      && (await page.textContent('#save-msg')).includes('Saved'), savedTunnel);
     await page.click('#back');
     await page.waitForTimeout(800);
     check('nickname shows on the map page', (await page.locator('.aircraft h3').allTextContents()).includes('Scout'));
