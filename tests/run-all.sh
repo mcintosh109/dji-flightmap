@@ -28,7 +28,7 @@ bash tests/privacy_check.sh || fail "the privacy check"
 part "2/6 Syntax"
 ok=1
 python3 -m py_compile app/server.py app/flightmap/*.py tests/*.py || ok=0
-for f in app/static/*.js tests/*.js; do node --check "$f" || { echo "  bad: $f"; ok=0; }; done
+for f in app/static/*.js tests/*.js docs/*.js; do node --check "$f" || { echo "  bad: $f"; ok=0; }; done
 for f in deploy/*.sh tests/*.sh; do bash -n "$f" || { echo "  bad: $f"; ok=0; }; done
 python3 -c "import json; json.load(open('app/version.json'))" || ok=0
 rm -rf app/__pycache__ app/flightmap/__pycache__ tests/__pycache__

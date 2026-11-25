@@ -376,5 +376,14 @@ owner confirms it works**, release it with a tag (`git tag -a vX.Y.Z` +
   `home` on that spot; with a plan: take-off, then "Add a waypoint here"
   (`addPoint`, shared with map clicks). Waypoint markers call
   `L.DomEvent.stopPropagation(e)` so their own menu wins. Phones: long press.
+- **README pictures** (5.3.0): `docs/images/*.png`, made by
+  `node docs/make-pictures.js` from the test flights (Central Park, fake
+  serials) with pretend places/addresses/weather; the map underneath is
+  plain because Claude's sandbox can't load map pictures (the README says
+  so). Never use the owner's real screenshots there (they show where they
+  fly). Re-run it after visible changes; check each picture before committing.
+- **Planner panel** (5.3.0): the top row (name, Save plan, ✕) stays; only
+  `.pl-body` scrolls. The map's credit line floats above open bottom panels
+  ON PURPOSE (`liftCredits`, map terms): the owner asked about it; keep it.
 - Old installs had an `update-ct.sh` that could not download its own
   replacement; the current one does `git pull` and restarts itself.

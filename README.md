@@ -1,14 +1,115 @@
 # DJI Flight Map
 
 A self-hosted web page that shows your DJI flight logs on a map: where each
-aircraft was **last seen**, every flight's path, and a replay of the flight
-with height, speed, battery and GPS details. An optional login page keeps it
-private.
+aircraft was **last seen**, every flight's path, and a replay of each flight
+with height, speed, battery and GPS details. It also **plans flights**, finds
+addresses, and can put a planned route on your **DJI RC 2** for DJI Fly. An
+optional login page keeps it private.
 
 It runs in a small **Proxmox LXC container** and reads the decrypted `.csv`
 (and `.geojson`) files that the
 [dji-rc2-dock](https://github.com/mcintosh109/dji-rc2-dock) sync service
 saves to TrueNAS.
+
+![The flight map: the aircraft in the sidebar, every flight's path, and places nearby](docs/images/overview.png)
+
+> **About the pictures:** they use the made-up test flights (around Central
+> Park, with fake serial numbers), and the map underneath is left plain. On
+> your server it shows real map pictures from the map company you choose
+> (free maps, Azure Maps, Google Maps and others).
+
+---
+
+## A quick tour
+
+### Every flight on one map
+
+- The **Aircraft** tab: each drone, where it was **last seen**, its battery,
+  how many flights and how much air time. **Navigate** opens directions to it
+  in Google Maps, Apple Maps or Waze.
+- The **Flights** tab: every flight, newest first, grouped by day.
+- **Places** (shops, schools, parks, hospitals, heliports…) help you get your
+  bearings. They are **not** a no-fly map. More in
+  [Places](#places-what-is-around-you).
+
+### Replay a flight
+
+![A flight open: its statistics, the height chart and the replay controls](docs/images/flight-replay.png)
+
+Click a flight to see its path, statistics and a height chart. Press ▶: the
+drone glides along its path, and the panel shows the height, speed, climb,
+distance from take-off, battery and satellites at each moment. **Follow**
+keeps the map on the drone. More in [Step 4: Open the map](#step-4-open-the-map).
+
+### Find an address
+
+<p>
+<img src="docs/images/address-search.png" alt="The address search: a list of answers for Bow Bridge" width="372">
+<img src="docs/images/right-click.png" alt="Right-click menu: Create a flight plan here" width="257">
+</p>
+
+Click the **magnifying glass** (top right), type an address or a place and
+press Enter: the map goes there and pins it. You can also paste coordinates
+from Google Maps. Then **right-click** the spot and choose **Create a flight
+plan here**. More in [Finding an address](#finding-an-address).
+
+### Plan a flight
+
+![The flight planner: four waypoints, the distance, flight time and battery, a warning and the weather](docs/images/planner.png)
+
+Click the map to add waypoints. The planner works out the **distance, flight
+time and battery** (from your own past flights), warns about height,
+distance and battery, and shows the **weather forecast** for the planned time.
+
+> ⚠️ **It's a planning aid only.** It checks height, distance, battery and
+> weather. It does **not** check airspace, obstacles or local rules: always
+> check your local laws and regulations before flying (in the US: the FAA's
+> B4UFLY app or Aloft).
+
+More in [Planning a flight](#planning-a-flight).
+
+### Send it to DJI Fly on the RC 2
+
+![The DJI Fly window: speed, settings and the checklist before sending](docs/images/dji-fly.png)
+
+**Download for DJI Fly…** turns a plan into a DJI Fly waypoint mission. With
+the [RC 2 dock](https://github.com/mcintosh109/dji-rc2-dock), **Send to RC 2**
+puts it on the controller for you, in one of up to 4 slots, with a backup of
+what was there before. More in
+[Sending a plan to DJI Fly](#sending-a-plan-to-dji-fly-mini-4-pro-rc-2).
+
+### Settings, and on a phone
+
+<p>
+<img src="docs/images/settings.png" alt="The settings page: the NAS check, the RC 2 dock and the map provider" width="440">
+<img src="docs/images/phone.png" alt="The map on a phone: the map on top, the sidebar below" width="190">
+</p>
+
+The **settings page** (⚙) checks the connection to your NAS, sets up the RC 2
+dock, and picks the map company, units and colours, the planner's limits,
+and HTTPS (the padlock). On a
+**phone**, the map sits on top and the panels slide up from the bottom.
+More in [The settings page](#the-settings-page-).
+
+---
+
+## Contents
+
+- [What you need](#what-you-need)
+- [Installing: the quick way (one command)](#installing-the-quick-way-one-command)
+- [Installing step by step](#installing-step-by-step-instead-of-the-quick-way)
+- [Using the map](#step-4-open-the-map): [finding an address](#finding-an-address),
+  [places](#places-what-is-around-you)
+- [Planning a flight](#planning-a-flight) and
+  [sending it to DJI Fly](#sending-a-plan-to-dji-fly-mini-4-pro-rc-2)
+- [The settings page](#the-settings-page-), [the login page](#the-login-page),
+  [HTTPS](#https-the-padlock)
+- [Updating later](#updating-later), [backups](#backups-on-truenas-recommended),
+  [when the NAS restarts](#when-the-nas-restarts)
+- [Troubleshooting](#troubleshooting)
+- [How it works (for learning)](#how-it-works-for-learning)
+
+### How it fits together
 
 ```
  RC 2 controller ─▶ Raspberry Pi (dji-rc2-dock) ─▶ TrueNAS
@@ -1001,6 +1102,7 @@ pct exec 105 -- systemctl restart dji-flightmap
 | `app/static/common.js` | Tiny helpers every page shares | |
 | `app/static/app.js` | What the map scripts share: the page's state, number formatting, the map and its icons | *"leafletjs"* |
 | `app/static/layers.js` | The layers button (Road / Satellite / Dark / Terrain) | |
+| `docs/make-pictures.js` | Makes the pictures in this README (`docs/images/`) from the made-up test flights: `node docs/make-pictures.js` | *"Playwright screenshot"* |
 | `app/static/address.js` | The address search: the magnifying glass, the answers, the pin | *"Leaflet fitBounds"*, *"AbortController"* |
 | `app/flightmap/geocode.py` | Finds an address: Azure Maps with the Azure map (daily limit), otherwise OpenStreetMap; at most 1 OpenStreetMap search a second, answers remembered a day | *"Azure Maps Get Geocoding"*, *"Nominatim usage policy"*, *"geocoding"* |
 | `app/static/places.js` | Shops, schools, parks… on the map, drawn only for the area on screen | *"Leaflet divIcon"*, *"map tiles"* |
