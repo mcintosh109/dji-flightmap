@@ -338,7 +338,8 @@ owner confirms it works**, release it with a tag (`git tag -a vX.Y.Z` +
   Pi: `sudo dji-map-link` (/etc/dji-map-link.conf 0600; a private-cert map's
   CA is fetched from :8080/flightmap-ca.crt after confirming its
   fingerprint). Tests: LiveRc2, browser "RC 2:", dock `tests/test-missions.py`
-  + `tests/test-sync.sh`. NOT yet tried on a real RC 2 over MTP (Nov 2026):
-  overwriting over jmtpfs is the untested part.
+  + `tests/test-sync.sh`. First real send (24 Nov 2026): the 2-minute
+  check wrote a route into slot 1 over MTP (jmtpfs), read it back
+  ("Written to the RC 2 and checked"), and the map showed it done.
 - Old installs had an `update-ct.sh` that could not download its own
   replacement; the current one does `git pull` and restarts itself.
