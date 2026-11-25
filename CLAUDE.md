@@ -472,5 +472,9 @@ owner confirms it works**, release it with a tag (`git tag -a vX.Y.Z` +
   owner keeps their own live-server security check on the Proxmox host,
   outside the project folder. Don't add attack or security-check scripts
   here; the automatic tests in `tests/` (e.g. `LiveLoginLockout`) stay.
+  Owner's live run on 5.4.2 (Nov 2026): 30 passed, 0 failed (30 guesses at
+  once: 6 checked, 24 locked). An earlier run had ONE guess with a broken
+  connection; not seen again, not reproduced here: if it returns, ask for
+  the curl exit code the check prints before changing the server.
 - Old installs had an `update-ct.sh` that could not download its own
   replacement; the current one does `git pull` and restarts itself.
