@@ -16,7 +16,6 @@
     "Fixed: deleting a plan now says so when the server can't be reached, and Backspace no longer deletes a waypoint behind the DJI Fly window",
     "Fixed: the server no longer waits up to a minute on a request with a broken size (it answers at once)",
     "Security: the login's limit of 10 wrong passwords in 15 minutes now holds even when many guesses are sent at the same moment (they used to all be checked before any was counted). The same goes for wrong RC 2 dock keys",
-    "Fixed: once locked out after too many wrong passwords, the browser could show a \"connection reset\" error page instead of the \"Too many wrong attempts\" message",
-    "New: a security check you can run yourself on the Proxmox server (bash /root/dji-flightmap/deploy/security-check.sh). It tries the usual attacks on your map and shows ✅ or ❌ for each one. It never needs your password"
+    "Fixed: once locked out after too many wrong passwords, the browser could show a \"connection reset\" error page instead of the \"Too many wrong attempts\" message"
   ]
 }

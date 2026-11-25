@@ -468,18 +468,9 @@ owner confirms it works**, release it with a tag (`git tag -a vX.Y.Z` +
   through; with a test hash of 1000 rounds the gap was too short to show it,
   so `LiveLoginLockout` uses 600_000 (and records broken connections instead
   of stopping, so both bugs fail separately on the old code).
-- **Security check** (5.4.2, owner: "a test on the security vulnerabilities
-  so we can test to see if it works" on the live server):
-  `deploy/security-check.sh`, run on the Proxmox host; finds the container
-  (`pct list` name dji-flightmap, or CTID=), asks :8080/api/health for
-  `httpsPort`; `MAP_URL=` / `HTTP_PORT=` override. curl -k (checks the map,
-  not trust). Order matters: login pages, dock key (2 failures), sneaky
-  requests incl. Content-Length -1 via openssl s_client or /dev/tcp (must
-  run BEFORE the lock-out, or the old code answers "locked" and hides the
-  hang), then 30 parallel guesses (pass if checked <= 10 - USED, no broken
-  connections), then headers/redirect/TLS 1.1 refused. Never uses the real
-  password. Leaves the host's IP locked out 15 min (in memory: a restart
-  clears it). Verified against the new code (30/30 pass, https, real
-  rounds), http + login, no login, and v5.3.0 (fails: 11 checked, hang).
+- **Security check tools stay OUT of this repo** (owner's wish, 5.4.2): the
+  owner keeps their own live-server security check on the Proxmox host,
+  outside the project folder. Don't add attack or security-check scripts
+  here; the automatic tests in `tests/` (e.g. `LiveLoginLockout`) stay.
 - Old installs had an `update-ct.sh` that could not download its own
   replacement; the current one does `git pull` and restarts itself.

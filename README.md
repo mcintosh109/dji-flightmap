@@ -689,34 +689,6 @@ from home, use a VPN such as Tailscale or WireGuard.
 
 > Research keywords: *"password hashing pbkdf2"*, *"http cookie HttpOnly"*.
 
-### Check it yourself: the security check
-
-`deploy/security-check.sh` tries the usual attacks on **your running map**
-and says, for each one, whether the map stops it: pages without signing in,
-a made-up login cookie, a made-up RC 2 dock key, sneaky addresses that try to
-read the server's files, broken requests, 30 password guesses sent at the
-same moment, the cookie's protections, and the HTTPS settings. It **never
-needs your password**: it only uses wrong ones.
-
-Run it **on the Proxmox host**:
-
-```bash
-bash /root/dji-flightmap/deploy/security-check.sh
-```
-
-Each line starts with ✅ (the map stopped it), ❌ (a problem: please report
-it) or ⏭ (skipped, with the reason). The last line counts them.
-
-Afterwards, the **Proxmox server's** address is locked out of the login for
-15 minutes (that is one of the checks). Your PC is not affected, and
-restarting the map (`pct reboot <CTID>`) ends it at once.
-
-To check the address you really use (for example a name instead of the
-container's address): `MAP_URL=https://<that name> bash /root/dji-flightmap/deploy/security-check.sh`.
-
-> Research keywords: *"penetration testing basics"*, *"brute force lockout"*,
-> *"path traversal"*.
-
 ---
 
 ## HTTPS (the padlock)
@@ -1192,7 +1164,6 @@ pct exec 105 -- systemctl restart dji-flightmap
 | `deploy/backup-ct.sh` | Proxmox host: makes a backup now (the daily timer runs it) | |
 | `deploy/install.sh` | Inside the container: installs the app | *"bash script basics"* |
 | `deploy/set-login.sh` | Inside the container: sets up the login | |
-| `deploy/security-check.sh` | Proxmox host: tries the usual attacks on your running map and says whether each one is stopped (never needs your password) | *"penetration testing basics"* |
 | `deploy/set-https.sh` | Inside the container: the way back to plain http if HTTPS locks you out | |
 | `app/flightmap/https.py` | Makes the private certificate (or asks Let's Encrypt via acme.sh), serves HTTPS, sends the old http address there | *"openssl req"*, *"acme.sh"*, *"HTTP 301 redirect"* |
 | `deploy/dji-flightmap.service` | Runs the server at boot and restarts it if it crashes | *"systemd service file"* |
