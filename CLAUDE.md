@@ -403,6 +403,14 @@ owner confirms it works**, release it with a tag (`git tag -a vX.Y.Z` +
   not `#planner`, since the editor moves. While editing, the tabs are hidden:
   ✕ is the way back (it asks if unsaved). The map's credit line floats above open bottom panels
   ON PURPOSE (`liftCredits`, map terms): the owner asked about it; keep it.
+- **Why OpenStreetMap places** (5.4.0): the owner saw "Still waiting for
+  OpenStreetMap" with Azure as provider: today's Azure places limit was used
+  up, but the page didn't say so (the reason was overwritten) and the layers
+  foot always said "Places come from OpenStreetMap". Now `azureWhy` stays in
+  front of the status while OSM stands in, `#places-from` names the real
+  source, and `azureOffUntil` = Infinity for 429 (used up) or now + 5 min for
+  any other failure (then Azure is asked again on the next map move). The
+  owner raised the limit to 200 on the settings page.
 - **Place hover labels** (5.4.0, owner: "when you hover over a places icon it
   shows you what you are looking at"): `hoverText()` in places.js, a Leaflet
   tooltip `.place-tip` (name + label · kind group), replacing the old

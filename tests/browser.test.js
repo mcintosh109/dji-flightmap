@@ -461,6 +461,7 @@ function fakeInternet(ctx, { github = null } = {}) {
       const status = await apage.textContent('#places-status');
       check('Azure map: places come from Azure Maps, from zoom 14', status.includes('from Azure Maps')
         && await apage.isVisible('.place-icon >> text=⛽'), status);
+      check('  ...and the layers panel says they come from Azure Maps', (await apage.textContent('#places-from')).includes('Azure Maps'));
       check('  ...through our server (one search), with the key added there', azure.got.searches === 1 && !(await apage.content()).includes(AZURE_KEY));
       check('  ...a name with code in it does not run', !(await apage.evaluate(() => window.HACKED)));
       const failed = await apage.evaluate((k) => [...document.querySelectorAll('img.leaflet-tile')]
@@ -485,9 +486,17 @@ function fakeInternet(ctx, { github = null } = {}) {
       await apage.evaluate(() => map.setView([40.86, -73.88], 17));   // ~11 km away: a new search
       await apage.waitForTimeout(3000);
       const status2 = await apage.textContent('#places-status');
-      check('Azure refuses: OpenStreetMap places are shown instead, and it says so',
-        status2.includes('OpenStreetMap') && (await apage.locator('.place-icon').count()) > 0, status2);
+      check('Azure refuses: OpenStreetMap places are shown instead, and it says why',
+        /Azure Maps places didn't answer.*OpenStreetMap's places.*places here/.test(status2) && (await apage.locator('.place-icon').count()) > 0, status2);
+      check('  ...the layers panel says they come from OpenStreetMap now', (await apage.textContent('#places-from')).includes('OpenStreetMap'));
       azure.got.placesFail = false;
+      // 5 minutes later (pretend), moving the map asks Azure again: one hiccup no longer means OpenStreetMap all day.
+      const before = azure.got.searches;
+      await apage.evaluate(() => { const real = Date.now; Date.now = () => real() + 6 * 60e3; map.setView([40.79, -73.95], 17); });
+      await apage.waitForTimeout(3000);
+      const status3 = await apage.textContent('#places-status');
+      check('  ...after 5 minutes Azure is asked again, and its places come back', azure.got.searches > before
+        && status3.includes('from Azure Maps') && !status3.includes("didn't answer"), status3);
       await actx.close();
     }
     await putSettings(app.base, { azurePlacesDailyLimit: 0 });

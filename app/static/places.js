@@ -67,7 +67,12 @@ const Places = (() => {
   let status = '';
   let source = '';             // 'osm', 'google' or 'azure': where the places come from
   let lastSearch = null;       // Google/Azure: { center, radius } of the last search
-  let azureFailed = false;     // Azure refused (or today's searches are used up): use OpenStreetMap
+  // Azure refused: OpenStreetMap's places until this time (ms). Today's searches
+  // used up = until the page is opened again; anything else = 5 minutes, then
+  // Azure is asked again (one hiccup used to mean OpenStreetMap all day).
+  let azureOffUntil = 0;
+  let azureWhy = '';           // why Azure isn't used now, shown above the places status
+  const AZURE_RETRY_MS = 5 * 60e3;
   let credit = false;          // OpenStreetMap credit shown?
   let limitHit = false;        // Google: today's searches used up
   let pinsWere = null;         // last answer of googlePinsShown()
@@ -90,7 +95,7 @@ const Places = (() => {
   function currentSource() {
     const s = state.settings;
     if (s.mapProvider === 'google' && s.googleMapsKeySet && (s.googlePlacesDailyLimit ?? 150) > 0) return 'google';
-    if (s.mapProvider === 'azure' && s.azureMapsKeySet && (s.azurePlacesDailyLimit ?? 150) > 0 && !azureFailed) return 'azure';
+    if (s.mapProvider === 'azure' && s.azureMapsKeySet && (s.azurePlacesDailyLimit ?? 150) > 0 && Date.now() >= azureOffUntil) return 'azure';
     return 'osm';
   }
   // Azure gives the nearest 100 businesses, so they are useful a little
@@ -113,6 +118,7 @@ const Places = (() => {
   // Start again when the source changes (Settings changed the provider).
   function checkSource() {
     const now = currentSource();
+    showSource(now);
     if (now === source) return;
     source = now;
     known.clear();
@@ -122,10 +128,19 @@ const Places = (() => {
     lastSearch = null;
   }
 
+  // While OpenStreetMap stands in for Azure, the reason stays in view.
   function setStatus(text) {
-    status = text;
+    status = azureWhy && source === 'osm' && text ? `${azureWhy} ${text}` : text;
     const el = $('#places-status');
-    if (el) el.textContent = text;
+    if (el) el.textContent = status;
+  }
+
+  // The "Places come from ..." line in the layers panel.
+  function showSource(now) {
+    const el = $('#places-from');
+    if (!el) return;
+    const name = { google: 'Google', azure: 'Azure Maps', osm: 'OpenStreetMap' }[now];
+    el.textContent = `Places come from ${name}.`;
   }
 
   // The squares (tile numbers at zoom 15) covering the map on screen.
@@ -296,13 +311,14 @@ const Places = (() => {
       const used = Number.isInteger(data.used) ? ` · ${data.used} of ${data.limit} ${from.name} searches used today` : '';
       if (!res.ok && source === 'azure') {
         // Azure refused, is busy, or today's searches are used up: show
-        // OpenStreetMap's places instead (until the page is opened again).
-        azureFailed = true;
+        // OpenStreetMap's places instead, and say why (see azureOffUntil).
+        const usedUp = res.status === 429;
+        azureOffUntil = usedUp ? Infinity : Date.now() + AZURE_RETRY_MS;
+        azureWhy = usedUp
+          ? `Today's ${data.limit ?? ''} Azure Maps places searches are used up (more tomorrow, or raise the limit in Settings), so these are OpenStreetMap's places.`
+          : `Azure Maps places didn't answer${data.error ? ` (${data.error})` : res.status ? ` (error ${res.status})` : ''}, so these are OpenStreetMap's places; Azure is asked again in 5 minutes.`;
         busy = false;
         update();
-        setStatus(res.status === 429
-          ? `Today's ${data.limit ?? ''} Azure Maps places searches are used up: showing OpenStreetMap places instead.`
-          : 'Azure Maps places aren\'t available right now: showing OpenStreetMap places instead.');
         return;
       }
       if (!res.ok) {
@@ -322,6 +338,7 @@ const Places = (() => {
       lastSearch = { center, radius, usage: used };
       if (source === 'google' && known.size > 600) known.clear();
       const count = on && map.getZoom() >= minZoom() ? draw() : 0;
+      if (source === 'azure') azureWhy = '';
       setStatus(`${count} places here (from ${from.name})${data.remembered ? ' · remembered, not a new search' : used}`);
     } catch {
       setStatus('Could not load places (is the map server running?)');
@@ -362,8 +379,7 @@ const Places = (() => {
       // Don't let memory grow forever when exploring far and wide.
       if (known.size > 20000) { known.clear(); loaded.clear(); }
       const count = on && map.getZoom() >= minZoom() ? draw() : 0;
-      const why = azureFailed && state.settings.mapProvider === 'azure' ? ' (from OpenStreetMap: Azure Maps places aren\'t available right now)' : '';
-      setStatus(data.truncated ? 'There are too many places here to show them all. Zoom in to see more.' : `${count} places here${why}`);
+      setStatus(data.truncated ? 'There are too many places here to show them all. Zoom in to see more.' : `${count} places here`);
     } catch {
       setStatus(stop.signal.aborted ? 'OpenStreetMap did not answer. Move the map again in a minute to retry.'
         : 'Could not load places (is the map server running?)');
