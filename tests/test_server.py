@@ -693,6 +693,8 @@ class FakeNominatim:
                 places = [
                     {'lat': '40.7812', 'lon': '-73.9665', 'display_name': '<b>Bow</b> Bridge, Central Park, New York, United States',
                      'addresstype': 'bridge', 'boundingbox': ['40.7810', '40.7814', '-73.9668', '-73.9662']},
+                    {'lat': '40.78123', 'lon': '-73.96652', 'display_name': '1 Park Loop, Manhattan, New York, United States',
+                     'addresstype': 'house'},
                     {'lat': 'x', 'lon': '1', 'display_name': 'Broken'},
                     {'lat': '40.0', 'lon': '-74.0', 'display_name': ''},
                 ]
@@ -744,14 +746,17 @@ class LiveGeocode(unittest.TestCase):
     def test_azure_with_the_azure_map(self):
         self.srv.put_settings({'mapProvider': 'azure', 'azureMapsKey': self.KEY})
         status, answer, body = self.find('1 Park Loop, New York')
-        self.assertEqual((status, answer['source']), (200, 'azure'))
+        self.assertEqual((status, answer['source']), (200, 'azure+osm'), 'Azure, and OpenStreetMap as well')
         self.assertNotIn(self.KEY.encode(), body, 'the key stays on the server')
-        first, town = answer['results']
-        self.assertEqual((first['name'], first['lat'], first['lon']), ('1 Park Loop, New York, NY 10024', 40.7812, -73.9665))
+        first, bridge, town = answer['results']
+        self.assertEqual((first['name'], first['lat'], first['lon'], first['from']),
+                         ('1 Park Loop, New York, NY 10024', 40.7812, -73.9665, 'azure'))
         self.assertEqual(first['box'], [40.7808, -73.967, 40.7816, -73.966], 'south, west, north, east')
         self.assertEqual(first['detail'], 'Address, United States')
-        self.assertEqual(town['detail'], 'Town or city')
-        self.assertEqual(len(answer['results']), 2, 'an answer without a point is left out')
+        self.assertEqual((bridge['from'], town['detail']), ('osm', 'Town or city'),
+                         'more of the searched words (park, new, york) comes before fewer (new, york)')
+        self.assertNotIn('1 Park Loop, Manhattan, New York, United States', [r['name'] for r in answer['results']],
+                         "the same place from both is shown once; Azure's answer without a point is left out")
         asked = self.azure.geocodes[-1]
         self.assertEqual((asked['api-version'], asked['query'], asked['coordinates'], asked['top']),
                          ('2026-01-01', '1 Park Loop, New York', '-74.0,40.8', '5'),
@@ -760,6 +765,27 @@ class LiveGeocode(unittest.TestCase):
         before = len(self.azure.geocodes)
         status, again, _ = self.find('1  park loop, new york')
         self.assertEqual((status, again.get('remembered'), len(self.azure.geocodes)), (200, True, before))
+
+    def test_a_place_azure_does_not_know_comes_first_from_openstreetmap(self):
+        # Like a waterfall in a forest: Azure only matches the words (towns, counties),
+        # OpenStreetMap knows the spot itself.
+        self.srv.put_settings({'mapProvider': 'azure', 'azureMapsKey': self.KEY})
+        status, answer, _ = self.find('Bow Bridge')
+        self.assertEqual(status, 200)
+        self.assertEqual([r['from'] for r in answer['results']][:1], ['osm'])
+        self.assertTrue(answer['results'][0]['name'].endswith('Bridge, Central Park, New York, United States'))
+
+    def test_openstreetmap_failing_still_shows_azure(self):
+        self.srv.put_settings({'mapProvider': 'azure', 'azureMapsKey': self.KEY})
+        self.osm.status = 503
+        try:
+            status, answer, _ = self.find('Only Azure today')
+        finally:
+            self.osm.status = 200
+        self.assertEqual((status, answer['source'], len(answer['results'])), (200, 'azure', 2))
+        before = len(self.osm.asked)
+        self.find('Only Azure today')
+        self.assertEqual(len(self.osm.asked), before + 1, 'not remembered, so OpenStreetMap is asked again')
 
     def test_azure_failing_or_used_up_falls_back_to_openstreetmap(self):
         self.srv.put_settings({'mapProvider': 'azure', 'azureMapsKey': self.KEY})
@@ -785,10 +811,10 @@ class LiveGeocode(unittest.TestCase):
         before = len(self.azure.geocodes)
         status, answer, _ = self.find('Bow Bridge')
         self.assertEqual((status, answer['source'], len(self.azure.geocodes)), (200, 'osm', before), 'Azure not asked')
-        self.assertEqual(answer['results'], [{'name': '<b>Bow</b> Bridge, Central Park, New York, United States',
-                                              'detail': 'Bridge', 'lat': 40.7812, 'lon': -73.9665,
-                                              'box': [40.781, -73.9668, 40.7814, -73.9662]}],
-                         'broken answers are left out (the page shows names as text, not HTML)')
+        self.assertEqual(answer['results'][0], {'name': '<b>Bow</b> Bridge, Central Park, New York, United States',
+                                                'detail': 'Bridge', 'lat': 40.7812, 'lon': -73.9665, 'from': 'osm',
+                                                'box': [40.781, -73.9668, 40.7814, -73.9662]})
+        self.assertEqual(len(answer['results']), 2, 'broken answers are left out (the page shows names as text, not HTML)')
         _, params, agent = self.osm.asked[-1]
         self.assertTrue(agent.startswith('dji-flightmap/'), 'Nominatim wants a User-Agent naming the app')
         self.assertEqual((params['q'], params['format'], params['viewbox']), ('Bow Bridge', 'jsonv2', '-75.0,41.8,-73.0,39.8'))

@@ -7,8 +7,11 @@ Where the answers come from:
     (research: "Azure Maps Get Geocoding"). It is the current Search API
     (not the old v1 that Azure places use). Each search is one billable
     transaction after Azure's free monthly amount, so there is a daily limit
-    (DAILY_LIMIT); after it, or if Azure fails, OpenStreetMap is asked.
-  - Otherwise: OpenStreetMap's free Nominatim server
+    (DAILY_LIMIT). Azure knows streets, towns and counties, but hardly any
+    outdoor spots (a waterfall, a trail): Microsoft says it returns no
+    "points of interest". So OpenStreetMap is asked as well, and the two
+    lists are put together, best match first (see _merge).
+  - Always: OpenStreetMap's free Nominatim server
         GET https://nominatim.openstreetmap.org/search?q=...&format=jsonv2
     (research: "Nominatim usage policy"). Its rules (as found in Nov 2026;
     the policy page itself was not reachable from Claude's sandbox): at most
@@ -25,6 +28,7 @@ searching the same thing again costs nothing.
 """
 import json
 import os
+import re
 import threading
 import time
 from urllib.parse import quote, urlencode
@@ -39,7 +43,8 @@ OSM = Upstream(NOMINATIM_URL, timeout=10)
 USER_AGENT = f"dji-flightmap/{APP_VERSION} (self-hosted flight log map)"
 USAGE_FILE = os.path.join(STATE_DIR, "azure-geocode-usage.json")
 DAILY_LIMIT = 200          # Azure address searches a day (then OpenStreetMap is asked)
-TOP = 5                    # answers per search
+TOP = 5                    # answers per search, from each company
+SHOWN = 8                  # answers shown, both companies together
 MAX_QUERY = 200            # characters
 REMEMBER_S = 24 * 3600
 REMEMBER_MAX = 300
@@ -52,7 +57,7 @@ _remembered = {}                   # key -> (time, answer)
 
 
 def search(query, lat=None, lon=None):
-    """Up to 5 places matching `query`. lat/lon (the middle of the map) make
+    """Up to 8 places matching `query`. lat/lon (the middle of the map) make
     nearby answers come first. Returns (answer dict, HTTP status)."""
     query = " ".join(str(query or "").split())[:MAX_QUERY]
     if len(query) < 3:
@@ -67,22 +72,26 @@ def search(query, lat=None, lon=None):
         hit = _remembered.get(key)
         if hit and time.time() - hit[0] < REMEMBER_S:
             return dict(hit[1], remembered=True), 200
-    answer, note = None, ""
+    azure, osm, note, complete = None, None, "", True
     if use_azure:
         try:
-            answer = _azure(query, near, settings["azureMapsKey"])
+            azure = _azure(query, near, settings["azureMapsKey"])
         except _Skip as why:
-            note = str(why)
-            log(f"Address search: {why}; asking OpenStreetMap instead")
-    if answer is None:
-        try:
-            answer = _osm(query, near)
-        except _Skip as why:
-            log(f"Address search: {why}")
+            note, complete = str(why), False
+            log(f"Address search: {why}; only OpenStreetMap is asked")
+    try:
+        osm = _osm(query, near)
+    except _Skip as why:
+        log(f"Address search: {why}")
+        if azure is None:
             return {"error": f"the address search is not available right now ({why})"}, 502
+        complete = False
+    answer = {"results": _merge(query, azure or [], osm or []),
+              "source": "+".join(name for name, got in (("azure", azure), ("osm", osm)) if got is not None)}
     if note:
-        # Azure couldn't answer: not remembered, so Azure is asked again next time.
         answer["note"] = note
+    if not complete:
+        # Something didn't answer: not remembered, so it is asked again next time.
         return answer, 200
     with _lock:
         _remembered[key] = (time.time(), answer)
@@ -115,7 +124,7 @@ def _azure(query, near, key):
     except (ValueError, AttributeError):
         raise _Skip("Azure Maps sent something unexpected") from None
     results = [r for r in (_azure_result(f) for f in features) if r]
-    return {"results": results[:TOP], "source": "azure"}
+    return results[:TOP]
 
 
 def _azure_result(feature):
@@ -131,7 +140,7 @@ def _azure_result(feature):
         return None
     country = str((addr.get("countryRegion") or {}).get("name", "")).strip()
     result = {"name": name[:150], "detail": _kind(props.get("type")), "lat": round(coords[1], 6),
-              "lon": round(coords[0], 6)}
+              "lon": round(coords[0], 6), "from": "azure"}
     if country and country not in name:
         result["detail"] = ", ".join(x for x in (result["detail"], country) if x)
     box = feature.get("bbox")
@@ -200,7 +209,7 @@ def _osm(query, near):
     except ValueError:
         raise _Skip("OpenStreetMap sent something unexpected") from None
     results = [r for r in (_osm_result(p) for p in (found if isinstance(found, list) else [])) if r]
-    return {"results": results[:TOP], "source": "osm"}
+    return results[:TOP]
 
 
 def _osm_result(place):
@@ -214,7 +223,8 @@ def _osm_result(place):
     if not name:
         return None
     kind = str(place.get("addresstype") or place.get("type") or "").replace("_", " ")
-    result = {"name": name[:150], "detail": kind[:1].upper() + kind[1:40], "lat": round(lat, 6), "lon": round(lon, 6)}
+    result = {"name": name[:150], "detail": kind[:1].upper() + kind[1:40], "lat": round(lat, 6), "lon": round(lon, 6),
+              "from": "osm"}
     box = place.get("boundingbox")
     try:
         s, n, w, e = (float(x) for x in box)
@@ -222,3 +232,30 @@ def _osm_result(place):
     except (TypeError, ValueError):
         pass
     return result
+
+
+# ---- both lists together ---------------------------------------------------------------------------
+def _words(text):
+    """The words of a name or a search, in small letters: "FS 12, Springfield" -> {"fs", "12", "springfield"}."""
+    return {w for w in re.split(r"[^0-9a-z]+", str(text).lower()) if len(w) >= 2}
+
+
+def _merge(query, azure, osm):
+    """Azure's answers, then OpenStreetMap's, best match first: an answer
+    whose name has more of the searched words comes first ("Bow Bridge" before
+    "Bridge County"). Equal ones keep their order (each company lists
+    its best first). The same place from both companies is shown once."""
+    wanted = _words(query)
+    shown = []
+    for r in azure + osm:
+        first = _words(r["name"].split(",")[0])
+        if any(_close(r, o) and first == _words(o["name"].split(",")[0]) for o in shown):
+            continue
+        shown.append(r)
+    shown.sort(key=lambda r: -len(wanted & _words(r["name"])))   # sort() keeps equal ones in order
+    return shown[:SHOWN]
+
+
+def _close(a, b):
+    """Within about 50 m."""
+    return abs(a["lat"] - b["lat"]) < 0.0005 and abs(a["lon"] - b["lon"]) < 0.0005

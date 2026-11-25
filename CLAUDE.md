@@ -347,11 +347,18 @@ owner confirms it works**, release it with a tag (`git tag -a vX.Y.Z` +
   tools' right edge and fits on a phone). `/api/geocode?q=&lat=&lon=`
   (`flightmap/geocode.py`): with the Azure provider + key, Azure **Get
   Geocoding** `api-version=2026-01-01` (`coordinates` = lon,lat; GeoJSON
-  answer, bbox W,S,E,N), max 200 a day (`azure-geocode-usage.json`), then or
-  on any Azure error OpenStreetMap **Nominatim** (`NOMINATIM_URL`): own
-  User-Agent, >= 1.1 s between searches, `viewbox` ~1° to prefer nearby,
-  only on Enter (no type-ahead). Answers remembered in memory a day
-  (fallback answers are not). The pin is `interactive: false` so waypoints
+  answer, bbox W,S,E,N), max 200 a day (`azure-geocode-usage.json`), AND
+  always OpenStreetMap **Nominatim** (`NOMINATIM_URL`): own User-Agent,
+  >= 1.1 s between searches, `viewbox` ~1° to prefer nearby, only on Enter
+  (no type-ahead). Why both: the owner searched for a waterfall (a hiking
+  spot; its name stays out of this public repo) and Azure only matched
+  words (a forest, a town, a county):
+  Get Geocoding has hardly any POIs. `_merge` lists Azure then OSM, sorted
+  by how many searched words the name has, same place (~50 m + same first
+  words) once, max 8; each result has `from`. Answers remembered in memory
+  a day, unless a company failed. Coordinates (decimal, N/S/E/W, deg/min/sec,
+  from Google Maps' right-click) are read in the page (`readCoordinates`)
+  and go straight there, nothing sent. The pin is `interactive: false` so waypoints
   can go on it. The Nominatim policy page was not reachable from Claude's
   sandbox (Nov 2026): rules taken from search results.
 - Old installs had an `update-ct.sh` that could not download its own

@@ -220,8 +220,9 @@ To plan a flight somewhere new, go there on the map by its address:
 
 1. Click the **magnifying glass** (top right, left of **Layers**). A search
    box opens. It closes again by itself, so it takes no room on the map.
-2. Type an address, a town or a landmark, for example
+2. Type an address, a town or a place, for example
    `12 Main St, Springfield, IL`, and press **Enter** (or **Find**).
+   You can also paste **coordinates** (see below).
 3. Click the right answer in the list. The map goes there, close up, and puts
    a **red pin** with the name on it.
 4. Plan as usual: the pin lets clicks through, so you can put a waypoint
@@ -229,14 +230,23 @@ To plan a flight somewhere new, go there on the map by its address:
 
 - Answers near the part of the map you're looking at come first. If the
   right one isn't listed, add the town or the state.
-- **With Azure Maps as the provider, the addresses come from Azure Maps**
-  (its *Get Geocoding* search; your key stays on the server). At most 200
-  searches a day are sent to Azure; searching the same thing again within a
-  day costs nothing. After that, or if Azure doesn't answer, OpenStreetMap is
-  asked instead, and the box says so.
+- **With Azure Maps as the provider, both Azure Maps and OpenStreetMap are
+  asked**, and their answers are listed together, the best match first. Each
+  answer says which company found it. Why both: Azure knows streets, towns
+  and counties very well, but hardly any outdoor spots (a waterfall, a
+  trail, a boat ramp); OpenStreetMap often knows those. Your Azure key stays
+  on the server. At most 200 searches a day are sent to Azure; searching the
+  same thing again within a day costs nothing. After that, or if Azure
+  doesn't answer, only OpenStreetMap is asked, and the box says so.
 - **With the other providers, the addresses come from OpenStreetMap** (its
   free *Nominatim* search). It's a shared, free service, so it only searches
   when you press Enter, never while you type.
+- **If a place can't be found, use its coordinates.** In Google Maps
+  (website): **right-click** the spot; the first line of the menu is its
+  coordinates, like `40.78120, -73.96650`. **Click them** to copy, then paste
+  them into the search box and press Enter. The map goes straight there; no
+  search is sent to anyone. Other ways of writing them work too, like
+  `40.7812 N, 73.9665 W` or `40°46'52.3"N 73°57'59.4"W`.
 - It finds where a place is. It doesn't say whether you may fly there: check
   airspace and local rules as always.
 

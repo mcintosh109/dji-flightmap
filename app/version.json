@@ -3,8 +3,9 @@
   "released": "2026-11-25",
   "repo": "mcintosh109/dji-flightmap",
   "notes": [
-    "New: find an address. Click the magnifying glass at the top right, type an address, a town or a landmark and press Enter: the map goes there and puts a pin on it, ready to plan a flight",
+    "New: find an address. Click the magnifying glass at the top right, type an address, a town or a place and press Enter: the map goes there and puts a pin on it, ready to plan a flight",
     "The search box only opens when you click the magnifying glass, so it takes no room on the map. The pin lets clicks through, so you can put a waypoint right on it",
-    "With Azure Maps, the addresses come from Azure (your key stays on the server); with the other maps, from OpenStreetMap"
+    "With Azure Maps, both Azure and OpenStreetMap are asked and listed together, best match first: Azure knows addresses, OpenStreetMap often knows outdoor spots like waterfalls and trails. With the other maps, the addresses come from OpenStreetMap",
+    "Can't find a spot by name? Paste its coordinates (in Google Maps: right-click the spot and click the numbers at the top) and the map goes straight there"
   ]
 }

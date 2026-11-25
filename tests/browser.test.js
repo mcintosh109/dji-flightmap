@@ -318,12 +318,16 @@ function fakeInternet(ctx, { github = null } = {}) {
     await page.fill('#addr-q', '1 Park Loop');
     await page.press('#addr-q', 'Enter');
     await page.waitForSelector('.addr-result', { timeout: 5000 }).catch(() => {});
-    check('Enter searches, through our server: the answers are listed', (await page.locator('.addr-result').count()) === 2
-      && (await page.textContent('#addr-results')).includes('1 Park Loop, New York') && azure.got.geocodes === 1,
-      await page.textContent('#addr-results'));
+    check('Enter searches, through our server, Azure and OpenStreetMap: the answers are listed',
+      (await page.locator('.addr-result').count()) === 3 && (await page.textContent('#addr-results')).includes('1 Park Loop, New York')
+      && (await page.textContent('#addr-results')).includes('Bow Bridge') && azure.got.geocodes === 2,
+      `${azure.got.geocodes} searches: ${await page.textContent('#addr-results')}`);
+    check('...each answer says which company it came from', (await page.textContent('.addr-result >> nth=0')).includes('Azure Maps')
+      && (await page.textContent('#addr-results')).includes('OpenStreetMap'), await page.textContent('#addr-results'));
     check('a name with code in it shows as text and does not run',
       (await page.textContent('#addr-results')).includes('<img src=x') && !(await page.evaluate(() => window.HACKED)));
-    check('it says where the addresses come from (Azure Maps)', (await page.textContent('#addr-foot')).includes('Azure Maps'));
+    check('it says where the addresses come from (Azure Maps and OpenStreetMap)',
+      (await page.textContent('#addr-foot')).includes('Azure Maps and © OpenStreetMap contributors'), await page.textContent('#addr-foot'));
     if (process.env.SHOTS) await page.screenshot({ path: path.join(process.env.SHOTS, 'desktop-results.png') });
     await page.click('.addr-result >> nth=0');
     await page.waitForTimeout(900);
@@ -340,6 +344,16 @@ function fakeInternet(ctx, { github = null } = {}) {
     await page.click('#btn-addr');
     await page.waitForTimeout(200);
     check('...and the search box closes Layers', await page.isVisible('#addr-panel') && !(await page.isVisible('#layers-panel')));
+    const searchesBefore = azure.got.geocodes;
+    await page.fill('#addr-q', `40°46'40.0"N 73°58'10.0"W`);
+    await page.press('#addr-q', 'Enter');
+    await page.waitForTimeout(900);
+    const spot = await page.evaluate(() => ({ c: map.getCenter(), label: document.querySelector('.addr-label')?.textContent,
+      pins: document.querySelectorAll('.addr-pin').length }));
+    check('pasted coordinates go straight there, with a pin (nothing is searched)', azure.got.geocodes === searchesBefore
+      && spot.pins === 1 && spot.label === '40.77778, -73.96944' && Math.abs(spot.c.lat - 40.77778) < 0.01
+      && !(await page.isVisible('#addr-panel')), JSON.stringify(spot));
+    await page.click('#btn-addr');
     await page.click('#addr-clear');
     check('"Remove the pin" removes it', (await page.locator('.addr-pin').count()) === 0 && !(await page.isVisible('#addr-clear')));
     await page.keyboard.press('Escape');
