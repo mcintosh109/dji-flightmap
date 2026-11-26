@@ -349,6 +349,10 @@ class LiveMaintenance(unittest.TestCase):
         cls.tmp = tempfile.mkdtemp(prefix='flightmap-test-')
         os.makedirs(os.path.join(cls.tmp, 'state'))
         make_archive(os.path.join(cls.tmp, 'archive'))
+        # An install that already has its own (here: no) reminders, so the
+        # fresh-install examples are not added (see LiveMaintenanceFreshInstall).
+        with open(os.path.join(cls.tmp, 'state', 'maintenance.json'), 'w') as fh:
+            json.dump({'version': 1, 'items': {}}, fh)
         cls.srv = LiveServer(os.path.join(cls.tmp, 'archive'), os.path.join(cls.tmp, 'state'))
 
     @classmethod
@@ -416,6 +420,44 @@ class LiveMaintenance(unittest.TestCase):
         self.assertEqual(status, 404)
         status, _ = self.call('POST', '/api/maintenance/new/done', {'date': '2026-01-01'})
         self.assertEqual(status, 404)
+
+
+class LiveMaintenanceFreshInstall(unittest.TestCase):
+    """A fresh install starts with the 4 example reminders (owner's wish, 5.6.0)."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = tempfile.mkdtemp(prefix='flightmap-test-')
+        os.makedirs(os.path.join(cls.tmp, 'state'))
+        make_archive(os.path.join(cls.tmp, 'archive'))
+        cls.srv = LiveServer(os.path.join(cls.tmp, 'archive'), os.path.join(cls.tmp, 'state'))
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.srv.stop()
+        shutil.rmtree(cls.tmp, ignore_errors=True)
+
+    def test_examples_on_a_fresh_install_only_once(self):
+        from datetime import date
+        items = self.srv.json('/api/maintenance')['items']
+        self.assertEqual(sorted(i['name'] for i in items), ['Check for firmware and DJI Fly updates',
+                         'Clean the motors and air vents', 'Inspect the gimbal and camera', 'Propellers: replace'])
+        self.assertTrue(all(i['drone'] == 'all' and i['lastDone'] == date.today().isoformat() for i in items), items)
+        self.assertTrue(os.path.exists(os.path.join(self.tmp, 'state', 'maintenance.json')))
+        # Asking again gives the SAME reminders (saved, not made anew).
+        self.assertEqual({i['id'] for i in self.srv.json('/api/maintenance')['items']}, {i['id'] for i in items})
+        # Deleting them all: they don't come back by themselves...
+        headers = {'X-Requested-With': 'flightmap'}
+        for i in items:
+            self.assertEqual(self.srv.request(f"/api/maintenance/{i['id']}", 'DELETE', None, headers)[0], 200)
+        self.assertEqual(self.srv.json('/api/maintenance')['items'], [])
+        # ...but "Add examples" adds them again, for the chosen drone.
+        status, _, body = self.srv.request('/api/maintenance/examples', 'POST', json.dumps({'drone': 'TEST0000SERIAL01'}).encode(),
+                                           dict(headers, **{'Content-Type': 'application/json'}))
+        self.assertEqual(status, 200, body)
+        again = self.srv.json('/api/maintenance')['items']
+        self.assertEqual(len(again), 4)
+        self.assertTrue(all(i['drone'] == 'TEST0000SERIAL01' for i in again))
 
 
 class LivePlans(unittest.TestCase):

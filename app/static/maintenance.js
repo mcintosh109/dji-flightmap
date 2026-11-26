@@ -21,14 +21,6 @@ const Maintenance = (() => {
   const localDay = (iso) => { const d = new Date(iso); return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`; };
   const dayName = (text) => new Date(`${text}T12:00:00`).toLocaleDateString([], { day: 'numeric', month: 'short', year: 'numeric' });
 
-  // Starting points only: DJI doesn't publish fixed intervals. Change them to suit you.
-  const EXAMPLES = [
-    { name: 'Propellers: replace', everyHours: 10 },
-    { name: 'Clean the motors and air vents', everyFlights: 20 },
-    { name: 'Check for firmware and DJI Fly updates', everyDays: 30 },
-    { name: 'Inspect the gimbal and camera', everyDays: 30 },
-  ];
-
   const send = (method, url, body) => fetch(url, {
     method, headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'flightmap' },
     body: body === undefined ? undefined : JSON.stringify(body),
@@ -200,10 +192,9 @@ const Maintenance = (() => {
         const res = await send('DELETE', `api/maintenance/${encodeURIComponent(id)}`);
         if (!res.ok) throw new Error(`server answered ${res.status}`);
       } else if (name === 'examples') {
-        for (const ex of EXAMPLES) {
-          const res = await send('PUT', 'api/maintenance/new', { drone: defaultDrone(), lastDone: todayText(), notes: 'Example: change the numbers to suit you.', ...ex });
-          if (!res.ok) throw new Error(`server answered ${res.status}`);
-        }
+        // The same 4 examples a fresh install starts with (the list is on the server).
+        const res = await send('POST', 'api/maintenance/examples', { drone: defaultDrone() });
+        if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || `server answered ${res.status}`);
       }
     } catch (ex) {
       alert(`That didn't work: ${ex.message}`);

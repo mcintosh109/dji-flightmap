@@ -7,7 +7,7 @@
     "Each reminder can count flying hours, flights and days since it was last done (your choice, one or more). It is due as soon as the first one is reached, and a bar shows how far along each one is",
     "When a job is due, the tab shows how many, and the drone's card on the Aircraft tab says \"1 maintenance job due\" (click it to open the Maintenance tab)",
     "\"Mark done\" starts counting again from that moment. A reminder can be for one drone or for all drones",
-    "\"Add examples\" adds 4 reminders to start with (propellers, motors, firmware, gimbal). DJI doesn't publish fixed times for these jobs: change the numbers to suit you",
+    "A new install starts with 4 reminders already there (propellers, motors, firmware, gimbal), for all drones, counted from the day the map is first opened. If you already have reminders, nothing is added. \"Add examples\" adds the same 4 again. DJI doesn't publish fixed times for these jobs: change the numbers to suit you",
     "Reminders only: keep doing DJI's checks before every flight. They are included in your backups"
   ]
 }

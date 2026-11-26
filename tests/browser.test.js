@@ -699,6 +699,17 @@ function fakeInternet(ctx, { github = null } = {}) {
     let mt = await page.textContent('#tab-maint');
     check('Maintenance says it is reminders only, and to keep doing the checks before every flight',
       /Reminders only.*checks before every\s+flight/s.test(mt), mt.slice(0, 200));
+    check('  ...a fresh install starts with the 4 example reminders, none due', (await page.locator('.mt-card').count()) === 4
+      && (await page.locator('.mt-card.due').count()) === 0 && /Propellers: replace/.test(mt));
+    const deleteAllReminders = async () => {
+      for (const it of (await (await fetch(`${app.base}/api/maintenance`)).json()).items) {
+        await fetch(`${app.base}/api/maintenance/${it.id}`, { method: 'DELETE', headers: { 'X-Requested-With': 'flightmap' } });
+      }
+      await page.evaluate(() => Maintenance.load());
+    };
+    await deleteAllReminders();
+    check('  ...with every reminder deleted, they stay gone and "Add examples" is offered',
+      (await page.locator('.mt-card').count()) === 0 && await page.isVisible('#tab-maint [data-act=examples]'));
     await page.click('#tab-maint [data-act=examples]');
     await page.waitForTimeout(600);
     check('  ..."Add examples" adds 4 reminders, none due yet', (await page.locator('.mt-card').count()) === 4
@@ -733,9 +744,7 @@ function fakeInternet(ctx, { github = null } = {}) {
     check('  ..."Mark done" starts counting again: nothing due', (await page.locator('.mt-card.due').count()) === 0
       && (await page.textContent('#maint-count')) === '' && /0 of 2 flights/.test(await page.textContent('#tab-maint')));
     // Clean up, so later parts of the test see no reminders.
-    for (const it of (await (await fetch(`${app.base}/api/maintenance`)).json()).items) {
-      await fetch(`${app.base}/api/maintenance/${it.id}`, { method: 'DELETE', headers: { 'X-Requested-With': 'flightmap' } });
-    }
+    await deleteAllReminders();
     await page.click('[data-tab=aircraft]');
     check('no errors on the map page', errors.length === 0, errors.join(' | '));
     await ctx.close();

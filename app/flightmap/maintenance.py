@@ -10,6 +10,7 @@ Only reminders: DJI's checks before every flight still apply.
 import json
 import os
 import re
+import secrets
 import threading
 from datetime import date, datetime, timedelta, timezone
 
@@ -27,7 +28,42 @@ LIMITS = {                # name: (smallest, largest)
 }
 
 
+# Starting points only: DJI doesn't publish fixed times for these jobs.
+# Used on a fresh install (no maintenance.json yet) and by "Add examples".
+EXAMPLES = [
+    {"name": "Propellers: replace", "everyHours": 10},
+    {"name": "Clean the motors and air vents", "everyFlights": 20},
+    {"name": "Check for firmware and DJI Fly updates", "everyDays": 30},
+    {"name": "Inspect the gimbal and camera", "everyDays": 30},
+]
+EXAMPLE_NOTE = "Example: change the numbers to suit you."
+
+
+def example_items(drone="all"):
+    """The examples as new reminders (id -> item), last done today."""
+    today = date.today().isoformat()
+    items = {}
+    for ex in EXAMPLES:
+        item, problems = clean_item(dict(ex, drone=drone, lastDone=today, notes=EXAMPLE_NOTE))
+        if not problems:
+            items[secrets.token_hex(6)] = item
+    return items
+
+
 def load_items():
+    """The saved reminders. A fresh install (no file yet) starts with the examples.
+
+    Only when the file has NEVER existed: once it is saved (even empty, after
+    deleting every reminder) the examples don't come back by themselves.
+    """
+    if not os.path.exists(MAINTENANCE_FILE):
+        items = example_items()
+        try:
+            save_items(items)
+            log("No maintenance reminders yet: added the 4 example reminders")
+        except OSError as exc:
+            log(f"Could not save the example maintenance reminders: {exc}")
+        return items
     try:
         with open(MAINTENANCE_FILE, encoding="utf-8") as fh:
             data = json.load(fh)

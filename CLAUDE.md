@@ -538,7 +538,11 @@ owner confirms it works**, release it with a tag (`git tag -a vX.Y.Z` +
   state.flights; due = any limit reached, soon = 80%. Examples are starting
   points, NOT DJI numbers (DJI publishes none): say so. With 5 tabs, the
   tab row wraps (`.tabs` flex-wrap): on the owner's map "Maintenance" sits
-  on a 2nd row; offered a wrench icon instead.
+  on a 2nd row; offered a wrench icon instead; the owner kept it.
+  Pre-loaded (owner's wish, folded into 5.6.0): `load_items()` saves
+  `EXAMPLES` (server-side list, also used by POST /api/maintenance/examples
+  {drone}) when maintenance.json has NEVER existed; an empty saved file
+  stays empty. Fresh = drone 'all', lastDone = first open.
 - **`LiveLoginLockout` is flaky in Claude's sandbox** (Nov 2026, during
   5.5.0): "broken connection" for 2-9 of 30 guesses in about 2 of 3 runs, the
   same on the unchanged 5.4.2 code. Not changed yet: ask the owner first

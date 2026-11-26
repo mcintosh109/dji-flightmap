@@ -380,7 +380,12 @@ The **Maintenance** tab reminds you of jobs you do now and then. It is
 **only a reminder**: keep doing DJI's checks before every flight
 (propellers, battery, motors, gimbal).
 
-1. Press **＋ Add a reminder** (or, the first time, **Add examples**).
+A **new install starts with 4 reminders** already there (see *Add
+examples* below), for *All drones*, counted from the day the map is first
+opened. Change, delete or keep them. Once you have your own list, nothing is
+added again (even if you delete them all; **Add examples** brings them back).
+
+1. Press **＋ Add a reminder**.
 2. **What to do:** for example *Propellers: replace*.
 3. **Drone:** one drone, or *All drones*.
 4. **Due after:** fill in one or more of **flying hours**, **flights** and
@@ -398,7 +403,7 @@ Each reminder shows a bar per limit (for example *2.7 of 2 hours*) and
 
 After doing the job, press **Mark done**: counting starts again from that
 moment (flights earlier that day don't count). To pick another day, use
-**Edit** → **Last done**. **Add examples** adds 4 starting points you can
+**Edit** → **Last done**. **Add examples** (shown when the list is empty) adds 4 starting points you can
 change or delete: propellers (every 10 flying hours), clean the motors and
 air vents (every 20 flights), firmware and DJI Fly updates, and the gimbal
 and camera (every 30 days).

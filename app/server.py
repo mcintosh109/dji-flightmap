@@ -79,6 +79,7 @@ Web addresses it answers:
   /api/maintenance      GET: maintenance reminders
   /api/maintenance/<id> PUT: save one (id "new" makes one), DELETE: remove it
   /api/maintenance/<id>/done  POST {date}: mark it done on that date
+  /api/maintenance/examples   POST {drone}: add the 4 example reminders
   /api/plans            GET: saved flight plans
   /api/plans/<id>       PUT: save a plan (id "new" makes one), DELETE: remove it
   /api/plans/<id>/djifly.kmz?finish=&lost=
@@ -134,7 +135,7 @@ from flightmap.azplaces import search as azure_places_search
 from flightmap.gplaces import search as google_places_search
 from flightmap.library import FlightLibrary
 from flightmap.places import PlacesError, parse_range, places_in
-from flightmap.maintenance import MAINT_ID_RE, MAINT_LOCK, MAX_ITEMS, clean_date, clean_item, load_items, mark_done, save_items
+from flightmap.maintenance import MAINT_ID_RE, MAINT_LOCK, MAX_ITEMS, clean_date, clean_item, example_items, load_items, mark_done, save_items
 from flightmap.plans import MAX_PLANS, PLAN_ID_RE, PLANS_LOCK, clean_plan, load_plans, save_plans
 from flightmap.settings import (DEFAULT_SETTINGS, SERVER_ONLY_KEYS, clean_settings, current_settings,
                                 load_settings, public_settings, save_settings, tunnel_peers)
@@ -638,6 +639,8 @@ class Handler(SimpleHTTPRequestHandler):
     def maintenance_change(self, method, path):
         if not self.allowed(path) or not self.from_our_page():
             return
+        if method == "POST" and path == "/api/maintenance/examples":
+            return self.maintenance_examples()
         done = method == "POST" and path.endswith("/done")
         item_id = self.maint_id_from(path, "/done" if done else "")
         if item_id is None or (method == "POST" and not done):
@@ -673,6 +676,27 @@ class Handler(SimpleHTTPRequestHandler):
                 return self.send_json({"error": f"could not save: {exc}"}, 500)
         log(f"{self.client_ip()} {'deleted' if method == 'DELETE' else 'marked done' if done else 'saved'} maintenance reminder {item_id}")
         return self.send_json(answer)
+
+    def maintenance_examples(self):
+        # "Add examples" on the Maintenance tab: the same 4 as a fresh install.
+        incoming = self.read_json_body(limit=4096)
+        if incoming is None:
+            return
+        drone = incoming.get("drone", "all")
+        with MAINT_LOCK:
+            items = load_items()
+            new = example_items(drone if isinstance(drone, str) and drone.strip() else "all")
+            if not new:
+                return self.send_json({"error": "Choose a drone (or All drones)."}, 400)
+            if len(items) + len(new) > MAX_ITEMS:
+                return self.send_json({"error": f"You can have up to {MAX_ITEMS} reminders."}, 400)
+            items.update(new)
+            try:
+                save_items(items)
+            except OSError as exc:
+                return self.send_json({"error": f"could not save: {exc}"}, 500)
+        log(f"{self.client_ip()} added the example maintenance reminders")
+        return self.send_json({"items": [dict(v, id=k) for k, v in new.items()]})
 
     def do_DELETE(self):
         path = urlparse(self.path).path
