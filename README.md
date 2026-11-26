@@ -332,16 +332,22 @@ When the dock adds new flights, they show up within about a minute.
 Everything here is worked out from your flight logs, in your browser.
 Nothing extra is stored or sent anywhere.
 
-- **Show:** *All time* or one year.
+- **Show:** *All time* or one year. **Drone:** *All drones* or one drone
+  (told apart by the end of its serial number). The **Stats** button on a
+  drone's card in the **Aircraft** tab opens this tab already set to that
+  drone.
 - **Your flying:** number of flights, air time, distance, days flown, photos
   and video.
 - **Days you flew:** one row per month, one square per day. Darker = more air
   time that day. Point at a square for the number of flights; **click it** to
   see that day's flights in the Flights tab.
-- **Each drone:** flights, air time and distance per drone.
-- **Battery health** (always all time, a battery's whole life), one card per
-  battery, told apart by its serial number (only the last 6 characters are
-  shown):
+- **Each drone:** flights, air time and distance per drone (only shown with
+  *All drones*).
+- **Battery health**, one card per battery, told apart by its serial number
+  (only the last 6 characters are shown). With one drone chosen, only the
+  batteries that flew in it. Each card counts the battery's **whole life**
+  (every year, and flights in another drone too), and says which drone(s)
+  it was **flown in**:
   - **% of a new one:** how much the battery holds now (its *full capacity*
     in the newest log) compared with a new one. For the Mini 3 / Mini 4 Pro
     batteries that is DJI's spec (Standard 2590 mAh, Plus 3850 mAh); for

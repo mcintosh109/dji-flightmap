@@ -670,6 +670,27 @@ function fakeInternet(ctx, { github = null } = {}) {
     await page.waitForTimeout(600);
     check('clicking a record opens that flight', await page.isVisible('#detail'));
     await page.click('#d-close');
+    check('  ...temperature shows the unit once (e.g. 68–86 °F)', /Temperature\d+–\d+ °[FC]/.test(await bat1.textContent()), await bat1.textContent());
+
+    // Stats per drone: a "Drone" choice, and a Stats button on each drone's card.
+    await page.click('[data-tab=stats]');
+    const droneOpts = await page.$$eval('#st-drone option', (els) => els.map((e) => e.value));
+    check('the Stats tab can show one drone (All drones + each drone)',
+      droneOpts[0] === 'all' && droneOpts.includes('TEST0000SERIAL01') && droneOpts.includes('TEST0000SERIAL02'), droneOpts.join(', '));
+    await page.selectOption('#st-drone', 'TEST0000SERIAL02');
+    let st = await page.textContent('#tab-stats');
+    check('  ...only that drone is counted (1 GeoJSON flight, no batteries)', st.includes('Flights1')
+      && /No battery serial numbers in this drone's logs/.test(st) && !/Each drone/.test(st), st.slice(0, 300));
+    await page.selectOption('#st-drone', 'TEST0000SERIAL01');
+    st = await page.textContent('#tab-stats');
+    check('  ...the other drone has its batteries, tagged with the drone they flew in',
+      (await page.locator('.battery').count()) === 2 && /Flown in: DJI Mini 4 Pro ···RIAL01/.test(st), st.slice(0, 300));
+    await page.click('[data-tab=aircraft]');
+    await page.locator('.aircraft[data-key=TEST0000SERIAL02] [data-act=stats]').click();
+    await page.waitForTimeout(200);
+    check("a drone's Stats button opens the Stats tab set to that drone",
+      await page.isVisible('#tab-stats') && (await page.inputValue('#st-drone')) === 'TEST0000SERIAL02');
+    await page.selectOption('#st-drone', 'all');
     await page.click('[data-tab=aircraft]');
     check('no errors on the map page', errors.length === 0, errors.join(' | '));
     await ctx.close();

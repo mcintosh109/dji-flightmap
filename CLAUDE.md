@@ -518,6 +518,12 @@ owner confirms it works**, release it with a tag (`git tag -a vX.Y.Z` +
   ~0.04 V, zSpeed +-5.2 m/s (real, not a bug). A GeoJSON-only flight said
   `videoTime` 23564 for 420 s: `trusted_video_time()` drops a video longer
   than the flight (+5 s) instead of guessing it is milliseconds.
+  Stats per drone (owner's wish after testing 5.5.0: "tagged to the drone
+  not just on the stats page"; they chose BOTH): `#st-drone` choice
+  (`statsDrone` in localStorage, key = serial || name, like aircraftList)
+  and a Stats button on each Aircraft card (`Stats.showDrone`). Battery
+  cards: filtered to the drone, but always the battery's whole life, with
+  "Flown in". Folded into 5.5.0 (owner's choice) before its release.
 - **`LiveLoginLockout` is flaky in Claude's sandbox** (Nov 2026, during
   5.5.0): "broken connection" for 2-9 of 30 guesses in about 2 of 3 runs, the
   same on the unchanged 5.4.2 code. Not changed yet: ask the owner first

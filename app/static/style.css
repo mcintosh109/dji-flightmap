@@ -221,6 +221,10 @@ a.icon-btn { color: var(--text); }
 .flight .badge.nogps { color: var(--muted); font-style: italic; }
 
 /* ---------- Stats tab (5.5.0) ---------- */
+.st-choices { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 0 0 6px; }
+.st-choices .st-period { margin: 0 4px; }
+.st-choices select { max-width: 220px; }
+.flown-in { color: var(--muted); font-size: 12px; margin: -4px 0 8px; }
 .st-period { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 13px; margin: 0 4px 6px; }
 .st-period select { font: inherit; color: var(--text); background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 4px 8px; }
 .st-section { margin: 10px 0 14px; }
@@ -245,7 +249,7 @@ a.icon-btn { color: var(--text); }
 .health-text b { font-size: 16px; color: var(--accent); }
 .health-bar { height: 8px; border-radius: 4px; background: rgba(255,255,255,0.08); overflow: hidden; }
 .health-bar i { display: block; height: 100%; background: var(--accent); border-radius: 4px; }
-.cap-chart { width: 100%; height: 44px; display: block; margin-top: 4px; }
+.cap-chart { width: 100%; height: 32px; display: block; margin-top: 4px; }
 .cap-chart polyline { fill: none; stroke: var(--accent); stroke-width: 1.5; vector-effect: non-scaling-stroke; }
 .cap-chart .rated { stroke: var(--muted); stroke-width: 1; stroke-dasharray: 4 4; vector-effect: non-scaling-stroke; }
 .cal-row { display: grid; grid-template-columns: 64px 1fr; align-items: center; gap: 6px; margin: 3px 0; font-size: 11px; color: var(--muted); }

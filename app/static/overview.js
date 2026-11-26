@@ -62,11 +62,12 @@ function renderAircraft(data) {
           <div><span>Flights</span>${a.flights.length}</div>
           <div><span>Air time</span>${esc(fmt.dur(a.totalTime))}</div>
         </div>
-        ${a.last ? `<div class="coord">${esc(fmt.coord(a.last.lat, a.last.lon))}</div>
+        ${a.last ? `<div class="coord">${esc(fmt.coord(a.last.lat, a.last.lon))}</div>` : ''}
         <div class="actions">
-          <button class="chip" data-act="show">Show last flight</button>
-          <a class="chip accent" href="${navUrl(a.last.lat, a.last.lon)}" target="_blank" rel="noopener">Navigate</a>
-        </div>` : ''}
+          ${a.last ? '<button class="chip" data-act="show">Show last flight</button>' : ''}
+          <button class="chip" data-act="stats" type="button">Stats</button>
+          ${a.last ? `<a class="chip accent" href="${navUrl(a.last.lat, a.last.lon)}" target="_blank" rel="noopener">Navigate</a>` : ''}
+        </div>
       </article>`;
   }).join('');
 
@@ -74,6 +75,8 @@ function renderAircraft(data) {
     card.addEventListener('click', (ev) => {
       if (ev.target.closest('a')) return;  // let the Navigate link open normally
       const a = list.find((x) => x.key === card.dataset.key);
+      // "Stats": the Stats tab, showing only this drone (5.5.0).
+      if (ev.target.closest('[data-act=stats]')) { if (a) Stats.showDrone(a.key); return; }
       if (a?.lastFlight) selectFlight(a.lastFlight.id);
       else if (a?.flights[0]) selectFlight(a.flights[0].id);
     });

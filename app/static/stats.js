@@ -12,6 +12,7 @@ const RATED_MAH = { standard: 2590, plus: 3850 };
 const Stats = (() => {
   const box = () => $('#tab-stats');
   let period = loadSetting('statsPeriod', 'all');   // 'all' or a year, e.g. '2026'
+  let drone = loadSetting('statsDrone', 'all');     // 'all' or one drone's key (its serial number)
 
   const local = (iso) => new Date(iso);
   const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
@@ -24,9 +25,31 @@ const Stats = (() => {
     return [...set].sort((a, b) => b - a).map(String);
   }
 
+  // A drone is told apart by its serial number (the name if a log has none),
+  // the same way as the Aircraft tab.
+  const droneKey = (f) => f.serial || f.aircraftName;
+
+  // Every drone in the logs, newest flight first, with a label that tells
+  // two drones of the same model apart (the end of the serial number).
+  function droneList() {
+    const seen = new Map();
+    for (const f of state.flights) {
+      const key = droneKey(f);
+      if (!seen.has(key)) {
+        const name = displayName(f.serial, f.aircraftName);
+        seen.set(key, { key, label: f.serial ? `${name} ${shortSerial(f.serial)}` : name });
+      }
+    }
+    return [...seen.values()];
+  }
+  const droneLabel = (key) => droneList().find((d) => d.key === key)?.label || key;
+
   function inPeriod(f) {
     return period === 'all' || (f.start && String(local(f.start).getFullYear()) === period);
   }
+
+  // The flights the tab is about: the chosen year AND the chosen drone.
+  const chosen = (f) => inPeriod(f) && (drone === 'all' || droneKey(f) === drone);
 
   // ---------- 1. totals ----------
   function totalsHtml(list) {
@@ -121,6 +144,7 @@ const Stats = (() => {
       const diffs = flights.filter((f) => f.cellDiffMax != null);
       return {
         serial, kind, flights, newest, caps, now, rated,
+        drones: [...new Set(flights.map(droneKey))],   // which drone(s) this battery flew in
         health: now && rated ? Math.min(100, Math.round((now / rated) * 100)) : null,
         rate: minutes ? used / minutes : null,
         tempMax: temps.length ? Math.max(...temps.map((f) => f.batteryTempMax)) : null,
@@ -135,7 +159,7 @@ const Stats = (() => {
   // A small line of the battery's full capacity, flight by flight.
   function capacityChart(b) {
     if (b.caps.length < 2) return '';
-    const W = 300, H = 44;
+    const W = 300, H = 32;
     const vals = b.caps.map((f) => f.batteryCapacity);
     const hi = Math.max(...vals, b.rated || 0), lo = Math.min(...vals) - 50;
     const x = (i) => 4 + (i / (vals.length - 1)) * (W - 8);
@@ -148,9 +172,20 @@ const Stats = (() => {
       <div class="st-hint">Full capacity, flight by flight${b.rated ? ' (dashed line: a new battery)' : ''}</div>`;
   }
 
+  // Coldest - warmest, with the unit once: "72–108 °F".
+  function tempRange(lo, hi) {
+    const f = units() === 'imperial';
+    const n = (c) => Math.round(f ? c * 9 / 5 + 32 : c);
+    return `${n(lo)}–${n(hi)} ${f ? '°F' : '°C'}`;
+  }
+
   function batteriesHtml() {
-    const list = batteryList();
-    if (!list.length) return '<p class="st-hint">No battery serial numbers in your logs yet.</p>';
+    // With one drone chosen: only the batteries that flew in it. Each card still
+    // counts the battery's WHOLE life (also flights in another drone).
+    const list = batteryList().filter((b) => drone === 'all' || b.drones.includes(drone));
+    if (!list.length) {
+      return `<p class="st-hint">${drone === 'all' ? 'No battery serial numbers in your logs yet.' : 'No battery serial numbers in this drone\'s logs.'}</p>`;
+    }
     return list.map((b) => {
       const name = { standard: 'Standard', plus: 'Plus' }[b.kind];
       const tiles = [
@@ -159,7 +194,7 @@ const Stats = (() => {
         tile('Last used', fmt.ago(b.newest.start)),
       ];
       if (b.rate != null) tiles.push(tile('Use per minute', `about ${b.rate.toFixed(1)}%`));
-      if (b.tempMax != null) tiles.push(tile('Temperature', `${fmt.temp(b.tempMin)} – ${fmt.temp(b.tempMax)}`));
+      if (b.tempMax != null) tiles.push(tile('Temperature', tempRange(b.tempMin, b.tempMax)));
       // Biggest voltage difference between the cells: in the newest flight, and the most ever seen.
       if (b.diffMax != null) {
         const mv = (v) => `${Math.round(v * 1000)} mV`;   // millivolts: 0.030 V = 30 mV
@@ -173,6 +208,7 @@ const Stats = (() => {
         </div>`;
       return `<article class="st-card battery" data-serial="${esc(b.serial)}">
         <div class="st-card-head"><h4>Battery ${esc(shortSerial(b.serial))}</h4>${name ? `<span class="tag">${esc(name)}</span>` : ''}</div>
+        <div class="flown-in">Flown in: ${b.drones.map((k) => esc(droneLabel(k))).join(', ')}</div>
         ${health}
         ${capacityChart(b)}
         <div class="st-grid">${tiles.join('')}</div>
@@ -205,28 +241,33 @@ const Stats = (() => {
     if (!state.flights.length) { el.innerHTML = emptyMessage(state.lastData || {}); return; }
     const ys = years();
     if (period !== 'all' && !ys.includes(period)) period = 'all';
-    const list = state.flights.filter(inPeriod);
-    const choice = `<label class="st-period">Show
-      <select id="st-period">
-        <option value="all"${period === 'all' ? ' selected' : ''}>All time</option>
-        ${ys.map((y) => `<option value="${y}"${period === y ? ' selected' : ''}>${y}</option>`).join('')}
-      </select></label>`;
+    const drones = droneList();
+    if (drone !== 'all' && !drones.some((d) => d.key === drone)) drone = 'all';
+    const list = state.flights.filter(chosen);
+    const opt = (value, label, now) => `<option value="${esc(value)}"${value === now ? ' selected' : ''}>${esc(label)}</option>`;
+    const choice = `<div class="st-choices">
+      <label class="st-period">Show
+        <select id="st-period">${opt('all', 'All time', period)}${ys.map((y) => opt(y, y, period)).join('')}</select></label>
+      <label class="st-period">Drone
+        <select id="st-drone">${opt('all', 'All drones', drone)}${drones.map((d) => opt(d.key, d.label, drone)).join('')}</select></label>
+    </div>`;
+    const who = drone === 'all' ? '' : ` <small>(${esc(droneLabel(drone))})</small>`;
     el.innerHTML = `
       ${choice}
-      <section class="st-section"><h3>Your flying</h3>${totalsHtml(list)}</section>
-      <section class="st-section"><h3>Days you flew</h3>${calendarHtml(list) || '<p class="st-hint">No dated flights.</p>'}</section>
-      <section class="st-section"><h3>Each drone</h3>${dronesHtml(list)}</section>
-      <section class="st-section"><h3>Battery health <small>(all time)</small></h3>${batteriesHtml()}</section>
-      <section class="st-section"><h3>Records</h3>${recordsHtml(list)}</section>`;
+      <section class="st-section"><h3>Your flying${who}</h3>${totalsHtml(list)}</section>
+      <section class="st-section"><h3>Days you flew${who}</h3>${calendarHtml(list) || '<p class="st-hint">No dated flights.</p>'}</section>
+      ${drone === 'all' ? `<section class="st-section"><h3>Each drone</h3>${dronesHtml(list)}</section>` : ''}
+      <section class="st-section"><h3>Battery health <small>(each battery's whole life)</small></h3>${batteriesHtml()}</section>
+      <section class="st-section"><h3>Records${who}</h3>${recordsHtml(list)}</section>`;
   }
 
   // ---------- buttons (one listener for the whole tab: its insides are redrawn) ----------
   function wire() {
     const el = box();
     el.addEventListener('change', (e) => {
-      if (e.target.id !== 'st-period') return;
-      period = e.target.value;
-      saveSetting('statsPeriod', period);
+      if (e.target.id === 'st-period') { period = e.target.value; saveSetting('statsPeriod', period); }
+      else if (e.target.id === 'st-drone') { drone = e.target.value; saveSetting('statsDrone', drone); }
+      else return;
       render();
     });
     el.addEventListener('click', (e) => {
@@ -245,5 +286,14 @@ const Stats = (() => {
   }
   wire();
 
-  return { render, batteryList };
+  // The "Stats" button on a drone's card (Aircraft tab): this tab, set to that drone.
+  function showDrone(key) {
+    drone = key;
+    saveSetting('statsDrone', drone);
+    document.querySelector('.tabs button[data-tab=stats]').click();
+    render();
+    box().scrollTop = 0;
+  }
+
+  return { render, batteryList, showDrone };
 })();
