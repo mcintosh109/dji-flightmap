@@ -546,4 +546,7 @@ owner confirms it works**, release it with a tag (`git tag -a vX.Y.Z` +
 - **`LiveLoginLockout` is flaky in Claude's sandbox** (Nov 2026, during
   5.5.0): "broken connection" for 2-9 of 30 guesses in about 2 of 3 runs, the
   same on the unchanged 5.4.2 code. Not changed yet: ask the owner first
-  (see the security notes above).
+  (see the security notes above). The owner re-tested the lock-out on the
+  live server (Nov 2026, 5.6.0): it works. So the LIMIT is fine; the
+  leftover is cosmetic (a refused guess sometimes gets a broken connection
+  instead of the "locked" answer). Only look into it if the owner sees it.
