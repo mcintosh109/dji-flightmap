@@ -93,7 +93,7 @@ def parse_csv(path):
     last_text = {"tip": None, "warn": None}
     # Battery health numbers (5.5.0): warmest/coldest battery and the biggest
     # difference between its cells during the flight. None = not in the log.
-    temps, cell_diff = [], None
+    temps, cell_diff, cells_estimated = [], None, False
 
     with open(path, newline="", encoding="utf-8-sig", errors="replace") as fh:
         reader = csv.DictReader(fh)
@@ -135,6 +135,9 @@ def parse_csv(path):
                 diff = num(get(col))
                 if diff is not None and 0 < diff < 5:
                     cell_diff = max(cell_diff or 0.0, diff)
+            # The Mini 4 Pro's logs say its cell voltages are ESTIMATED, not measured.
+            if (get("BATTERY.isCellVoltageEstimated") or "").strip().lower() == "true":
+                cells_estimated = True
 
             when = parse_time(get("CUSTOM.dateTime"))
             # The drone's flight clock does NOT always start at 0: if you land
@@ -193,6 +196,7 @@ def parse_csv(path):
         "batteryTempMax": max(temps) if temps else None,
         "batteryTempMin": min(temps) if temps else None,
         "cellDiffMax": round(cell_diff, 3) if cell_diff else None,
+        "cellDiffEstimated": cells_estimated,
     }
 
 
@@ -256,6 +260,20 @@ def battery_kind(aircraft_name, capacity):
     return "plus" if capacity >= PLUS_BATTERY_MAH else "standard"
 
 
+def trusted_video_time(video, duration):
+    """Seconds of video, or None when the log's number can't be right.
+
+    A real GeoJSON said 23564 for a 7-minute flight (5.5.0). Maybe that was
+    milliseconds, but guessing could show a wrong number, so a video longer
+    than the whole flight (plus a few seconds) is not trusted.
+    """
+    if video is None or video < 0:
+        return None
+    if duration and video > duration + 5:
+        return None
+    return video
+
+
 def build_flight(path, rel_path, mtime):
     """Read one file and return (summary, detail)."""
     parsed = parse_csv(path) if path.lower().endswith(".csv") else parse_geojson(path)
@@ -295,9 +313,10 @@ def build_flight(path, rel_path, mtime):
         "batteryTempMax": parsed.get("batteryTempMax"),
         "batteryTempMin": parsed.get("batteryTempMin"),
         "cellDiffMax": parsed.get("cellDiffMax"),
+        "cellDiffEstimated": bool(parsed.get("cellDiffEstimated")),
         "maxFromHome": round(far, 1),
         "photoNum": parsed["photoNum"],
-        "videoTime": parsed["videoTime"],
+        "videoTime": trusted_video_time(parsed["videoTime"], duration),
         "warnings": sum(1 for e in parsed["events"] if e["kind"] == "warn"),
         "hasGps": bool(pts),
         "points": len(pts),

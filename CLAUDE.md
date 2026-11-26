@@ -511,8 +511,13 @@ owner confirms it works**, release it with a tag (`git tag -a vX.Y.Z` +
   to beat"). New summary fields from the CSV: `batteryTempMax/Min`
   (`BATTERY.temperature`), `cellDiffMax` (`BATTERY.cellVoltageDeviation` /
   `maxCellVoltageDeviation`, shown in mV), `maxFromHome`; CACHE_VERSION 5.
-  Not yet checked on the owner's real logs whether the RC 2 fills the
-  temperature / cell columns (the page hides them when empty).
+  Checked on 2 of the owner's real CSVs (Nov 2026, kept OUT of the repo):
+  temperature and cell columns are filled on every row, but
+  `BATTERY.isCellVoltageEstimated` is `true` (summary `cellDiffEstimated`,
+  shown as "(est.)"). Seen: temperatures 27-46 °C, cell difference up to
+  ~0.04 V, zSpeed +-5.2 m/s (real, not a bug). A GeoJSON-only flight said
+  `videoTime` 23564 for 420 s: `trusted_video_time()` drops a video longer
+  than the flight (+5 s) instead of guessing it is milliseconds.
 - **`LiveLoginLockout` is flaky in Claude's sandbox** (Nov 2026, during
   5.5.0): "broken connection" for 2-9 of 30 guesses in about 2 of 3 runs, the
   same on the unchanged 5.4.2 code. Not changed yet: ask the owner first

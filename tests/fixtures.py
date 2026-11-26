@@ -108,6 +108,7 @@ def write_flight(path, *, start, seconds, clock_offset=0.0, gps=True, max_h=40.0
             # Battery warms from 20 to 30 deg C; the cells drift apart a little.
             'BATTERY.temperature': f'{20 + 10 * t / seconds:.1f}',
             'BATTERY.cellVoltageDeviation': f'{0.01 + 0.02 * t / seconds:.3f}',
+            'BATTERY.isCellVoltageEstimated': 'true',   # what the Mini 4 Pro's real logs say
             'APP.warn': 'Strong wind. Fly with caution.' if warn_at and warn_at <= t < warn_at + 1 else '',
         })
         rows.append(row)

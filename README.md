@@ -353,7 +353,9 @@ Nothing extra is stored or sent anywhere.
   - **Temperature** (coldest – warmest) and **cell difference**: the biggest
     voltage difference between the battery's cells (in millivolts, mV; the
     newest flight, and the most ever seen). Only shown when your logs have
-    these numbers.
+    these numbers. **"est."** means the log itself says the drone *estimated*
+    the cell voltages rather than measuring each cell (the Mini 4 Pro's logs
+    do), so treat it as a rough number.
   - It is a **rough guide only**. DJI Fly's battery page is the official
     reading. Never fly a battery that is swollen, damaged or warned about in
     DJI Fly.

@@ -8,6 +8,7 @@
     "New: a calendar of the days you flew, one square per day (darker = more air time). Click a day to see its flights",
     "New: battery health. Each battery gets a card: how much it holds compared with a new one, a line of its capacity flight by flight, how much it uses per minute, its temperatures and the voltage difference between its cells (when your logs have them). A rough guide only: DJI Fly's battery page is the official reading",
     "New: your records (longest, highest, furthest from take-off), and each drone's totals. Click a record to open that flight",
+    "Fixed: a flight log that said its video was longer than the whole flight (seen: 6½ hours of video in a 7-minute flight) made the video time wrong. Such a number is no longer trusted: the flight shows \"–\" for its video",
     "Your flights are read once more after this update (to collect the new battery numbers), so the first start can take a little longer"
   ]
 }

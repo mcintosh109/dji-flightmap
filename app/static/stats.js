@@ -127,6 +127,7 @@ const Stats = (() => {
         tempMin: temps.length ? Math.min(...temps.map((f) => f.batteryTempMin ?? f.batteryTempMax)) : null,
         diffMax: diffs.length ? Math.max(...diffs.map((f) => f.cellDiffMax)) : null,
         diffLast: diffs.length ? diffs.at(-1).cellDiffMax : null,
+        diffEstimated: diffs.some((f) => f.cellDiffEstimated),   // the log says the drone estimated the cell voltages
       };
     }).sort((a, b) => (b.newest.sortKey || 0) - (a.newest.sortKey || 0));   // last used first
   }
@@ -162,7 +163,8 @@ const Stats = (() => {
       // Biggest voltage difference between the cells: in the newest flight, and the most ever seen.
       if (b.diffMax != null) {
         const mv = (v) => `${Math.round(v * 1000)} mV`;   // millivolts: 0.030 V = 30 mV
-        tiles.push(tile('Cell difference', b.diffMax > b.diffLast ? `${mv(b.diffLast)} · most ${mv(b.diffMax)}` : mv(b.diffLast)));
+        const est = b.diffEstimated ? ' (est.)' : '';
+        tiles.push(tile('Cell difference', (b.diffMax > b.diffLast ? `${mv(b.diffLast)} · most ${mv(b.diffMax)}` : mv(b.diffLast)) + est));
       }
       const health = b.health == null ? '<p class="st-hint">This battery\'s logs don\'t say how much it holds.</p>' : `
         <div class="health">
@@ -176,7 +178,7 @@ const Stats = (() => {
         <div class="st-grid">${tiles.join('')}</div>
       </article>`;
     }).join('') + `<p class="st-hint">A battery holds a little less as it ages. These numbers are read from your
-      flight logs and are a rough guide only: DJI Fly's battery page is the official reading, and a battery that
+      flight logs and are a rough guide only (“est.” = the log says the drone estimated the cell voltages): DJI Fly's battery page is the official reading, and a battery that
       is swollen, damaged or warned about in DJI Fly should not be flown.</p>`;
   }
 

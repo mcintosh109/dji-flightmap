@@ -191,6 +191,24 @@ class ReadingLogs(unittest.TestCase):
         d, _ = self.flight('DJIFlightRecord_2026-01-11_[08-30-00].geojson')   # GeoJSON: no battery details
         self.assertEqual((d['batteryTempMax'], d['cellDiffMax']), (None, None))
         self.assertGreater(d['maxFromHome'], 0)
+        self.assertTrue(a['cellDiffEstimated'])   # the Mini 4 Pro's logs say "estimated"
+        self.assertFalse(d['cellDiffEstimated'])
+
+    def test_video_longer_than_the_flight_is_not_trusted(self):
+        # A real GeoJSON said videoTime 23564 for a 7-minute flight (5.5.0).
+        import json
+        import tempfile
+        from flightmap.flightlogs import trusted_video_time
+        self.assertEqual(trusted_video_time(289, 648.9), 289)
+        self.assertIsNone(trusted_video_time(23564, 420.8))
+        self.assertIsNone(trusted_video_time(-1, 100))
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, 'odd.geojson')
+            with open(path, 'w') as fh:
+                json.dump({'type': 'Feature', 'geometry': {'type': 'LineString', 'coordinates': [[-73.9665, 40.7812, 0], [-73.9660, 40.7815, 10]]},
+                           'properties': {'totalTime': 420.8, 'videoTime': 23564}}, fh)
+            summary, _ = self.server.build_flight(path, 'odd.geojson', 0)
+        self.assertIsNone(summary['videoTime'])
 
     def test_flight_without_gps(self):
         summary, detail = self.flight('FlightRecord_2026-01-11_[08-00-00].csv')

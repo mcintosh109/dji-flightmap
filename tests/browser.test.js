@@ -653,7 +653,7 @@ function fakeInternet(ctx, { github = null } = {}) {
       /95%\s*of a new one · holds 2453 mAh \(new: 2590 mAh\)/.test(await bat1.textContent()), await bat1.textContent());
     check('  ...the Plus battery is told apart (3790 of 3850 mAh = 98%)',
       /Plus[\s\S]*98%/.test(await page.locator('.battery[data-serial=TESTBATTERY02]').textContent()));
-    check('  ...temperature and cell difference are shown', /Temperature/.test(await bat1.textContent()) && /30 mV/.test(await bat1.textContent()),
+    check('  ...temperature and cell difference are shown', /Temperature/.test(await bat1.textContent()) && /30 mV \(est\.\)/.test(await bat1.textContent()),
       await bat1.textContent());
     check('  ...and it says it is a rough guide, not the official reading', /rough guide only.*DJI Fly/s.test(statsText));
     check('records say they are not a goal to beat', /not a goal to beat.*local rules/.test(statsText));
