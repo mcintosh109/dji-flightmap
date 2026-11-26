@@ -28,6 +28,9 @@ saves to TrueNAS.
   how many flights and how much air time. **Navigate** opens directions to it
   in Google Maps, Apple Maps or Waze.
 - The **Flights** tab: every flight, newest first, grouped by day.
+- The **Stats** tab: your flying in numbers, a calendar of the days you flew,
+  the **health of each battery**, and your records. More in
+  [The Stats tab](#the-stats-tab-your-flying-and-battery-health).
 - **Places** (shops, schools, parks, hospitals, heliports…) help you get your
   bearings. They are **not** a no-fly map. More in
   [Places](#places-what-is-around-you).
@@ -36,7 +39,8 @@ saves to TrueNAS.
 
 ![A flight open: its statistics, the height chart and the replay controls](docs/images/flight-replay.png)
 
-Click a flight to see its path, statistics and a height chart. Press ▶: the
+Click a flight to see its path, statistics and its charts (height, speed,
+climb, battery and satellites: pick one with the buttons above it). Press ▶: the
 drone glides along its path, and the panel shows the height, speed, climb,
 distance from take-off, battery and satellites at each moment. **Follow**
 keeps the map on the drone. More in [Step 4: Open the map](#step-4-open-the-map).
@@ -303,7 +307,13 @@ Open the address the script printed, for example `http://192.168.1.50:8080`.
   to that spot.
 - **Flights** tab: every flight, newest first, grouped by day. Type in the
   box to filter.
-- Click a flight to see its path, statistics and a height chart. Press ▶ to
+- **Stats** tab: totals, the days you flew, each drone, battery health and
+  records (see [The Stats tab](#the-stats-tab-your-flying-and-battery-health)).
+- Click a flight to see its path, statistics and a chart. The buttons above
+  the chart pick **Height**, **Speed**, **Climb** (up above the dashed 0
+  line, down below it), **Battery** (%) or **Satellites** (how many GPS
+  satellites the drone saw; fewer = a weaker position fix). The map remembers
+  your choice. Click the chart to jump the replay to that moment. Press ▶ to
   replay it: only that flight's path is shown, the drone glides along it, the part already flown is drawn
   bright and the rest faint. **Follow** keeps the map centred on the drone;
   dragging the map turns it off.
@@ -316,6 +326,42 @@ Open the address the script printed, for example `http://192.168.1.50:8080`.
   flights right away, and the door icon signs you out (when the login is on).
 
 When the dock adds new flights, they show up within about a minute.
+
+### The Stats tab: your flying and battery health
+
+Everything here is worked out from your flight logs, in your browser.
+Nothing extra is stored or sent anywhere.
+
+- **Show:** *All time* or one year.
+- **Your flying:** number of flights, air time, distance, days flown, photos
+  and video.
+- **Days you flew:** one row per month, one square per day. Darker = more air
+  time that day. Point at a square for the number of flights; **click it** to
+  see that day's flights in the Flights tab.
+- **Each drone:** flights, air time and distance per drone.
+- **Battery health** (always all time, a battery's whole life), one card per
+  battery, told apart by its serial number (only the last 6 characters are
+  shown):
+  - **% of a new one:** how much the battery holds now (its *full capacity*
+    in the newest log) compared with a new one. For the Mini 3 / Mini 4 Pro
+    batteries that is DJI's spec (Standard 2590 mAh, Plus 3850 mAh); for
+    other drones, the most that battery ever held.
+  - A small line of the full capacity, **flight by flight**, so you can see
+    it go down slowly as the battery ages. The dashed line is a new battery.
+  - Flights, air time, when it was last used, and **use per minute** (how
+    many % it uses per minute of flying).
+  - **Temperature** (coldest – warmest) and **cell difference**: the biggest
+    voltage difference between the battery's cells (in millivolts, mV; the
+    newest flight, and the most ever seen). Only shown when your logs have
+    these numbers.
+  - It is a **rough guide only**. DJI Fly's battery page is the official
+    reading. Never fly a battery that is swollen, damaged or warned about in
+    DJI Fly.
+- **Records:** longest flight, longest distance, highest, furthest from
+  take-off. Click one to open that flight. Just for interest, not a goal to
+  beat: always fly within your local rules.
+
+Research keywords: *"LiPo battery capacity loss"*, *"battery cell balance"*.
 
 ### Finding an address
 
@@ -1175,7 +1221,8 @@ pct exec 105 -- systemctl restart dji-flightmap
 | `app/static/places.js` | Shops, schools, parks… on the map, drawn only for the area on screen | *"Leaflet divIcon"*, *"map tiles"* |
 | `app/flightmap/places.py` | Asks OpenStreetMap for places, sorts them into kinds and remembers them for a week | *"Overpass API"*, *"Overpass QL"* |
 | `app/static/overview.js` | The sidebar lists and the overview of all flights | *"leaflet polyline"* |
-| `app/static/flight.js` | One open flight: its path, the details panel, the replay | *"requestAnimationFrame"* |
+| `app/static/flight.js` | One open flight: its path, the details panel, the charts, the replay | *"requestAnimationFrame"*, *"SVG polyline"* |
+| `app/static/stats.js` | The Stats tab: totals, the calendar, each drone, battery health, records | *"array reduce javascript"*, *"CSS grid"* |
 | `app/static/update-notice.js` | The version number, update notice and Updates window | |
 | `app/static/main.js` | Loads data from the server, applies settings, starts the page | *"javascript fetch"* |
 | `app/version.json` | The version number and "what's new" list, compared with the copy on GitHub to spot updates | *"semantic versioning"* |

@@ -42,6 +42,7 @@
       <button role="tab" data-tab="aircraft" class="active">Aircraft</button>
       <button role="tab" data-tab="flights">Flights <span id="flight-count" class="count"></span></button>
       <button role="tab" data-tab="plans">Plans <span id="plan-count" class="count"></span></button>
+      <button role="tab" data-tab="stats">Stats</button>
     </nav>
     <section id="tab-aircraft" class="tab-body"></section>
     <section id="tab-flights" class="tab-body hidden">
@@ -53,6 +54,7 @@
       <p class="plans-disclaimer" role="note"><b>Planning aid only.</b> Always check your local laws and regulations before flying: airspace (in the US: the FAA's <a href="https://www.faa.gov/uas/getting_started/b4ufly" target="_blank" rel="noopener">B4UFLY</a> app or Aloft), any permission you need, and the weather where you are. You are responsible for every flight.</p>
       <div id="plan-list"></div>
     </section>
+    <section id="tab-stats" class="tab-body hidden"></section>
   </aside>
 
   <!-- Buttons in the top-right corner of the map -->
@@ -112,6 +114,7 @@
     <div id="d-stats" class="stats"></div>
     <p id="d-nogps" class="note hidden">This flight has no GPS positions (GPS never locked, or it was flown indoors), so there is nothing to draw on the map.</p>
     <div id="d-track">
+      <div id="d-charts" class="chart-tabs" role="group" aria-label="Which chart to show"></div>
       <div class="profile">
         <span class="profile-label" id="d-profile-label">Height</span>
         <svg id="d-profile" preserveAspectRatio="none"></svg>
@@ -275,6 +278,7 @@
   <script src="places.js"></script>
   <script src="overview.js"></script>
   <script src="flight.js"></script>
+  <script src="stats.js"></script>
   <script src="update-notice.js"></script>
   <script src="main.js"></script>
   <script src="planner.js"></script>

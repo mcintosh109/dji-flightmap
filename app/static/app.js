@@ -112,6 +112,10 @@ const fmt = {
   },
   coord(lat, lon) { return `${lat.toFixed(6)}, ${lon.toFixed(6)}`; },
   pct(v) { return v == null ? '–' : `${Math.round(v)}%`; },
+  temp(c) {
+    if (c == null) return '–';
+    return units() === 'imperial' ? `${Math.round(c * 9 / 5 + 32)} °F` : `${Math.round(c)} °C`;
+  },
 };
 
 function haversine(a, b) {

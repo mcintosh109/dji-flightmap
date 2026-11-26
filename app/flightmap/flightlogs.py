@@ -91,6 +91,9 @@ def parse_csv(path):
     clock_base = None   # the drone's flight clock at the first row of this file
     last_lat = last_lon = None
     last_text = {"tip": None, "warn": None}
+    # Battery health numbers (5.5.0): warmest/coldest battery and the biggest
+    # difference between its cells during the flight. None = not in the log.
+    temps, cell_diff = [], None
 
     with open(path, newline="", encoding="utf-8-sig", errors="replace") as fh:
         reader = csv.DictReader(fh)
@@ -122,6 +125,16 @@ def parse_csv(path):
                 capacity = num(get("BATTERY.fullCapacity"))
                 if capacity and 500 <= capacity <= 20000:
                     meta["batteryCapacity"] = round(capacity)
+
+            # Battery temperature (deg C) and cell difference (volts), on every
+            # row, also before GPS locks. Values outside a sane range are junk.
+            temp = num(get("BATTERY.temperature"))
+            if temp is not None and -40 <= temp <= 120:
+                temps.append(temp)
+            for col in ("BATTERY.cellVoltageDeviation", "BATTERY.maxCellVoltageDeviation"):
+                diff = num(get(col))
+                if diff is not None and 0 < diff < 5:
+                    cell_diff = max(cell_diff or 0.0, diff)
 
             when = parse_time(get("CUSTOM.dateTime"))
             # The drone's flight clock does NOT always start at 0: if you land
@@ -177,6 +190,9 @@ def parse_csv(path):
         "totalTime": num(meta.get("totalTime")),
         "photoNum": int(num(meta.get("photoNum"), 0)),
         "videoTime": num(meta.get("videoTime"), 0),
+        "batteryTempMax": max(temps) if temps else None,
+        "batteryTempMin": min(temps) if temps else None,
+        "cellDiffMax": round(cell_diff, 3) if cell_diff else None,
     }
 
 
@@ -249,6 +265,8 @@ def build_flight(path, rel_path, mtime):
     for a, b in zip(pts, pts[1:]):
         distance += haversine_m(a["lat"], a["lon"], b["lat"], b["lon"])
 
+    far = max((haversine_m(pts[0]["lat"], pts[0]["lon"], p["lat"], p["lon"]) for p in pts), default=0.0)
+
     duration = parsed["totalTime"] or (pts[-1]["t"] if pts else 0.0)
     start = parsed["start"]
     batteries = [p["bat"] for p in pts if p["bat"] is not None]
@@ -274,6 +292,10 @@ def build_flight(path, rel_path, mtime):
         "maxSpeed": max(speeds, default=None),
         "batteryStart": batteries[0] if batteries else None,
         "batteryEnd": batteries[-1] if batteries else None,
+        "batteryTempMax": parsed.get("batteryTempMax"),
+        "batteryTempMin": parsed.get("batteryTempMin"),
+        "cellDiffMax": parsed.get("cellDiffMax"),
+        "maxFromHome": round(far, 1),
         "photoNum": parsed["photoNum"],
         "videoTime": parsed["videoTime"],
         "warnings": sum(1 for e in parsed["events"] if e["kind"] == "warn"),

@@ -42,6 +42,7 @@ async function refresh({ force = false, rescan = false } = {}) {
     if (changed) {
       renderAircraft(data);
       renderFlights(data);
+      Stats.render();
       drawOverview();
       updateOverviewVisibility();
     }

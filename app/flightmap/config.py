@@ -54,7 +54,7 @@ STATIC_DIR = os.path.join(APP_DIR, "static")
 MAX_TRACK_POINTS = 3000   # most points sent to the browser for one flight
 PREVIEW_POINTS = 80       # points in the small "overview" line of each flight
 DETAIL_CACHE_SIZE = 16    # how many full flights to keep in memory
-CACHE_VERSION = 4         # bump this when the summary format changes
+CACHE_VERSION = 5         # bump this when the summary format changes
 
 def log(message):
     """Print a line to the log (systemd/journalctl picks this up)."""

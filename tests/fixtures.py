@@ -105,6 +105,9 @@ def write_flight(path, *, start, seconds, clock_offset=0.0, gps=True, max_h=40.0
             'OSD.yaw': f'{(math.degrees(ang) + 90 + 180) % 360 - 180:.1f}',
             'OSD.flycState': 'GPSNormal',
             'BATTERY.chargeLevel': str(int(95 - 25 * t / seconds)),
+            # Battery warms from 20 to 30 deg C; the cells drift apart a little.
+            'BATTERY.temperature': f'{20 + 10 * t / seconds:.1f}',
+            'BATTERY.cellVoltageDeviation': f'{0.01 + 0.02 * t / seconds:.3f}',
             'APP.warn': 'Strong wind. Fly with caution.' if warn_at and warn_at <= t < warn_at + 1 else '',
         })
         rows.append(row)

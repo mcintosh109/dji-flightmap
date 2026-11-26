@@ -1,7 +1,7 @@
 'use strict';
 /*
-  One open flight: its path on the map, the details panel, the height
-  chart, and the replay (play/pause, the drone gliding along, Follow).
+  One open flight: its path on the map, the details panel, the charts
+  (height, speed, climb, battery, satellites), and the replay (play/pause, the drone gliding along, Follow).
 */
 
 // ---------- one flight ----------
@@ -107,6 +107,7 @@ function renderDetail() {
   $('#d-track').classList.toggle('hidden', !hasTrack);
   $('#d-nogps').classList.toggle('hidden', hasTrack);
   $('#p-scrub').max = Math.max(0, track.length - 1);
+  renderChartButtons();
   drawProfile();
 
   $('#d-event-count').textContent = events.length || '';
@@ -117,27 +118,88 @@ function renderDetail() {
     li.addEventListener('click', () => seekTime(events[li.dataset.i].t)));
 }
 
-// Height-over-time chart, drawn as SVG.
+// ---------- the charts under the flight's numbers ----------
+// One chart at a time, picked with the buttons above it (Height, Speed,
+// Climb, Battery, Satellites). Every chart uses the same time line, so the
+// replay cursor and "click to jump there" work the same on each.
+// value(p) = the number for one track point (null = not in this log).
+// lo/hi = fixed ends of the scale (otherwise from the numbers themselves).
+// minSpan = smallest scale, so a nearly flat line doesn't fill the chart.
+const CHARTS = {
+  height: { name: 'Height', value: (p) => p.h, minSpan: 1,
+    label: (v) => `max ${fmt.height(v.max)}` },
+  speed: { name: 'Speed', value: (p) => p.spd, minSpan: 1,
+    label: (v) => `max ${fmt.speed(v.max)}` },
+  // DJI's zSpeed is negative when climbing, so turn it round: up = positive.
+  climb: { name: 'Climb', value: (p) => (p.vs == null ? null : -p.vs), minSpan: 1, zeroLine: true,
+    label: (v) => `fastest up ${fmt.speed(Math.max(v.max, 0))} · down ${fmt.speed(Math.max(-v.min, 0))}` },
+  battery: { name: 'Battery', value: (p) => p.bat, lo: 0, hi: 100,
+    label: (v) => `${fmt.pct(v.first)} → ${fmt.pct(v.last)}` },
+  sats: { name: 'Satellites', value: (p) => p.sats, minSpan: 5,
+    label: (v) => `fewest ${v.min} · most ${v.max}` },
+};
+
+// Which charts this flight has numbers for (at least 2 points each).
+function chartsWithData(track) {
+  return Object.keys(CHARTS).filter((k) => track.filter((p) => CHARTS[k].value(p) != null).length >= 2);
+}
+
+function chosenChart(track) {
+  const have = chartsWithData(track);
+  const want = loadSetting('chart', 'height');
+  return have.includes(want) ? want : (have[0] || 'height');
+}
+
+// The row of buttons: only charts this flight has numbers for.
+function renderChartButtons() {
+  const track = state.detail.track;
+  const have = chartsWithData(track);
+  const current = chosenChart(track);
+  const box = $('#d-charts');
+  box.classList.toggle('hidden', have.length < 2);
+  box.innerHTML = have.map((k) =>
+    `<button type="button" class="chart-btn" data-chart="${k}" aria-pressed="${k === current}">${esc(CHARTS[k].name)}</button>`).join('');
+}
+
 function drawProfile() {
   const svg = $('#d-profile');
   const track = state.detail.track;
   state.profile = null;
-  if (track.length < 2) { svg.innerHTML = ''; return; }
+  const kind = chosenChart(track);
+  const chart = CHARTS[kind];
+  const pts = track.filter((p) => chart.value(p) != null);
+  if (track.length < 2 || pts.length < 2) {
+    svg.innerHTML = '';
+    $('#d-profile-label').textContent = chart.name;
+    return;
+  }
   const W = 1000, H = 100;
   const t0 = track[0].t, span = Math.max(track.at(-1).t - t0, 0.1);
-  let hMin = 0, hMax = 0;
-  for (const p of track) { hMin = Math.min(hMin, p.h); hMax = Math.max(hMax, p.h); }
-  const realMax = hMax;
-  hMax = Math.max(hMax, hMin + 1);   // keep at least 1 m of scale so flat flights don't divide by 0
+  const values = pts.map(chart.value);
+  const v = { min: Math.min(...values), max: Math.max(...values), first: values[0], last: values.at(-1) };
+  // The scale always includes 0, so heights below take-off and descents show.
+  const lo = chart.lo ?? Math.min(0, v.min);
+  const hi = chart.hi ?? Math.max(v.max, lo + chart.minSpan);   // never divide by 0
   const x = (t) => ((t - t0) / span) * W;
-  const y = (h) => H - 6 - ((h - hMin) / (hMax - hMin)) * (H - 22);
-  const pts = track.map((p) => `${x(p.t).toFixed(1)},${y(p.h).toFixed(1)}`).join(' ');
+  const y = (n) => H - 6 - ((n - lo) / (hi - lo)) * (H - 32);   // the top is left free for the label
+  const line = pts.map((p) => `${x(p.t).toFixed(1)},${y(chart.value(p)).toFixed(1)}`).join(' ');
+  const base = y(0).toFixed(1);   // the area is filled down (or up) to 0
+  const first = x(pts[0].t).toFixed(1), last = x(pts.at(-1).t).toFixed(1);
   svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
-  svg.innerHTML = `<polygon class="area" points="0,${H} ${pts} ${W},${H}"/>
-    <polyline class="line" points="${pts}"/>
+  svg.innerHTML = `<polygon class="area" points="${first},${base} ${line} ${last},${base}"/>
+    ${chart.zeroLine ? `<line class="zero" x1="0" x2="${W}" y1="${base}" y2="${base}"/>` : ''}
+    <polyline class="line" points="${line}"/>
     <line id="d-cursor" class="cursor" x1="0" x2="0" y1="0" y2="${H}"/>`;
+  svg.dataset.chart = kind;
   state.profile = { x, t0, span };
-  $('#d-profile-label').textContent = `Height · max ${fmt.height(realMax)}`;
+  $('#d-profile-label').textContent = `${chart.name} · ${chart.label(v)}`;
+}
+
+function pickChart(kind) {
+  saveSetting('chart', kind);
+  renderChartButtons();
+  drawProfile();
+  if (state.detail?.track.length) placeDrone(state.idx, 0);   // put the cursor back
 }
 
 // Put the drone between track point i and i+1. frac 0 = exactly at
@@ -287,6 +349,10 @@ $('#p-scrub').addEventListener('input', (e) => { stopPlayback(); setIndex(Number
 $('#p-follow').addEventListener('click', () => setFollow(!state.follow));
 // Dragging the map yourself turns "Follow" off, so the map doesn't fight you.
 map.on('dragstart', () => { if (state.follow) setFollow(false); });
+$('#d-charts').addEventListener('click', (e) => {
+  const btn = e.target.closest('[data-chart]');
+  if (btn) pickChart(btn.dataset.chart);
+});
 $('#d-profile').addEventListener('click', (e) => {
   if (!state.profile) return;
   const box = e.currentTarget.getBoundingClientRect();

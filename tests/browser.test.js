@@ -619,9 +619,58 @@ function fakeInternet(ctx, { github = null } = {}) {
     await page.mouse.move(900, 150); await page.mouse.down(); await page.mouse.move(800, 200, { steps: 4 }); await page.mouse.up();
     check('dragging the map turns Follow off', (await page.getAttribute('#p-follow', 'aria-pressed')) === 'false');
     await page.click('#p-play');
+
+    // Charts (5.5.0): one at a time, picked with buttons, same time line.
+    const chartNames = await page.$$eval('#d-charts .chart-btn', (els) => els.map((e) => e.textContent));
+    check('the flight has Height, Speed, Climb, Battery and Satellites charts',
+      JSON.stringify(chartNames) === JSON.stringify(['Height', 'Speed', 'Climb', 'Battery', 'Satellites']), chartNames.join(', '));
+    await page.click('.chart-btn[data-chart=speed]');
+    check('  ...Speed shows the speed chart with its top speed', /^Speed · max /.test(await page.textContent('#d-profile-label'))
+      && (await page.getAttribute('#d-profile', 'data-chart')) === 'speed', await page.textContent('#d-profile-label'));
+    await page.click('.chart-btn[data-chart=battery]');
+    check('  ...Battery shows start and end percent', /^Battery · 9\d% → 7\d%$/.test(await page.textContent('#d-profile-label')),
+      await page.textContent('#d-profile-label'));
+    await page.click('.chart-btn[data-chart=climb]');
+    check('  ...Climb has a 0 line (up above, down below)', (await page.locator('#d-profile line.zero').count()) === 1);
+    await page.evaluate(() => seekTime(60));
+    const cursorX = Number(await page.getAttribute('#d-cursor', 'x1'));
+    check('  ...the replay line is on the chart after switching', cursorX > 400 && cursorX < 600, String(cursorX));
+    check('  ...the choice is remembered', await page.evaluate(() => localStorage.getItem('chart')) === 'climb');
+    await page.click('.chart-btn[data-chart=height]');
+
     await page.click('#d-close');
     await page.waitForTimeout(300);
     check('closing the flight brings the other paths back', (await visibleLines()) > 0);
+
+    // ---- Stats tab (5.5.0): totals, calendar, drones, battery health, records ----
+    console.log('Stats tab');
+    await page.click('[data-tab=stats]');
+    const statsText = await page.textContent('#tab-stats');
+    const shownFlights = await page.evaluate(() => state.flights.length);
+    check('Stats counts every flight', statsText.includes(`Flights${shownFlights}`), statsText.slice(0, 200));
+    const bat1 = page.locator('.battery[data-serial=TESTBATTERY01]');
+    check('battery health: the standard battery holds 95% of a new one (2453 of 2590 mAh)',
+      /95%\s*of a new one · holds 2453 mAh \(new: 2590 mAh\)/.test(await bat1.textContent()), await bat1.textContent());
+    check('  ...the Plus battery is told apart (3790 of 3850 mAh = 98%)',
+      /Plus[\s\S]*98%/.test(await page.locator('.battery[data-serial=TESTBATTERY02]').textContent()));
+    check('  ...temperature and cell difference are shown', /Temperature/.test(await bat1.textContent()) && /30 mV/.test(await bat1.textContent()),
+      await bat1.textContent());
+    check('  ...and it says it is a rough guide, not the official reading', /rough guide only.*DJI Fly/s.test(statsText));
+    check('records say they are not a goal to beat', /not a goal to beat.*local rules/.test(statsText));
+    const days = await page.locator('#tab-stats button.cal-day').count();
+    check('the calendar marks the days flown', days >= 2, String(days));
+    await page.locator('#tab-stats button.cal-day').first().click();
+    await page.waitForTimeout(200);
+    check('  ...clicking a day shows that day in the Flights tab', await page.isVisible('#tab-flights')
+      && (await page.inputValue('#search')).length > 0 && (await page.locator('#flight-list .flight').count()) >= 1,
+      await page.inputValue('#search'));
+    await page.fill('#search', ''); await page.dispatchEvent('#search', 'input');
+    await page.click('[data-tab=stats]');
+    await page.locator('.record').first().click();
+    await page.waitForTimeout(600);
+    check('clicking a record opens that flight', await page.isVisible('#detail'));
+    await page.click('#d-close');
+    await page.click('[data-tab=aircraft]');
     check('no errors on the map page', errors.length === 0, errors.join(' | '));
     await ctx.close();
 

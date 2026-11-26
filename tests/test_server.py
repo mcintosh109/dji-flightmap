@@ -181,6 +181,17 @@ class ReadingLogs(unittest.TestCase):
         self.assertEqual(battery_kind('DJI Mini 4 Pro', None), '')
         self.assertEqual(battery_kind('DJI Air 3', 4241), '')               # not a Mini: don't guess
 
+    def test_battery_health_and_furthest_point(self):
+        # 5.5.0: warmest/coldest battery, biggest cell difference, furthest from take-off.
+        a, _ = self.flight('DJIFlightRecord_2026-01-10_[10-00-00].csv')
+        self.assertAlmostEqual(a['batteryTempMin'], 20, delta=0.2)
+        self.assertAlmostEqual(a['batteryTempMax'], 30, delta=0.2)
+        self.assertAlmostEqual(a['cellDiffMax'], 0.03, delta=0.001)
+        self.assertAlmostEqual(a['maxFromHome'], 300, delta=5)   # the loop's far side: 2 x 150 m
+        d, _ = self.flight('DJIFlightRecord_2026-01-11_[08-30-00].geojson')   # GeoJSON: no battery details
+        self.assertEqual((d['batteryTempMax'], d['cellDiffMax']), (None, None))
+        self.assertGreater(d['maxFromHome'], 0)
+
     def test_flight_without_gps(self):
         summary, detail = self.flight('FlightRecord_2026-01-11_[08-00-00].csv')
         self.assertFalse(summary['hasGps'])

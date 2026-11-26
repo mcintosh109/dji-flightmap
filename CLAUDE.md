@@ -498,3 +498,22 @@ owner confirms it works**, release it with a tag (`git tag -a vX.Y.Z` +
   Tests: `LiveTunnelVisitors`.
 - Old installs had an `update-ct.sh` that could not download its own
   replacement; the current one does `git pull` and restarts itself.
+- **Charts, Stats tab, battery health** (5.5.0, owner picked ideas 1+2+3
+  after Claude compared open-dronelog, which is AGPL-3.0: ideas only, NO code
+  copied, keep it that way). Flight panel: `CHARTS` in flight.js, one chart at
+  a time (Height/Speed/Climb/Battery/Satellites buttons, `chart` in
+  localStorage; Claude's choice to save room on phones, owner may want all
+  at once). Stats tab = `stats.js` (browser only, from `/api/flights`):
+  totals per year/all time, a month x day calendar (click = Flights tab
+  filtered by `fmt.day`), each drone, battery cards per `batterySerial`
+  (% of new = newest `batteryCapacity` / DJI spec 2590 or 3850 for Minis,
+  else the most seen; use per minute like the planner), records ("not a goal
+  to beat"). New summary fields from the CSV: `batteryTempMax/Min`
+  (`BATTERY.temperature`), `cellDiffMax` (`BATTERY.cellVoltageDeviation` /
+  `maxCellVoltageDeviation`, shown in mV), `maxFromHome`; CACHE_VERSION 5.
+  Not yet checked on the owner's real logs whether the RC 2 fills the
+  temperature / cell columns (the page hides them when empty).
+- **`LiveLoginLockout` is flaky in Claude's sandbox** (Nov 2026, during
+  5.5.0): "broken connection" for 2-9 of 30 guesses in about 2 of 3 runs, the
+  same on the unchanged 5.4.2 code. Not changed yet: ask the owner first
+  (see the security notes above).

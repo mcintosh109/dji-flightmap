@@ -1,22 +1,13 @@
 {
-  "version": "5.4.2",
-  "released": "2026-11-25",
+  "version": "5.5.0",
+  "released": "2026-11-26",
   "repo": "mcintosh109/dji-flightmap",
   "notes": [
-    "New: choose the battery in the flight planner: Standard (2590 mAh) or Plus (3850 mAh). The battery estimate then learns only from your flights with that battery, so a Plus-battery plan isn't judged by standard-battery flights (and the other way round)",
-    "The map tells the two batteries apart by itself: every flight log records the battery's size. Open a flight to see which one it used (\"Battery pack\")",
-    "Haven't flown one of them yet? The estimate is worked out from your flights with the other one and DJI's flight times (34 min standard, 45 min Plus)",
-    "With the Plus battery the drone weighs more than 249 g: the planner reminds you that the rules for heavier drones apply (in the US: FAA registration and Remote ID)",
-    "New plans start with the battery of your most recent flight",
-    "Point at a place's icon on the map to see its name and what kind of place it is, even when you're zoomed out and the names are hidden",
-    "The plan flags in the Plans tab stand out much more: bigger, brighter, with a pulsing ring (it stays still if your computer is set to reduce motion)",
-    "Places: when Azure's places can't be used (today's searches used up, or Azure didn't answer), the layers panel now says why, and that OpenStreetMap's places are shown instead. After a one-off hiccup Azure is asked again 5 minutes later (it used to stay on OpenStreetMap until the page was reloaded). The \"Places come from\" line now names the right company",
-    "Fixed: the planner's weather could show the forecast of an earlier choice (another time or take-off spot) when that answer came back late, with the wrong wind and rain warnings",
-    "Fixed: a quick double click on Save plan saved a new plan twice. Changes made while a save is on its way now stay marked \"Unsaved changes\"",
-    "Fixed: deleting a plan now says so when the server can't be reached, and Backspace no longer deletes a waypoint behind the DJI Fly window",
-    "Fixed: the server no longer waits up to a minute on a request with a broken size (it answers at once)",
-    "Security: the login's limit of 10 wrong passwords in 15 minutes now holds even when many guesses are sent at the same moment (they used to all be checked before any was counted). The same goes for wrong RC 2 dock keys",
-    "Fixed: once locked out after too many wrong passwords, the browser could show a \"connection reset\" error page instead of the \"Too many wrong attempts\" message",
-    "Security: using the map from outside through a Cloudflare Tunnel? Put the tunnel's local address in Settings → Server. Then each visitor gets their own lock-out after 10 wrong passwords, so a stranger can no longer lock you out. Visitors on IPv6 are counted per block of addresses (a /64), so picking a new address doesn't give new tries, and the map's log shows the real visitor"
+    "New: more charts for a flight. Above the height chart, pick Speed, Climb (up and down), Battery % or GPS satellites. The replay line moves along whichever chart you picked, and the map remembers your choice",
+    "New: the Stats tab. Your flying in numbers (flights, air time, distance, days flown, photos and video), for all time or one year",
+    "New: a calendar of the days you flew, one square per day (darker = more air time). Click a day to see its flights",
+    "New: battery health. Each battery gets a card: how much it holds compared with a new one, a line of its capacity flight by flight, how much it uses per minute, its temperatures and the voltage difference between its cells (when your logs have them). A rough guide only: DJI Fly's battery page is the official reading",
+    "New: your records (longest, highest, furthest from take-off), and each drone's totals. Click a record to open that flight",
+    "Your flights are read once more after this update (to collect the new battery numbers), so the first start can take a little longer"
   ]
 }
