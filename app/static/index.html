@@ -43,6 +43,7 @@
       <button role="tab" data-tab="flights">Flights <span id="flight-count" class="count"></span></button>
       <button role="tab" data-tab="plans">Plans <span id="plan-count" class="count"></span></button>
       <button role="tab" data-tab="stats">Stats</button>
+      <button role="tab" data-tab="maint" title="Maintenance reminders">Maintenance <span id="maint-count" class="count"></span></button>
     </nav>
     <section id="tab-aircraft" class="tab-body"></section>
     <section id="tab-flights" class="tab-body hidden">
@@ -55,6 +56,7 @@
       <div id="plan-list"></div>
     </section>
     <section id="tab-stats" class="tab-body hidden"></section>
+    <section id="tab-maint" class="tab-body hidden"></section>
   </aside>
 
   <!-- Buttons in the top-right corner of the map -->
@@ -279,6 +281,7 @@
   <script src="overview.js"></script>
   <script src="flight.js"></script>
   <script src="stats.js"></script>
+  <script src="maintenance.js"></script>
   <script src="update-notice.js"></script>
   <script src="main.js"></script>
   <script src="planner.js"></script>

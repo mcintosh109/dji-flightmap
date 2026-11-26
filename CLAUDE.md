@@ -524,6 +524,21 @@ owner confirms it works**, release it with a tag (`git tag -a vX.Y.Z` +
   and a Stats button on each Aircraft card (`Stats.showDrone`). Battery
   cards: filtered to the drone, but always the battery's whole life, with
   "Flown in". Folded into 5.5.0 (owner's choice) before its release.
+- **Maintenance reminders** (5.6.0, idea 9 from the open-dronelog list; the
+  owner chose: OWN tab + a "due" line on the drone card, limits in hours AND
+  flights AND days, and an "Add examples" button). Server
+  `flightmap/maintenance.py` (`maintenance.json` 0600, in ct-backup.sh's
+  CONFIG_FILES): `/api/maintenance` GET, `/<id|new>` PUT/DELETE,
+  `/<id>/done` POST {date}. Item: name, drone ('all' or key = serial ||
+  name), everyHours/everyFlights/everyDays (null = unused, at least one),
+  lastDone (date, 1 day of slack for UTC vs local), doneAt (moment of "Mark
+  done", so earlier flights that day don't count; dropped when lastDone is
+  edited), history (50 dates; an older "done" date is history only). The
+  page (`maintenance.js`) counts flights/hours since lastDone from
+  state.flights; due = any limit reached, soon = 80%. Examples are starting
+  points, NOT DJI numbers (DJI publishes none): say so. With 5 tabs, the
+  tab row wraps (`.tabs` flex-wrap): on the owner's map "Maintenance" sits
+  on a 2nd row; offered a wrench icon instead.
 - **`LiveLoginLockout` is flaky in Claude's sandbox** (Nov 2026, during
   5.5.0): "broken connection" for 2-9 of 30 guesses in about 2 of 3 runs, the
   same on the unchanged 5.4.2 code. Not changed yet: ask the owner first

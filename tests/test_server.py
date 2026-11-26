@@ -338,6 +338,86 @@ class LiveFlights(unittest.TestCase):
         self.assertIn(b'colour', body)
 
 
+class LiveMaintenance(unittest.TestCase):
+    """Maintenance reminders (5.6.0): /api/maintenance."""
+
+    ITEM = {'name': 'Propellers: replace', 'drone': 'all', 'everyHours': 10, 'everyFlights': None,
+            'everyDays': 90, 'lastDone': '2026-01-01', 'notes': 'Spare set in the bag'}
+
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = tempfile.mkdtemp(prefix='flightmap-test-')
+        os.makedirs(os.path.join(cls.tmp, 'state'))
+        make_archive(os.path.join(cls.tmp, 'archive'))
+        cls.srv = LiveServer(os.path.join(cls.tmp, 'archive'), os.path.join(cls.tmp, 'state'))
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.srv.stop()
+        shutil.rmtree(cls.tmp, ignore_errors=True)
+
+    def call(self, method, path, body=None, header=True):
+        headers = {'Content-Type': 'application/json'}
+        if header:
+            headers['X-Requested-With'] = 'flightmap'
+        data = None if body is None else json.dumps(body).encode()
+        status, _, answer = self.srv.request(path, method, data, headers)
+        return status, json.loads(answer or b'{}')
+
+    def test_save_list_done_delete(self):
+        status, saved = self.call('PUT', '/api/maintenance/new', self.ITEM)
+        self.assertEqual(status, 200, saved)
+        mid = saved['id']
+        self.assertEqual((saved['everyHours'], saved['everyFlights'], saved['everyDays']), (10.0, None, 90))
+        self.assertEqual([i['name'] for i in self.srv.json('/api/maintenance')['items']], ['Propellers: replace'])
+        path = os.path.join(self.tmp, 'state', 'maintenance.json')
+        self.assertEqual(oct(os.stat(path).st_mode & 0o777), '0o600')
+
+        # Mark done today: the date moves on, it goes into the history, and the moment is kept.
+        from datetime import date
+        today = date.today().isoformat()
+        status, done = self.call('POST', f'/api/maintenance/{mid}/done', {'date': today})
+        self.assertEqual(status, 200, done)
+        self.assertEqual((done['lastDone'], done['history']), (today, [today]))
+        self.assertTrue(done['doneAt'])
+        # Marking an EARLIER day done is history only: the newer date stays.
+        status, older = self.call('POST', f'/api/maintenance/{mid}/done', {'date': '2026-02-01'})
+        self.assertEqual((older['lastDone'], older['history']), (today, ['2026-02-01', today]))
+        # Editing keeps the history.
+        status, edited = self.call('PUT', f'/api/maintenance/{mid}', dict(self.ITEM, name='Props', lastDone=today))
+        self.assertEqual((status, edited['name'], edited['history']), (200, 'Props', ['2026-02-01', today]))
+
+        status, _ = self.call('DELETE', f'/api/maintenance/{mid}')
+        self.assertEqual(status, 200)
+        self.assertEqual(self.srv.json('/api/maintenance')['items'], [])
+        status, _ = self.call('POST', f'/api/maintenance/{mid}/done', {'date': today})
+        self.assertEqual(status, 404)
+
+    def test_bad_reminders_are_refused(self):
+        cases = [
+            (dict(self.ITEM, everyHours=None, everyDays=None), 'at least one limit'),
+            (dict(self.ITEM, name=''), 'name'),
+            (dict(self.ITEM, name='<script>'), 'name'),
+            (dict(self.ITEM, everyFlights=-3), 'Flights must be'),
+            (dict(self.ITEM, everyDays=True), 'Days must be'),
+            (dict(self.ITEM, lastDone='2099-01-01'), 'not in the future'),
+            (dict(self.ITEM, lastDone='2026-02-30'), 'not in the future'),
+        ]
+        for body, words in cases:
+            status, answer = self.call('PUT', '/api/maintenance/new', body)
+            self.assertEqual(status, 400, body)
+            self.assertIn(words, answer['error'])
+        self.assertEqual(self.srv.json('/api/maintenance')['items'], [])
+
+    def test_changes_need_our_page(self):
+        status, _ = self.call('PUT', '/api/maintenance/new', self.ITEM, header=False)
+        self.assertEqual(status, 403)
+        status, _ = self.call('PUT', '/api/maintenance/../../x', self.ITEM)
+        self.assertEqual(status, 404)
+        status, _ = self.call('POST', '/api/maintenance/new/done', {'date': '2026-01-01'})
+        self.assertEqual(status, 404)
+
+
 class LivePlans(unittest.TestCase):
     """Saved flight plans: /api/plans."""
 

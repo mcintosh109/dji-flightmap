@@ -17,6 +17,7 @@ rest lives in the flightmap/ folder, one file per job:
   library.py     the list of all flights (scanning, caching, duplicates)
   settings.py    the settings page's values
   plans.py       saved flight plans
+  maintenance.py maintenance reminders (propellers, cleaning...)
   auth.py        the optional login
   azure.py       Azure Maps through this server (keeps the key private)
   google.py      Google Maps through this server (keeps the key private)
@@ -75,6 +76,9 @@ Web addresses it answers:
                         squares, from OpenStreetMap (see flightmap/places.py)
   /api/nas              is the NAS reachable, its share connected, the logs readable?
   /api/nas/reconnect    POST: ask the Proxmox server to reconnect the NAS share now
+  /api/maintenance      GET: maintenance reminders
+  /api/maintenance/<id> PUT: save one (id "new" makes one), DELETE: remove it
+  /api/maintenance/<id>/done  POST {date}: mark it done on that date
   /api/plans            GET: saved flight plans
   /api/plans/<id>       PUT: save a plan (id "new" makes one), DELETE: remove it
   /api/plans/<id>/djifly.kmz?finish=&lost=
@@ -130,6 +134,7 @@ from flightmap.azplaces import search as azure_places_search
 from flightmap.gplaces import search as google_places_search
 from flightmap.library import FlightLibrary
 from flightmap.places import PlacesError, parse_range, places_in
+from flightmap.maintenance import MAINT_ID_RE, MAINT_LOCK, MAX_ITEMS, clean_date, clean_item, load_items, mark_done, save_items
 from flightmap.plans import MAX_PLANS, PLAN_ID_RE, PLANS_LOCK, clean_plan, load_plans, save_plans
 from flightmap.settings import (DEFAULT_SETTINGS, SERVER_ONLY_KEYS, clean_settings, current_settings,
                                 load_settings, public_settings, save_settings, tunnel_peers)
@@ -305,6 +310,13 @@ class Handler(SimpleHTTPRequestHandler):
                 return self.send_json({"error": "no preview"}, 404)
             self.cache_control = "private, max-age=60"
             return self.send_raw(200, *found)
+        if path == "/api/maintenance":
+            if not self.allowed(path):
+                return
+            with MAINT_LOCK:
+                items = [dict(v, id=k) for k, v in load_items().items()]
+            items.sort(key=lambda v: v.get("name", "").lower())
+            return self.send_json({"items": items})
         if path == "/api/plans":
             with PLANS_LOCK:
                 plans = [dict(p, id=k) for k, p in load_plans().items()]
@@ -616,10 +628,58 @@ class Handler(SimpleHTTPRequestHandler):
             return secrets.token_hex(6)
         return plan_id if PLAN_ID_RE.match(plan_id) else None
 
+    # ---- maintenance reminders (5.6.0) --------------------------------------
+    def maint_id_from(self, path, suffix=""):
+        item_id = unquote(path[len("/api/maintenance/"):len(path) - len(suffix)])
+        if item_id == "new" and not suffix:
+            return secrets.token_hex(6)
+        return item_id if MAINT_ID_RE.match(item_id) else None
+
+    def maintenance_change(self, method, path):
+        if not self.allowed(path) or not self.from_our_page():
+            return
+        done = method == "POST" and path.endswith("/done")
+        item_id = self.maint_id_from(path, "/done" if done else "")
+        if item_id is None or (method == "POST" and not done):
+            return self.send_json({"error": "unknown address"}, 404)
+        incoming = {} if method == "DELETE" else self.read_json_body(limit=16384)
+        if incoming is None:
+            return
+        with MAINT_LOCK:
+            items = load_items()
+            if method == "DELETE" or done:
+                if item_id not in items:
+                    return self.send_json({"error": "reminder not found"}, 404)
+            if method == "DELETE":
+                del items[item_id]
+                answer = {"ok": True}
+            elif done:
+                when = clean_date(incoming.get("date"))
+                if when is None:
+                    return self.send_json({"error": "The date must be a real date, not in the future."}, 400)
+                items[item_id] = mark_done(items[item_id], when)
+                answer = dict(items[item_id], id=item_id)
+            else:
+                if item_id not in items and len(items) >= MAX_ITEMS:
+                    return self.send_json({"error": f"You can have up to {MAX_ITEMS} reminders."}, 400)
+                item, problems = clean_item(incoming, items.get(item_id))
+                if problems:
+                    return self.send_json({"error": " ".join(problems), "problems": problems}, 400)
+                items[item_id] = item
+                answer = dict(item, id=item_id)
+            try:
+                save_items(items)
+            except OSError as exc:
+                return self.send_json({"error": f"could not save: {exc}"}, 500)
+        log(f"{self.client_ip()} {'deleted' if method == 'DELETE' else 'marked done' if done else 'saved'} maintenance reminder {item_id}")
+        return self.send_json(answer)
+
     def do_DELETE(self):
         path = urlparse(self.path).path
         if path.startswith("/api/rc2/"):
             return self.rc2_change("DELETE", path)
+        if path.startswith("/api/maintenance/"):
+            return self.maintenance_change("DELETE", path)
         if not path.startswith("/api/plans/"):
             return self.send_json({"error": "unknown address"}, 404)
         if not self.allowed(path) or not self.from_our_page():
@@ -640,6 +700,8 @@ class Handler(SimpleHTTPRequestHandler):
             return self.dock_request("PUT", path)
         if path.startswith("/api/plans/"):
             return self.put_plan(path)
+        if path.startswith("/api/maintenance/"):
+            return self.maintenance_change("PUT", path)
         if path != "/api/settings":
             return self.send_json({"error": "unknown address"}, 404)
         if not self.allowed(path) or not self.from_our_page():
@@ -707,6 +769,8 @@ class Handler(SimpleHTTPRequestHandler):
             return self.rc2_change("POST", path)
         if path.startswith("/api/plans/") and path.endswith("/rc2"):
             return self.send_to_rc2(path)
+        if path.startswith("/api/maintenance/"):
+            return self.maintenance_change("POST", path)
         if path == "/api/https/renew":
             # "Make a new certificate now" on the settings page.
             if not self.allowed(path) or not self.from_our_page():

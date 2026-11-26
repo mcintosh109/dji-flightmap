@@ -295,5 +295,5 @@ const Stats = (() => {
     box().scrollTop = 0;
   }
 
-  return { render, batteryList, showDrone };
+  return { render, batteryList, showDrone, droneList, droneKey };
 })();

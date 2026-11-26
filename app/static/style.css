@@ -109,9 +109,10 @@ a.icon-btn { color: var(--text); }
 .icon-btn.spin svg { animation: spin 0.8s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
-.tabs { display: flex; gap: 6px; padding: 0 16px 10px; }
+.tabs { display: flex; flex-wrap: wrap; gap: 5px; padding: 0 14px 10px; }
 .tabs button {
-  flex: 1; padding: 8px 4px; border-radius: 10px; cursor: pointer; white-space: nowrap;
+  /* Five tabs (5.6.0): a little smaller; if they still don't fit, they wrap to a second row instead of being cut off. */
+  flex: 1 1 auto; padding: 7px 6px; border-radius: 10px; cursor: pointer; white-space: nowrap; font-size: 13px;
   background: transparent; border: 1px solid var(--line); color: var(--muted);
 }
 .tabs button.active { background: var(--accent-dim); color: var(--accent); border-color: transparent; }
@@ -262,6 +263,36 @@ button.cal-day { cursor: pointer; }
 .cal-day.l3 { background: rgba(54, 194, 255, 0.78); }
 .cal-day.l4 { background: var(--accent); }
 button.cal-day:hover, button.cal-day:focus-visible { outline: 2px solid var(--text); outline-offset: 0; }
+/* ---------- Maintenance tab (5.6.0) ---------- */
+.count.due { color: #04121a; background: #ffb020; border-radius: 999px; padding: 0 6px; font-weight: 700; }
+.tabs button.active .count.due { color: #04121a; opacity: 1; }
+.maint-due { display: block; width: 100%; text-align: left; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer;
+  color: #ffb020; background: rgba(255, 176, 32, 0.12); border: 1px solid rgba(255, 176, 32, 0.4); border-radius: 8px; padding: 6px 10px; margin: 0 0 8px; }
+.maint-due:hover { background: rgba(255, 176, 32, 0.2); }
+.mt-card.due { border-color: rgba(255, 176, 32, 0.6); }
+.tag.mt-due { background: #ffb020; color: #04121a; font-weight: 700; }
+.tag.mt-soon { background: rgba(255, 176, 32, 0.16); color: #ffb020; }
+.tag.mt-ok { background: rgba(80, 200, 120, 0.16); color: #5fd38d; }
+.mt-limit { margin: 6px 0; }
+.mt-limit-text { display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 3px; }
+.mt-limit-text span { color: var(--muted); }
+.mt-bar { height: 6px; border-radius: 3px; background: rgba(255,255,255,0.08); overflow: hidden; }
+.mt-bar i { display: block; height: 100%; background: var(--accent); }
+.mt-bar.soon i { background: #c9a040; }
+.mt-bar.due i { background: #ffb020; }
+.mt-notes { font-size: 12px; color: var(--muted); margin: 6px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.mt-card .actions, .mt-form .actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.mt-form h4 { margin: 0 0 8px; }
+.mt-form label { display: block; font-size: 12px; color: var(--muted); margin: 8px 0 0; }
+.mt-form input, .mt-form select, .mt-form textarea { display: block; width: 100%; box-sizing: border-box; margin-top: 3px; font: inherit; font-size: 14px;
+  color: var(--text); background: rgba(255,255,255,0.04); border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; }
+.mt-every { font-size: 13px; margin: 12px 0 0; }
+.mt-every small { color: var(--muted); }
+.mt-limits { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.mt-limits label { margin-top: 4px; }
+.mt-error { color: #ff8a8a; font-size: 13px; margin: 8px 0 0; }
+.empty .chip { margin: 10px auto 6px; display: inline-block; }
+.empty small { display: block; }
 .empty { color: var(--muted); padding: 20px 8px; text-align: center; }
 .empty code { display: block; margin-top: 8px; color: var(--text); word-break: break-all; }
 

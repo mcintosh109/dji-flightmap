@@ -692,6 +692,51 @@ function fakeInternet(ctx, { github = null } = {}) {
       await page.isVisible('#tab-stats') && (await page.inputValue('#st-drone')) === 'TEST0000SERIAL02');
     await page.selectOption('#st-drone', 'all');
     await page.click('[data-tab=aircraft]');
+
+    // ---- Maintenance tab (5.6.0) ----
+    console.log('Maintenance tab');
+    await page.click('[data-tab=maint]');
+    let mt = await page.textContent('#tab-maint');
+    check('Maintenance says it is reminders only, and to keep doing the checks before every flight',
+      /Reminders only.*checks before every\s+flight/s.test(mt), mt.slice(0, 200));
+    await page.click('#tab-maint [data-act=examples]');
+    await page.waitForTimeout(600);
+    check('  ..."Add examples" adds 4 reminders, none due yet', (await page.locator('.mt-card').count()) === 4
+      && (await page.locator('.mt-card.due').count()) === 0);
+    // A mistake in the form: no limit at all.
+    await page.click('#tab-maint [data-act=new]');
+    await page.fill('#mt-name', 'Check the props');
+    await page.click('#mt-form [type=submit]');
+    await page.waitForTimeout(300);
+    check('  ...a reminder without any limit is refused, with a reason', /at least one limit/.test(await page.textContent('#mt-error')),
+      await page.textContent('#mt-error'));
+    // Due after 2 flights, last done before the test flights: due (drone 1 has 3 flights since).
+    await page.selectOption('#mt-drone', 'TEST0000SERIAL01');
+    await page.fill('#mt-flights', '2');
+    await page.fill('#mt-last', '2026-01-01');
+    await page.click('#mt-form [type=submit]');
+    await page.waitForTimeout(600);
+    const dueCard = page.locator('.mt-card.due');
+    check('  ...a reminder past its limit is DUE, listed first, with its numbers', (await dueCard.count()) === 1
+      && /Check the props[\s\S]*Due[\s\S]*3 of 2 flights/.test(await dueCard.textContent())
+      && (await page.locator('.mt-card').first().getAttribute('class')).includes('due'), await dueCard.textContent().catch(() => ''));
+    check('  ...the tab shows how many jobs are due', (await page.textContent('#maint-count')) === '1');
+    await page.click('[data-tab=aircraft]');
+    check("  ...that drone's card says a job is due (the other drone's doesn't)",
+      /1 maintenance job due/.test(await page.textContent('.aircraft[data-key=TEST0000SERIAL01]'))
+      && !/maintenance job/.test(await page.textContent('.aircraft[data-key=TEST0000SERIAL02]')));
+    await page.click('.aircraft[data-key=TEST0000SERIAL01] [data-act=maint]');
+    check('  ...clicking it opens the Maintenance tab', await page.isVisible('#tab-maint'));
+    page.once('dialog', (d) => d.accept());
+    await page.locator('.mt-card.due [data-act=done]').click();
+    await page.waitForTimeout(600);
+    check('  ..."Mark done" starts counting again: nothing due', (await page.locator('.mt-card.due').count()) === 0
+      && (await page.textContent('#maint-count')) === '' && /0 of 2 flights/.test(await page.textContent('#tab-maint')));
+    // Clean up, so later parts of the test see no reminders.
+    for (const it of (await (await fetch(`${app.base}/api/maintenance`)).json()).items) {
+      await fetch(`${app.base}/api/maintenance/${it.id}`, { method: 'DELETE', headers: { 'X-Requested-With': 'flightmap' } });
+    }
+    await page.click('[data-tab=aircraft]');
     check('no errors on the map page', errors.length === 0, errors.join(' | '));
     await ctx.close();
 

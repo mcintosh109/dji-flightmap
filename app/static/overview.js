@@ -40,6 +40,13 @@ function emptyMessage(data) {
     Make sure your sync service saves its <b>.csv</b> (or <b>.geojson</b>) files there.</div>`;
 }
 
+// "🔧 1 maintenance job due" on a drone's card (5.6.0). Click: the Maintenance tab.
+function maintDue(key) {
+  const n = typeof Maintenance === 'undefined' ? 0 : Maintenance.dueFor(key);
+  if (!n) return '';
+  return `<button type="button" class="maint-due" data-act="maint">🔧 ${n} maintenance job${n === 1 ? '' : 's'} due</button>`;
+}
+
 function renderAircraft(data) {
   const box = $('#tab-aircraft');
   const list = aircraftList();
@@ -57,6 +64,7 @@ function renderAircraft(data) {
           <div><h3>${esc(a.name)}</h3><div class="sn">${sn}</div></div>
         </div>
         <div class="seen">${seen}</div>
+        ${maintDue(a.key)}
         <div class="grid">
           <div><span>Battery left</span>${esc(fmt.pct(f?.batteryEnd))}</div>
           <div><span>Flights</span>${a.flights.length}</div>
@@ -77,6 +85,7 @@ function renderAircraft(data) {
       const a = list.find((x) => x.key === card.dataset.key);
       // "Stats": the Stats tab, showing only this drone (5.5.0).
       if (ev.target.closest('[data-act=stats]')) { if (a) Stats.showDrone(a.key); return; }
+      if (ev.target.closest('[data-act=maint]')) { Maintenance.show(); return; }
       if (a?.lastFlight) selectFlight(a.lastFlight.id);
       else if (a?.flights[0]) selectFlight(a.flights[0].id);
     });

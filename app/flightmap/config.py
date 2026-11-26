@@ -28,6 +28,7 @@ GOOGLE_TILES_URL = os.environ.get("GOOGLE_TILES_URL", "https://tile.googleapis.c
 # Where Google's Places service is reached (only changed by the tests).
 GOOGLE_PLACES_URL = os.environ.get("GOOGLE_PLACES_URL", "https://places.googleapis.com").rstrip("/")
 PLANS_FILE = os.path.join(STATE_DIR, "plans.json")
+MAINTENANCE_FILE = os.path.join(STATE_DIR, "maintenance.json")   # maintenance reminders (5.6.0)
 # HTTPS is chosen on the settings page (see flightmap/https.py). New
 # installs start with a private certificate; the tests start with "off".
 DEFAULT_HTTPS = os.environ.get("DEFAULT_HTTPS", "private").strip()

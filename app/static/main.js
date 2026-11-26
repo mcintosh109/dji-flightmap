@@ -43,6 +43,7 @@ async function refresh({ force = false, rescan = false } = {}) {
       renderAircraft(data);
       renderFlights(data);
       Stats.render();
+      Maintenance.refresh();
       drawOverview();
       updateOverviewVisibility();
     }

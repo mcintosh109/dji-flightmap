@@ -15,6 +15,7 @@ CONFIG_FILES=(
   "/var/lib/dji-flightmap/settings.json|flightmap|0600|settings.json"   # settings page (map keys, nicknames, ...)
   "/var/lib/dji-flightmap/session-secret|flightmap|0600|session-secret" # keeps you signed in
   "/var/lib/dji-flightmap/plans.json|flightmap|0600|plans.json"         # saved flight plans
+  "/var/lib/dji-flightmap/maintenance.json|flightmap|0600|maintenance.json" # maintenance reminders
   # HTTPS. Keeping the private certificate authority means a rebuilt
   # container is still trusted by your devices without importing again.
   "/var/lib/dji-flightmap/tls/ca.key|flightmap|0600|tls-ca.key"

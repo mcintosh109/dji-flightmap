@@ -31,6 +31,9 @@ saves to TrueNAS.
 - The **Stats** tab: your flying in numbers, a calendar of the days you flew,
   the **health of each battery**, and your records. More in
   [The Stats tab](#the-stats-tab-your-flying-and-battery-health).
+- The **Maintenance** tab: reminders for jobs like replacing the propellers,
+  counted in flying hours, flights or days. More in
+  [Maintenance reminders](#maintenance-reminders).
 - **Places** (shops, schools, parks, hospitals, heliports…) help you get your
   bearings. They are **not** a no-fly map. More in
   [Places](#places-what-is-around-you).
@@ -370,6 +373,38 @@ Nothing extra is stored or sent anywhere.
   beat: always fly within your local rules.
 
 Research keywords: *"LiPo battery capacity loss"*, *"battery cell balance"*.
+
+### Maintenance reminders
+
+The **Maintenance** tab reminds you of jobs you do now and then. It is
+**only a reminder**: keep doing DJI's checks before every flight
+(propellers, battery, motors, gimbal).
+
+1. Press **＋ Add a reminder** (or, the first time, **Add examples**).
+2. **What to do:** for example *Propellers: replace*.
+3. **Drone:** one drone, or *All drones*.
+4. **Due after:** fill in one or more of **flying hours**, **flights** and
+   **days**. It is due as soon as the **first** one is reached. DJI doesn't
+   publish fixed times for these jobs, so the numbers are yours to choose.
+5. **Last done:** the day you last did the job (today for a new one).
+6. Press **Save**.
+
+Each reminder shows a bar per limit (for example *2.7 of 2 hours*) and
+**OK**, **Soon** (80% or more) or **Due**. When a job is due:
+
+- the tab shows how many (for example **Maintenance 1**), and
+- the drone's card on the **Aircraft** tab says **🔧 1 maintenance job due**
+  (click it to open the Maintenance tab).
+
+After doing the job, press **Mark done**: counting starts again from that
+moment (flights earlier that day don't count). To pick another day, use
+**Edit** → **Last done**. **Add examples** adds 4 starting points you can
+change or delete: propellers (every 10 flying hours), clean the motors and
+air vents (every 20 flights), firmware and DJI Fly updates, and the gimbal
+and camera (every 30 days).
+
+The reminders are saved on the server in `maintenance.json` and included
+in the backups. Research keywords: *"drone maintenance schedule"*.
 
 ### Finding an address
 
@@ -1230,6 +1265,8 @@ pct exec 105 -- systemctl restart dji-flightmap
 | `app/flightmap/places.py` | Asks OpenStreetMap for places, sorts them into kinds and remembers them for a week | *"Overpass API"*, *"Overpass QL"* |
 | `app/static/overview.js` | The sidebar lists and the overview of all flights | *"leaflet polyline"* |
 | `app/static/flight.js` | One open flight: its path, the details panel, the charts, the replay | *"requestAnimationFrame"*, *"SVG polyline"* |
+| `app/static/maintenance.js` | The Maintenance tab: reminders, counting hours/flights/days since last done, the "due" line on drone cards | *"fetch PUT JSON"* |
+| `app/flightmap/maintenance.py` | Checks and saves the maintenance reminders (`maintenance.json`) | *"input validation"* |
 | `app/static/stats.js` | The Stats tab: totals, the calendar, each drone, battery health, records | *"array reduce javascript"*, *"CSS grid"* |
 | `app/static/update-notice.js` | The version number, update notice and Updates window | |
 | `app/static/main.js` | Loads data from the server, applies settings, starts the page | *"javascript fetch"* |

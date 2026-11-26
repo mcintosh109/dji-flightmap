@@ -1,15 +1,13 @@
 {
-  "version": "5.5.0",
+  "version": "5.6.0",
   "released": "2026-11-26",
   "repo": "mcintosh109/dji-flightmap",
   "notes": [
-    "New: more charts for a flight. Above the height chart, pick Speed, Climb (up and down), Battery % or GPS satellites. The replay line moves along whichever chart you picked, and the map remembers your choice",
-    "New: the Stats tab. Your flying in numbers (flights, air time, distance, days flown, photos and video), for all time or one year",
-    "New: a calendar of the days you flew, one square per day (darker = more air time). Click a day to see its flights",
-    "New: battery health. Each battery gets a card: how much it holds compared with a new one, a line of its capacity flight by flight, how much it uses per minute, its temperatures and the voltage difference between its cells (when your logs have them). A rough guide only: DJI Fly's battery page is the official reading",
-    "New: your records (longest, highest, furthest from take-off), and each drone's totals. Click a record to open that flight",
-    "Stats for each drone: choose a drone next to \"Show\" in the Stats tab, or press the new Stats button on a drone's card in the Aircraft tab. Each battery card says which drone(s) it flew in",
-    "Fixed: a flight log that said its video was longer than the whole flight (seen: 6½ hours of video in a 7-minute flight) made the video time wrong. Such a number is no longer trusted: the flight shows \"–\" for its video",
-    "Your flights are read once more after this update (to collect the new battery numbers), so the first start can take a little longer"
+    "New: the Maintenance tab. Reminders for jobs you do now and then, like replacing the propellers or cleaning the motors",
+    "Each reminder can count flying hours, flights and days since it was last done (your choice, one or more). It is due as soon as the first one is reached, and a bar shows how far along each one is",
+    "When a job is due, the tab shows how many, and the drone's card on the Aircraft tab says \"1 maintenance job due\" (click it to open the Maintenance tab)",
+    "\"Mark done\" starts counting again from that moment. A reminder can be for one drone or for all drones",
+    "\"Add examples\" adds 4 reminders to start with (propellers, motors, firmware, gimbal). DJI doesn't publish fixed times for these jobs: change the numbers to suit you",
+    "Reminders only: keep doing DJI's checks before every flight. They are included in your backups"
   ]
 }
